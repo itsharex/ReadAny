@@ -4,6 +4,7 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { ExternalLink, Github, BookOpen, Code2, Zap, Shield, RefreshCw, Download, Check, AlertCircle } from "lucide-react";
+import { getName, getVersion } from "@tauri-apps/api/app";
 import { checkForUpdate, getUpdateStatus, getAvailableUpdate, getDownloadProgress, getErrorMessage, subscribeToUpdates, downloadAndInstall, relaunchApp, resetStatus } from "@/lib/updater";
 import { Button } from "@/components/ui/button";
 import {
@@ -32,6 +33,11 @@ export function AboutSettings() {
   const [error, setError] = useState(getErrorMessage());
   const [dialogType, setDialogType] = useState<DialogType>("none");
   const [isChecking, setIsChecking] = useState(false);
+  const [appVersion, setAppVersion] = useState<string>("");
+
+  useEffect(() => {
+    getVersion().then(setAppVersion).catch(console.error);
+  }, []);
 
   useEffect(() => {
     return subscribeToUpdates((s, u, p, e) => {
@@ -95,7 +101,7 @@ export function AboutSettings() {
         <div className="flex items-center justify-between">
           <span className="text-sm text-neutral-600">{t("settings.version", "版本")}</span>
           <div className="flex items-center gap-2">
-            <span className="font-mono text-sm font-medium text-neutral-900">1.0.0</span>
+            <span className="font-mono text-sm font-medium text-neutral-900">{appVersion || "..."}</span>
             <button
               onClick={handleCheckUpdate}
               disabled={status === "checking" || status === "downloading"}
