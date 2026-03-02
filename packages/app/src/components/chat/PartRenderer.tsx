@@ -12,8 +12,6 @@ import {
   XCircle,
   Brain,
   Wrench,
-  BookOpen,
-  ExternalLink,
 } from "lucide-react";
 import { useState, useEffect, useRef, lazy, Suspense } from "react";
 import type { Part, TextPart, ReasoningPart, ToolCallPart, CitationPart, MindmapPart } from "@/types/message";
@@ -302,30 +300,6 @@ function ToolCallPartView({ part }: { part: ToolCallPart }) {
           </CollapsibleContent>
         </Collapsible>
       </div>
-    </div>
-  );
-}
-
-function CitationPartView({
-  part,
-  onCitationClick,
-}: {
-  part: CitationPart;
-  onCitationClick?: (citation: CitationPart) => void;
-}) {
-  return (
-    <div
-      onClick={() => onCitationClick?.(part)}
-      className="group cursor-pointer rounded-lg border border-neutral-200 bg-white p-3 transition-all hover:border-neutral-300 hover:shadow-sm"
-    >
-      <div className="mb-2 flex items-start justify-between gap-2">
-        <div className="flex items-center gap-1.5 text-xs text-neutral-500">
-          <BookOpen className="h-3.5 w-3.5" />
-          <span className="font-medium">{part.chapterTitle}</span>
-        </div>
-        <ExternalLink className="h-3.5 w-3.5 text-neutral-400 opacity-0 transition-opacity group-hover:opacity-100" />
-      </div>
-      <p className="line-clamp-3 text-sm leading-relaxed text-neutral-700">{part.text}</p>
     </div>
   );
 }
