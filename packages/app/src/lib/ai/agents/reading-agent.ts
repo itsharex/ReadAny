@@ -27,7 +27,17 @@ export type AgentStreamEvent =
       content: string;
       stepType: "thinking" | "planning" | "analyzing" | "deciding";
     }
-  | { type: "citation"; citation: { id: string; chapterTitle: string; text: string; cfi: string } }
+  | {
+      type: "citation";
+      citation: {
+        id: string;
+        bookId: string;
+        chapterTitle: string;
+        chapterIndex: number;
+        cfi: string;
+        text: string;
+      };
+    }
   | { type: "error"; error: string };
 
 export interface ReadingAgentOptions {
@@ -319,6 +329,25 @@ export async function* streamReadingAgent(
         } catch {
           /* keep as string */
         }
+
+        // Emit citation event for addCitation tool results
+        if (event.name === "addCitation" && result && typeof result === "object") {
+          const citationData = result as Record<string, unknown>;
+          if (citationData.type === "citation") {
+            yield {
+              type: "citation",
+              citation: {
+                id: `citation-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                bookId: citationData.bookId as string,
+                chapterTitle: citationData.chapterTitle as string,
+                chapterIndex: citationData.chapterIndex as number,
+                cfi: citationData.cfi as string,
+                text: citationData.text as string,
+              },
+            };
+          }
+        }
+
         yield { type: "tool_result", name: event.name, result };
       }
     }

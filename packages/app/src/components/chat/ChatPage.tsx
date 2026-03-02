@@ -5,6 +5,7 @@ import { useStreamingChat } from "@/hooks/use-streaming-chat";
 import { convertToMessageV2, mergeMessagesWithStreaming } from "@/lib/chat-utils";
 import { useChatReaderStore } from "@/stores/chat-reader-store";
 import { useChatStore } from "@/stores/chat-store";
+import type { CitationPart } from "@/types";
 import {
   BookOpen,
   Brain,
@@ -207,6 +208,12 @@ export function ChatPage() {
     setGeneralActiveThread(null);
   }, [setGeneralActiveThread]);
 
+  const handleCitationClick = useCallback((citation: CitationPart) => {
+    // TODO: Navigate to reader page with this citation
+    // For now, log to console. Future enhancement: use router to navigate to /reader/${citation.bookId}?cfi=${citation.cfi}
+    console.log('Citation clicked:', citation);
+  }, []);
+
   const displayMessages = convertToMessageV2(activeThread?.messages || []);
   const allMessages = mergeMessagesWithStreaming(displayMessages, currentMessage, isStreaming);
 
@@ -249,11 +256,12 @@ export function ChatPage() {
         {/* Message list or empty state - consistent container structure */}
         <div className="flex-1 overflow-hidden">
           {allMessages.length > 0 ? (
-            <MessageList 
-              messages={allMessages} 
+            <MessageList
+              messages={allMessages}
               isStreaming={isStreaming}
               currentStep={currentStep}
               onStop={stopStream}
+              onCitationClick={handleCitationClick}
             />
           ) : (
             <EmptyState onSuggestionClick={handleSend} />

@@ -27,7 +27,7 @@ import { useLibraryStore } from "@/stores/library-store";
 import { useReaderStore } from "@/stores/reader-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useNotebookStore } from "@/stores/notebook-store";
-import type { HighlightColor } from "@/types";
+import type { HighlightColor, CitationPart } from "@/types";
 import { X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -939,6 +939,25 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
     });
   }, []);
 
+  const handleNavigateToCitation = useCallback((citation: CitationPart) => {
+    // Validate CFI before attempting navigation
+    if (!citation.cfi || citation.cfi.trim() === "") {
+      console.warn("Citation has no valid CFI, cannot navigate:", {
+        chapterTitle: citation.chapterTitle,
+        chapterIndex: citation.chapterIndex,
+        text: citation.text.slice(0, 50),
+      });
+      // TODO: Consider fallback navigation using chapter index
+      return;
+    }
+
+    try {
+      foliateRef.current?.goToCFI(citation.cfi);
+    } catch (error) {
+      console.error("Failed to navigate to citation:", error, citation);
+    }
+  }, []);
+
   if (!readerTab) {
     return <div className="flex h-full items-center justify-center">{t("common.loading")}</div>;
   }
@@ -1180,7 +1199,7 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
             </button>
           </div>
           <div className="flex-1 overflow-hidden">
-            <ChatPanel book={book} />
+            <ChatPanel book={book} onNavigateToCitation={handleNavigateToCitation} />
           </div>
         </div>
       )}

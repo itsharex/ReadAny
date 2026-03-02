@@ -4,7 +4,7 @@
 import { useStreamingChat } from "@/hooks/use-streaming-chat";
 import { convertToMessageV2, mergeMessagesWithStreaming } from "@/lib/chat-utils";
 import { useChatStore } from "@/stores/chat-store";
-import type { Book } from "@/types";
+import type { Book, CitationPart } from "@/types";
 import { Brain, History, MessageCirclePlus, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -14,6 +14,7 @@ import { ModelSelector } from "./ModelSelector";
 
 interface ChatPanelProps {
   book?: Book | null;
+  onNavigateToCitation?: (citation: CitationPart) => void;
 }
 
 function formatRelativeTime(ts: number, t: (key: string) => string): string {
@@ -29,7 +30,7 @@ function formatRelativeTime(ts: number, t: (key: string) => string): string {
   return `${months}mo`;
 }
 
-export function ChatPanel({ book }: ChatPanelProps) {
+export function ChatPanel({ book, onNavigateToCitation }: ChatPanelProps) {
   const { t } = useTranslation();
   const bookId = book?.id;
 
@@ -266,11 +267,12 @@ export function ChatPanel({ book }: ChatPanelProps) {
       {/* Messages or empty state */}
       <div className="flex-1 overflow-hidden">
         {allMessages.length > 0 ? (
-          <MessageList 
-            messages={allMessages} 
+          <MessageList
+            messages={allMessages}
             isStreaming={isStreaming}
             currentStep={currentStep}
             onStop={stopStream}
+            onCitationClick={onNavigateToCitation}
           />
         ) : (
           <div className="flex h-full flex-col items-start justify-end gap-3 overflow-y-auto p-4 pb-6">

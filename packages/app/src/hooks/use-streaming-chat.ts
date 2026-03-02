@@ -3,7 +3,7 @@ import { useChatStore } from "@/stores/chat-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { getSkills as getDbSkills } from "@/lib/db/database";
 import { getBuiltinSkills } from "@/lib/ai/skills/builtin-skills";
-import type { Book, SemanticContext, Skill, Thread, Part, TextPart, ToolCallPart, MessageV2, ReasoningPart } from "@/types";
+import type { Book, SemanticContext, Skill, Thread, Part, TextPart, ToolCallPart, MessageV2, ReasoningPart, CitationPart } from "@/types";
 import { useCallback, useRef, useState } from "react";
 import {
   createTextPart,
@@ -11,6 +11,7 @@ import {
   createToolCallPart,
   createQuotePart,
   createMindmapPart,
+  createCitationPart,
 } from "@/types/message";
 import type { AttachedQuote } from "@/components/chat/ChatInput";
 
@@ -241,6 +242,17 @@ export function useStreamingChat(options?: StreamingChatOptions) {
                   markdown: (p as import("@/types/message").MindmapPart).markdown,
                 };
               }
+              if (p.type === "citation") {
+                // Store citation data so it can be reconstructed from database
+                return {
+                  ...base,
+                  bookId: (p as CitationPart).bookId,
+                  chapterTitle: (p as CitationPart).chapterTitle,
+                  chapterIndex: (p as CitationPart).chapterIndex,
+                  cfi: (p as CitationPart).cfi,
+                  text: (p as CitationPart).text,
+                };
+              }
               return base;
             });
 
@@ -301,11 +313,33 @@ export function useStreamingChat(options?: StreamingChatOptions) {
               .map((p) => (p as TextPart).text)
               .join("\n");
 
-            const partsOrder = currentParts.map((p) => ({
-              type: p.type as "text" | "reasoning" | "tool_call" | "citation" | "mindmap",
-              id: p.id,
-              ...(p.type === "text" ? { text: (p as TextPart).text } : {}),
-            }));
+            const partsOrder = currentParts.map((p) => {
+              const base = {
+                type: p.type as "text" | "reasoning" | "tool_call" | "citation" | "mindmap",
+                id: p.id,
+              };
+              if (p.type === "text") {
+                return { ...base, text: (p as TextPart).text };
+              }
+              if (p.type === "mindmap") {
+                return {
+                  ...base,
+                  title: (p as import("@/types/message").MindmapPart).title,
+                  markdown: (p as import("@/types/message").MindmapPart).markdown,
+                };
+              }
+              if (p.type === "citation") {
+                return {
+                  ...base,
+                  bookId: (p as CitationPart).bookId,
+                  chapterTitle: (p as CitationPart).chapterTitle,
+                  chapterIndex: (p as CitationPart).chapterIndex,
+                  cfi: (p as CitationPart).cfi,
+                  text: (p as CitationPart).text,
+                };
+              }
+              return base;
+            });
 
             const errorMessage = {
               id: messageId,
@@ -406,6 +440,23 @@ export function useStreamingChat(options?: StreamingChatOptions) {
                 ? { ...prev.currentMessage, parts: [...currentParts] }
                 : null,
               currentStep: "thinking",
+            }));
+          },
+          onCitation: (citation) => {
+            // Create a CitationPart for each citation event
+            const citationPart = createCitationPart(
+              citation.bookId,
+              citation.chapterTitle,
+              citation.chapterIndex,
+              citation.cfi,
+              citation.text
+            );
+            currentParts.push(citationPart);
+            setState((prev) => ({
+              ...prev,
+              currentMessage: prev.currentMessage
+                ? { ...prev.currentMessage, parts: [...currentParts] }
+                : null,
             }));
           },
         });

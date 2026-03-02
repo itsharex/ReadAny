@@ -105,7 +105,7 @@ function createRagContextTool(bookId: string): ToolDefinition {
   return {
     name: "ragContext",
     description:
-      "Get surrounding text context for a specific chapter. Use this when the user asks about content near a specific location.",
+      "Get surrounding text context for a specific chapter. Use this when the user asks about content near a specific location. Returns chunks with CFI information - use the CFI from the chunk containing your quoted text when calling addCitation.",
     parameters: {
       chapterIndex: { type: "number", description: "The chapter index", required: true },
       range: {
@@ -125,7 +125,12 @@ function createRagContextTool(bookId: string): ToolDefinition {
 
       return {
         chapterTitle: chapterChunks[0]?.chapterTitle || "Unknown",
+        chapterIndex: chapterIndex,
         context: contextChunks.map((c) => c.content).join("\n\n"),
+        chunks: contextChunks.map((c) => ({
+          content: c.content,
+          cfi: c.startCfi || "",
+        })),
         chunksIncluded: contextChunks.length,
       };
     },

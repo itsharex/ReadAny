@@ -24,6 +24,14 @@ export interface StreamingOptions {
   onToolCall?: (toolName: string, args: Record<string, unknown>) => void;
   onToolResult?: (toolName: string, result: unknown) => void;
   onReasoning?: (content: string, type?: "thinking" | "planning" | "analyzing" | "deciding") => void;
+  onCitation?: (citation: {
+    id: string;
+    bookId: string;
+    chapterTitle: string;
+    chapterIndex: number;
+    cfi: string;
+    text: string;
+  }) => void;
 }
 
 export class StreamingChat {
@@ -97,6 +105,7 @@ export class StreamingChat {
             break;
 
           case "citation":
+            options.onCitation?.(event.citation);
             break;
 
           case "error":

@@ -76,7 +76,9 @@ export function PartRenderer({ part, citations, onCitationClick }: PartProps) {
     case "tool_call":
       return <ToolCallPartView part={part} />;
     case "citation":
-      return <CitationPartView part={part} onCitationClick={onCitationClick} />;
+      // Don't render citation parts as standalone cards
+      // Citations are rendered inline in text via MarkdownRenderer
+      return null;
     case "mindmap":
       return <MindmapPartView part={part} />;
     default:

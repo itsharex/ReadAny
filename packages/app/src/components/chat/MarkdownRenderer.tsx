@@ -5,7 +5,7 @@
  * - Mermaid diagrams via beautiful-mermaid (synchronous SVG rendering)
  */
 import { renderMermaidSVG } from "beautiful-mermaid";
-import { Check, Copy } from "lucide-react";
+import { Check, Copy, ArrowUpRight } from "lucide-react";
 import React, { useMemo, useState } from "react";
 import Markdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
@@ -108,6 +108,7 @@ function processCitationText(
                 title={`${citation.chapterTitle}: ${citation.text.slice(0, 50)}${citation.text.length > 50 ? "..." : ""}`}
               >
                 [{num}]
+                <ArrowUpRight className="inline h-2.5 w-2.5 ml-0.5" />
               </button>
             );
           }

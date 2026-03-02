@@ -90,6 +90,19 @@ export function convertToMessageV2(messages: any[]): MessageV2[] {
             }
             break;
           }
+          case "citation":
+            parts.push({
+              id: entry.id,
+              type: "citation",
+              bookId: entry.bookId,
+              chapterTitle: entry.chapterTitle,
+              chapterIndex: entry.chapterIndex,
+              cfi: entry.cfi,
+              text: entry.text,
+              status: "completed",
+              createdAt: m.createdAt,
+            });
+            break;
           case "mindmap":
             parts.push({
               id: entry.id,

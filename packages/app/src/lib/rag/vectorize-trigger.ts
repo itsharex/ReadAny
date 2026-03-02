@@ -67,7 +67,7 @@ export async function triggerVectorizeBook(
         targetTokens: 300,
         minTokens: 50,
         overlapRatio: 0.2,
-      });
+      }, chapter.segments);
       allChunks.push(...chunks);
     }
 
