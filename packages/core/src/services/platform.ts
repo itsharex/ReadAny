@@ -80,9 +80,14 @@ export interface IPlatformService {
  * Must be initialized once at app startup via `setPlatformService()`.
  */
 let _platformService: IPlatformService | null = null;
+let _resolveReady: ((service: IPlatformService) => void) | null = null;
+const _readyPromise = new Promise<IPlatformService>((resolve) => {
+  _resolveReady = resolve;
+});
 
 export function setPlatformService(service: IPlatformService): void {
   _platformService = service;
+  _resolveReady?.(service);
 }
 
 export function getPlatformService(): IPlatformService {
@@ -92,4 +97,13 @@ export function getPlatformService(): IPlatformService {
     );
   }
   return _platformService;
+}
+
+/**
+ * Wait for platform service to be registered.
+ * Useful for code that runs during module initialization (before setPlatformService).
+ */
+export function waitForPlatformService(): Promise<IPlatformService> {
+  if (_platformService) return Promise.resolve(_platformService);
+  return _readyPromise;
 }

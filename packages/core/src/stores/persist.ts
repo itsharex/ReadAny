@@ -3,7 +3,7 @@
  * Uses IPlatformService for platform-agnostic file I/O.
  */
 import type { StateCreator, StoreApi } from "zustand";
-import { getPlatformService } from "../services/platform";
+import { getPlatformService, waitForPlatformService } from "../services/platform";
 
 const DEBOUNCE_MS = 500;
 const STORE_DIR = "readany-store";
@@ -51,7 +51,7 @@ async function writeToFS(key: string, data: unknown): Promise<void> {
 /** Load state from app data directory via IPlatformService */
 export async function loadFromFS<T>(key: string): Promise<T | null> {
   try {
-    const platform = getPlatformService();
+    const platform = await waitForPlatformService();
     const appData = await platform.getAppDataDir();
     const filePath = await platform.joinPath(appData, STORE_DIR, `${key}.json`);
     const text = await platform.readTextFile(filePath);
