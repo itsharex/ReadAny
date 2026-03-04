@@ -1,0 +1,317 @@
+---
+description: 
+alwaysApply: false
+enabled: true
+updatedAt: 2026-03-04T02:16:41.502Z
+provider: 
+---
+
+# ReadAny 移动端完整功能实现计划
+
+## 当前状态概览
+
+| 已完成 | 待实现 |
+|--------|--------|
+| Tauri v2 脚手架 + iOS 工程 | 书库功能（导入/管理/标签） |
+| MobilePlatformService 全接口 | EPUB/PDF 阅读器 |
+| SQLite 10 张表 + Rust 后端 | AI 对话系统 |
+| 12 个 shadcn/ui 组件 | 笔记管理系统 |
+| 4-Tab 底部导航 + 路由 | TTS 语音朗读 |
+| ProfilePage（mock 数据） | 翻译功能 |
+| 全局样式 + oklch 主题 | RAG 向量化 |
+| | 设置子页面 |
+| | 阅读统计（接真实数据） |
+| | 暗色模式 |
+
+---
+
+## 实现阶段规划（6 个阶段）
+
+### Phase 1：书库系统（基础数据层）
+> 优先级：最高。所有功能的入口，没有书就没有后续。
+
+**1.1 Core library-store 迁移**
+- 将 `library-store` 提取到 `@readany/core/stores`
+- 包含：书籍 CRUD、标签管理（增删改 + 分配/取消）、过滤排序、SQLite + FS 双持久化
+- 采用注入式 `registerBookImporter()` 模式，让各平台注册自己的导入实现
+- `saveCoverToAppData()` 使用 `IPlatformService` 抽象
+
+**1.2 移动端书籍导入**
+- `src/lib/import/document-loader.ts` — 复制桌面端 DocumentLoader（foliate-js 解析）
+- `src/lib/import/mobile-book-importer.ts` — 移动端导入器（元数据提取 + 封面保存）
+- `main.tsx` 注册 `registerBookImporter(mobileBookImporter)`
+- `vite-env.d.ts` — foliate-js 模块类型声明
+
+**1.3 移动端书库 UI**
+- `MobileBookCard.tsx` — 触屏优化书卡（28:41 封面、长按操作、进度条、标签徽章、格式角标、向量化角标）
+- `LibraryPage.tsx` 完整重写：
+  - 3 列书籍网格
+  - 搜索栏（可折叠）
+  - 标签横向滚动筛选 + "未分类" 选项
+  - "+" 按钮导入（系统文件选择器）
+  - 长按 → Action Sheet：管理标签、向量化、删除
+  - 标签管理弹窗：勾选/取消已有标签 + 快速新建标签
+  - 排序切换（最近打开/添加时间/书名/作者/进度）
+  - 搜索结果计数
+  - 空状态引导 + 加载状态
+  - 导入中进度显示
+
+**1.4 桌面端适配**
+- `app/src/stores/library-store.ts` → 重导出 core
+- `app/src/lib/import/desktop-book-importer.ts` — 桌面端导入器
+- `app/src/main.tsx` → `registerBookImporter(desktopBookImporter)`
+
+---
+
+### Phase 2：EPUB/PDF 阅读器（核心体验）
+> 优先级：极高。阅读是产品核心价值。
+
+**2.1 阅读器引擎集成**
+- `src/components/reader/MobileReaderView.tsx` — 主阅读页面
+  - foliate-js `<foliate-view>` Web Component 渲染
+  - 文件加载：Tauri readFile → Blob → foliate-js 解析
+  - 支持格式：EPUB / PDF / MOBI / AZW / AZW3 / CBZ / FB2 / FBZ
+  - 固定布局（PDF/CBZ）vs 流式布局（EPUB）自适应
+  - Blob 缓存（避免重复读取）
+
+**2.2 阅读器交互**
+- `MobileReaderToolbar.tsx` — 顶部工具栏（返回、书名、目录、更多菜单）
+- `MobileFooterBar.tsx` — 底部栏（翻页、进度条/页码、TTS 入口）
+- 手势交互：
+  - 点击中央区域 → 显示/隐藏控件（2 秒自动隐藏）
+  - 左右滑动 → 翻页（分页模式）
+  - 上下滑动 → 滚动（滚动模式）
+- 进度跟踪：节流保存到 SQLite + FS 缓存
+- CFI 定位导航（从笔记/书签跳转到原文）
+- 历史位置导航（返回上一位置）
+
+**2.3 目录面板**
+- `MobileTOCPanel.tsx` — 底部弹出目录
+  - 树形结构、可展开子项
+  - 自动高亮当前章节
+  - 点击跳转
+
+**2.4 阅读设置面板**
+- `MobileReadSettings.tsx` — 底部弹出设置
+  - 字号调节（12-32px）
+  - 行高调节（1.2-2.5）
+  - 字体主题切换（预设方案）
+  - 分页/滚动模式切换
+  - 页边距调节
+  - 段落间距
+
+**2.5 文本选择操作**
+- `MobileSelectionPopover.tsx` — 选中文本弹出菜单
+  - 高亮（6 色 + 波浪线下划线）
+  - 添加笔记
+  - 复制
+  - 翻译
+  - Ask AI
+  - TTS 朗读选中文本
+  - 编辑/删除已有高亮
+
+**2.6 书内搜索**
+- `MobileSearchBar.tsx` — 书内全文搜索
+  - 结果计数 + 上/下导航
+
+**2.7 阅读会话追踪**
+- 接入 `useReadingSessionStore`
+- 使用 `createSessionDetector()` 自动检测阅读会话开始/暂停/结束
+- 记录阅读时长和页数
+
+**2.8 路由接入**
+- 新增 `/reader/:bookId` 路由
+- 从 LibraryPage 点击书卡 → 跳转阅读器
+- 阅读器退出 → 保存进度 → 返回书库
+
+---
+
+### Phase 3：AI 对话系统
+> 优先级：高。产品核心差异化功能。
+
+**3.1 独立对话页（ChatPage 重写）**
+- 线程列表（左滑删除 / 长按管理）
+- 新建对话
+- 模型选择器（ModelSelector）
+- 消息列表：流式渲染、Markdown 支持
+- 输入框：文本 + 引用附件（quote）+ 深度思考模式
+- 预设建议提示（总结/分析/概念/笔记）
+- 停止生成按钮
+- 思维链展示
+
+**3.2 阅读器内 AI 侧边面板**
+- `MobileChatPanel.tsx` — 半屏/全屏对话面板
+- 书籍上下文自动关联
+- 选中文本作为引用附件
+- Citation 引用跳转到原文
+
+**3.3 Ask AI 快捷对话**
+- 从 SelectionPopover 触发
+- 小窗口快速提问 → 获取回答
+- 可选"继续在对话页讨论"
+
+**3.4 AI 技能集成**
+- 内置技能（总结/分析论点/概念关系/人物分析/翻译/阅读理解等）
+- 在对话上下文中可触发技能
+
+**3.5 上下文选择器**
+- `MobileContextPopover.tsx` — 选择一或多本书作为对话上下文
+- 在独立对话页中使用
+
+---
+
+### Phase 4：笔记与标注系统
+> 优先级：高。阅读产出的核心载体。
+
+**4.1 阅读器内笔记本面板**
+- `MobileNotebookPanel.tsx` — 底部弹出面板
+  - 当前书的高亮列表
+  - 当前书的笔记列表
+  - Markdown 编辑器
+  - 点击跳转到原文位置
+  - 笔记草稿自动保存
+
+**4.2 独立笔记管理页（NotesPage 重写）**
+- 按书籍分组的卡片列表（显示封面 + 笔记计数）
+- 点击进入单本书笔记详情：
+  - 按章节分组显示
+  - 搜索过滤
+  - 笔记/高亮 Tab 切换
+  - 编辑/删除笔记
+  - 点击跳转到原文位置
+
+**4.3 标注导出**
+- 导出入口（分享按钮）
+- 支持 4 种格式：Markdown / JSON / Obsidian / Notion
+- 单本书导出 + 全部批量导出
+- 复制到剪贴板 / 分享
+
+---
+
+### Phase 5：TTS + 翻译 + RAG 向量化
+> 优先级：中高。增值功能，提升体验。
+
+**5.1 TTS 语音朗读**
+- `MobileTTSControls.tsx` — 底部浮动播放控制条
+  - 播放/暂停/停止
+  - 语速调节（0.5x - 2.0x）
+  - 语音切换
+  - 引擎选择（Edge TTS / 浏览器 TTS / DashScope TTS）
+- 连续朗读模式（自动翻页）
+- 选中文本朗读（从 SelectionPopover 触发）
+- 接入 `useTTSStore`
+
+**5.2 翻译功能**
+- `MobileTranslationPanel.tsx` — 底部弹出翻译面板
+  - 选中文本自动翻译
+  - 目标语言切换（19 种语言）
+  - AI / DeepL 双引擎
+  - 翻译结果复制
+- 接入 `useTranslator` hook
+
+**5.3 RAG 向量化**
+- 书卡 Action Sheet 中加入"向量化"/"重新索引"选项
+- `MobileVectorizeProgress.tsx` — 向量化进度覆盖层
+  - 三阶段：分块 → 嵌入 → 索引
+  - 百分比进度
+- 书卡显示已向量化角标（绿色 "Indexed"）
+- 向量化完成后 AI 对话自动启用 RAG 搜索
+- 移动端 book-extractor（文本 + CFI 提取）
+
+---
+
+### Phase 6：设置 + 统计 + 打磨
+> 优先级：中。完善度和体验。
+
+**6.1 设置子页面**
+
+| 设置页 | 内容 |
+|--------|------|
+| `AppearanceSettings` | 暗色模式切换（手动/跟随系统）、主题色 |
+| `LanguageSettings` | 中文/英文切换 |
+| `AIModelSettings` | 多端点管理、4 种 Provider（OpenAI/Anthropic/Google/DeepSeek）、API Key/Base URL/模型列表、Temperature/MaxTokens |
+| `VectorModelSettings` | 内置模型（本地下载进度）+ 远程模型（OpenAI 兼容/Ollama）、启用/禁用 |
+| `TTSSettings` | 3 种引擎配置、语音选择、语速、API Key |
+| `TranslationSettings` | AI / DeepL 引擎配置、模型/端点选择 |
+| `ReadSettings` | 全局默认阅读设置（字体/字号/行高等） |
+| `AdvancedSettings` | 数据管理、缓存清理 |
+| `AboutPage` | 版本信息、技术栈、更新说明 |
+
+**6.2 阅读统计（接真实数据）**
+- ProfilePage 统计卡片 → 接入 `readingStatsService.getOverallStats()`
+- 热力图 → 接入 `readingStatsService.getDailyStats()`
+- 去掉所有 mock 数据
+
+**6.3 暗色模式**
+- `globals.css` 添加 `.dark` 主题变量
+- 跟随系统 / 手动切换
+- 所有组件适配暗色
+
+**6.4 技能管理完善**
+- SkillsPage 注册到路由
+- 自定义技能创建/编辑/删除
+- 技能 Prompt 编辑器
+- 技能持久化到 SQLite
+
+**6.5 思维导图**
+- AI 回复中的思维导图渲染（markmap）
+- 全屏查看
+
+**6.6 整体打磨**
+- 手势优化（返回手势、下拉刷新等）
+- 过渡动画
+- 加载骨架屏
+- 错误边界处理
+- 性能优化（虚拟列表、懒加载）
+
+---
+
+## 依赖关系图
+
+```
+Phase 1 (书库) ──→ Phase 2 (阅读器) ──→ Phase 3 (AI 对话)
+                         │                     │
+                         ├──→ Phase 4 (笔记)   │
+                         │                     │
+                         └──→ Phase 5 (TTS/翻译/RAG)
+                                               │
+                                        Phase 6 (设置/统计/打磨)
+```
+
+**关键依赖说明：**
+- Phase 2 依赖 Phase 1：需要先有书才能打开阅读器
+- Phase 3 可以部分并行 Phase 2：独立对话页不依赖阅读器，但阅读器内 AI 面板需要 Phase 2
+- Phase 4 依赖 Phase 2：笔记是阅读器内产生的
+- Phase 5 的 TTS/翻译依赖 Phase 2：在阅读器中使用；RAG 向量化依赖 Phase 1
+- Phase 6 相对独立：设置页可随时穿插实现
+
+---
+
+## 技术要点
+
+### 可直接复用的 Core 能力（无需重写）
+- 全部 35+ 数据库 CRUD 操作
+- 11 个 Zustand Store
+- AI 流式对话 (LangChain + 4 Provider)
+- RAG 管道（分块/嵌入/搜索）
+- 翻译服务（AI + DeepL, 19 语言）
+- TTS 播放器（3 引擎）
+- 标注导出（4 格式）
+- 阅读统计服务
+- 阅读器核心逻辑（进度/分页/会话检测/键盘绑定）
+- 国际化（中/英）
+- 所有 React Hooks
+
+### 需要移动端适配的
+- `DocumentLoader` — 从桌面端复制（依赖 foliate-js，不能放 core）
+- `book-extractor` — 章节文本提取（向量化用，依赖 foliate-js）
+- `vectorize-trigger` — 向量化触发（从 BookCard → core 管道）
+- UI 组件 — 全部需要移动端重新设计交互（触屏优化）
+
+### 移动端特有注意事项
+- iOS 安全区适配（`env(safe-area-inset-*)`)
+- 虚拟键盘避让
+- 手势冲突处理（滑动翻页 vs 返回手势）
+- WebView 内 iframe 事件传递（foliate-js 渲染在 iframe 中）
+- 内存管理（移动端内存受限，Blob 缓存策略需调整）
+- 离线能力（数据库 + FS 缓存双保险）
