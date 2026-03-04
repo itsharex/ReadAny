@@ -232,8 +232,13 @@ export async function* streamReadingAgent(
           for (const block of content) {
             if (block.type === "text" && block.text) {
               yield { type: "token", content: block.text };
-            } else if (block.type === "thinking" && block.thinking) {
-              yield { type: "reasoning", content: block.thinking, stepType: "thinking" };
+            } else if (block.type === "thinking") {
+              // Anthropic may return thinking content in different fields
+              // Try block.text first (most common), then block.thinking, then block.content
+              const thinkingContent = block.text || block.thinking || block.content;
+              if (thinkingContent) {
+                yield { type: "reasoning", content: thinkingContent, stepType: "thinking" };
+              }
             }
           }
         }

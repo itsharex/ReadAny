@@ -107,6 +107,7 @@ export interface FoliateViewerHandle {
   goToFraction: (fraction: number) => void;
   goToCFI: (cfi: string) => void;
   goToIndex: (index: number) => void;
+  highlightCFITemporarily: (cfi: string, duration?: number) => void;
   // biome-ignore lint: foliate-js annotation format
   addAnnotation: (annotation: any, remove?: boolean) => void;
   // biome-ignore lint: foliate-js annotation format
@@ -193,6 +194,44 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
         },
         goToIndex: (index: number) => {
           viewRef.current?.goTo(index);
+        },
+        highlightCFITemporarily: (cfi: string, duration = 1000) => {
+          const view = viewRef.current;
+          console.log("[highlightCFITemporarily] Called with CFI:", cfi);
+
+          if (!view) {
+            console.warn("[highlightCFITemporarily] View is null, cannot highlight");
+            return;
+          }
+
+          try {
+            // Create a temporary highlight annotation with yellow color
+            const tempAnnotation = {
+              value: cfi,
+              type: "highlight",
+              color: "yellow",
+            };
+
+            console.log("[highlightCFITemporarily] Adding annotation:", tempAnnotation);
+
+            // Add the temporary highlight
+            view.addAnnotation(tempAnnotation, false);
+
+            console.log("[highlightCFITemporarily] Annotation added, will remove in", duration, "ms");
+
+            // Remove it after the specified duration
+            setTimeout(() => {
+              console.log("[highlightCFITemporarily] Removing annotation for CFI:", cfi);
+              try {
+                view.deleteAnnotation({ value: cfi });
+                console.log("[highlightCFITemporarily] Annotation removed successfully");
+              } catch (deleteError) {
+                console.error("[highlightCFITemporarily] Error removing annotation:", deleteError);
+              }
+            }, duration);
+          } catch (error) {
+            console.error("[highlightCFITemporarily] Error adding temporary highlight:", error);
+          }
         },
         addAnnotation: (annotation: unknown, remove?: boolean) => {
           viewRef.current?.addAnnotation(annotation, remove);
@@ -441,12 +480,26 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
       const detail = (event as CustomEvent).detail;
       const { draw, annotation, doc, range } = detail;
 
-      if (!draw || !annotation) return;
+      console.log("[drawAnnotationHandler] Called with:", {
+        hasDrawFunction: !!draw,
+        annotation: annotation ? {
+          value: annotation.value,
+          type: annotation.type,
+          color: annotation.color,
+          hasNote: !!annotation.note
+        } : null,
+        hasDoc: !!doc,
+        hasRange: !!range
+      });
+
+      if (!draw || !annotation) {
+        console.warn("[drawAnnotationHandler] Missing draw or annotation, returning early");
+        return;
+      }
 
       // Get color from annotation, default to yellow
       const color = annotation.color || "yellow";
 
-      // Map color names to hex values
       // Map color names to rgba values for highlight rendering
       // Match readest's HIGHLIGHT_COLOR_HEX with alpha for background highlight
       const colorMap: Record<string, string> = {
@@ -454,10 +507,13 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
         yellow: "rgba(250, 204, 21, 0.4)", // yellow-400
         green: "rgba(74, 222, 128, 0.4)", // green-400
         blue: "rgba(96, 165, 250, 0.4)", // blue-400
+        pink: "rgba(236, 72, 153, 0.4)", // pink-400 - ADDED
         violet: "rgba(167, 139, 250, 0.4)", // violet-400
       };
 
       const hexColor = colorMap[color] || colorMap.yellow;
+
+      console.log("[drawAnnotationHandler] Color mapping:", { color, hexColor });
 
       // Check writing mode for vertical text support
       let writingMode = "horizontal-tb";
@@ -478,6 +534,7 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
 
       // If annotation has a note, only draw wavy underline (no highlight background)
       if (annotation.note) {
+        console.log("[drawAnnotationHandler] Drawing wavy underline (has note)");
         // Track that this CFI has a note
         cfisWithNotes.add(annotation.value);
         // Black wavy underline to indicate note presence — no highlight color
@@ -491,10 +548,13 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
           }
         }
       } else {
+        console.log("[drawAnnotationHandler] Drawing regular highlight (no note)");
         // No note - remove from tracking set if present
         cfisWithNotes.delete(annotation.value);
         // Draw regular highlight
+        console.log("[drawAnnotationHandler] Calling draw(Overlayer.highlight) with:", { hexColor, vertical });
         draw(Overlayer.highlight, { color: hexColor, vertical });
+        console.log("[drawAnnotationHandler] draw() call completed");
       }
     }, []);
 
