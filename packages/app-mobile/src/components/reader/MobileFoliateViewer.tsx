@@ -478,7 +478,7 @@ export const MobileFoliateViewer = forwardRef<MobileFoliateViewerHandle, MobileF
     useEffect(() => {
       const view = viewRef.current;
       if (!view?.renderer || isFixedLayout) return;
-      applyRendererStyles(view, viewSettings, false);
+      applyRendererSettings(view, viewSettings, false);
     }, [viewSettings.fontSize, viewSettings.lineHeight, viewSettings.fontTheme, viewSettings.paragraphSpacing, viewSettings.pageMargin, isFixedLayout]);
 
     // Apply view mode changes
@@ -535,12 +535,20 @@ function applyRendererSettings(view: FoliateView, settings: ViewSettings, isFixe
     renderer.setAttribute("spread", "none"); // Single page on mobile
   } else {
     renderer.setAttribute("max-column-count", "1"); // Single column on mobile
-    renderer.setAttribute("max-inline-size", "100%");
     renderer.setAttribute("max-block-size", "100%");
-    renderer.setAttribute("gap", `${settings.pageMargin || 16}px`);
-    renderer.setAttribute("margin", `${settings.pageMargin || 16}px`);
+    // paginator.js treats gap as a percentage (divides by 100)
+    // Convert px margin to a percentage of typical mobile width (~393px)
+    const marginPx = settings.pageMargin || 16;
+    const gapPercent = Math.max(1, Math.round((marginPx / 393) * 100));
+    renderer.setAttribute("gap", `${gapPercent}%`);
+    renderer.setAttribute("margin", `${marginPx}px`);
     if (settings.viewMode === "scroll") {
       renderer.setAttribute("flow", "scrolled");
+      // In scroll mode, max-inline-size is used as columnWidth directly (parseFloat).
+      // "100%" would be parsed as 100px, so use a large px value instead.
+      renderer.setAttribute("max-inline-size", "9999px");
+    } else {
+      renderer.setAttribute("max-inline-size", "100%");
     }
   }
   renderer.setAttribute("animated", "");
@@ -568,7 +576,8 @@ html, body {
   -webkit-text-size-adjust: none;
   text-size-adjust: none;
 }
-p, div, blockquote, dd, li, span {
+p, div, blockquote, dd, li, span, h1, h2, h3, h4, h5, h6, figcaption, caption, td, th, dt {
+  font-family: ${fontFamily} !important;
   line-height: ${settings.lineHeight} !important;
 }
 p {

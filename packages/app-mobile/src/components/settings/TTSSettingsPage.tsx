@@ -35,7 +35,7 @@ export function TTSSettingsPage() {
   const edgeVoiceGroups = useMemo(() => {
     const groups: Record<string, typeof EDGE_TTS_VOICES> = {};
     for (const v of EDGE_TTS_VOICES) {
-      const lang = v.locale.split("-").slice(0, 2).join("-");
+      const lang = v.lang;
       if (!groups[lang]) groups[lang] = [];
       groups[lang].push(v);
     }
@@ -121,15 +121,15 @@ export function TTSSettingsPage() {
                   </div>
                   {voices.map((v) => (
                     <button
-                      key={v.shortName}
+                      key={v.id}
                       type="button"
                       className={`flex w-full items-center justify-between px-4 py-2.5 text-sm active:bg-accent transition-colors ${
-                        config.edgeVoice === v.shortName ? "text-primary font-medium" : ""
+                        config.edgeVoice === v.id ? "text-primary font-medium" : ""
                       }`}
-                      onClick={() => updateConfig({ edgeVoice: v.shortName })}
+                      onClick={() => updateConfig({ edgeVoice: v.id })}
                     >
-                      <span>{v.friendlyName}</span>
-                      {config.edgeVoice === v.shortName && (
+                      <span>{v.name}</span>
+                      {config.edgeVoice === v.id && (
                         <Mic className="h-3.5 w-3.5 text-primary" />
                       )}
                     </button>
@@ -169,25 +169,19 @@ export function TTSSettingsPage() {
 
           {config.engine === "dashscope" && (
             <>
-              <div className="rounded-xl bg-card border border-border overflow-hidden">
-                {DASHSCOPE_VOICES.map((v, idx) => (
+              <div className="rounded-xl bg-card border border-border overflow-hidden max-h-60 overflow-y-auto">
+                {DASHSCOPE_VOICES.map((v) => (
                   <button
                     key={v.id}
                     type="button"
-                    className={`flex w-full items-center justify-between px-4 py-3 text-sm active:bg-accent transition-colors ${
+                    className={`flex w-full items-center justify-between px-4 py-2.5 text-sm active:bg-accent transition-colors ${
                       config.dashscopeVoice === v.id ? "text-primary font-medium" : ""
                     }`}
-                    style={
-                      idx < DASHSCOPE_VOICES.length - 1
-                        ? { borderBottom: "1px solid var(--border)" }
-                        : undefined
-                    }
                     onClick={() => updateConfig({ dashscopeVoice: v.id })}
                   >
-                    <div>
-                      <span>{v.name}</span>
-                      <span className="ml-2 text-xs text-muted-foreground">{v.id}</span>
-                    </div>
+                    <span>
+                      {v.name} <span className="text-xs text-muted-foreground">{v.id}</span>
+                    </span>
                     {config.dashscopeVoice === v.id && (
                       <Mic className="h-3.5 w-3.5 text-primary" />
                     )}

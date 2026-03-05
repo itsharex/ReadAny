@@ -90,24 +90,19 @@ export function TranslationSettingsPage() {
             {t("translation.targetLanguage")}
           </h2>
           <div className="rounded-xl bg-card border border-border overflow-hidden max-h-80 overflow-y-auto">
-            {TRANSLATOR_LANGS.map((lang, idx) => (
+            {Object.entries(TRANSLATOR_LANGS).map(([code, name]) => (
               <button
-                key={lang.code}
+                key={code}
                 type="button"
                 className={`flex w-full items-center justify-between px-4 py-3 active:bg-accent transition-colors ${
-                  translationConfig.targetLang === lang.code
+                  translationConfig.targetLang === code
                     ? "text-primary font-medium"
                     : ""
                 }`}
-                style={
-                  idx < TRANSLATOR_LANGS.length - 1
-                    ? { borderBottom: "1px solid var(--border)" }
-                    : undefined
-                }
-                onClick={() => updateTranslationConfig({ targetLang: lang.code })}
+                onClick={() => updateTranslationConfig({ targetLang: code })}
               >
-                <span className="text-sm">{lang.name}</span>
-                {translationConfig.targetLang === lang.code && (
+                <span className="text-sm">{name}</span>
+                {translationConfig.targetLang === code && (
                   <Check className="h-4 w-4 text-primary" />
                 )}
               </button>

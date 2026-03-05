@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
-import { ArrowLeft, BookOpen, Github, ExternalLink, Code2, Zap, Shield } from "lucide-react";
+import { ArrowLeft, Github, ExternalLink, Code2, Zap, Shield, BookOpen } from "lucide-react";
 
 export function AboutPage() {
   const navigate = useNavigate();
@@ -47,9 +47,11 @@ export function AboutPage() {
       <div className="flex-1 overflow-y-auto">
         {/* Logo & Version */}
         <div className="flex flex-col items-center pt-10 pb-6">
-          <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-primary/10 mb-4">
-            <BookOpen className="h-10 w-10 text-primary" />
-          </div>
+          <img
+            src="/logo.svg"
+            alt="ReadAny Logo"
+            className="h-20 w-20 mb-4 drop-shadow-lg"
+          />
           <h2 className="text-xl font-bold">ReadAny</h2>
           <p className="mt-1 text-sm text-muted-foreground">v{version}</p>
           <p className="mt-3 px-8 text-center text-sm text-muted-foreground leading-relaxed">

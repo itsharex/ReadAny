@@ -13,7 +13,8 @@
     "windows": [
       {
         "title": "ReadAny",
-        "fullscreen": false
+        "fullscreen": false,
+        "disableInputAccessoryView": true
       }
     ],
     "security": {

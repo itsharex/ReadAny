@@ -864,7 +864,11 @@ class Loader {
         return this.createURL(href, result, mediaType, parent)
     }
     async replaceCSS(str, href, parents = []) {
-        const replacedUrls = await replaceSeries(str,
+        // Strip @font-face blocks that reference unreachable local file paths
+        // (e.g. Kindle device fonts like file:///mnt/us/DK_System/...)
+        const cleaned = str.replace(
+            /@font-face\s*\{[^}]*url\(\s*["']?(?:file:\/\/\/|\/mnt\/)[^)]*\)[^}]*\}/gi, '')
+        const replacedUrls = await replaceSeries(cleaned,
             /url\(\s*["']?([^'"\n]*?)\s*["']?\s*\)/gi,
             (_, url) => this.loadHref(url, href, parents)
                 .then(url => `url("${url}")`))

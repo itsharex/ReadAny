@@ -1,7 +1,11 @@
 import { Outlet } from "react-router";
 import { BottomTabBar } from "./BottomTabBar";
+import { useKeyboardHeight } from "@/lib/use-keyboard-height";
 
 export function MobileLayout() {
+  const keyboardHeight = useKeyboardHeight();
+  const isKeyboardOpen = keyboardHeight > 0;
+
   return (
     <div className="flex h-full flex-col bg-background">
       {/* Main content area */}
@@ -9,8 +13,8 @@ export function MobileLayout() {
         <Outlet />
       </main>
 
-      {/* Bottom tab bar */}
-      <BottomTabBar />
+      {/* Hide tab bar when keyboard is open so it doesn't sit above the keyboard */}
+      {!isKeyboardOpen && <BottomTabBar />}
     </div>
   );
 }

@@ -648,4 +648,4 @@ export class View extends HTMLElement {
   }
 }
 
-customElements.define("foliate-view", View);
+if (!customElements.get("foliate-view")) customElements.define("foliate-view", View);

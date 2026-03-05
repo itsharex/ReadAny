@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useKeyboardHeight } from "@/lib/use-keyboard-height";
 import { MobileChatInput } from "./MobileChatInput";
 import { MessageList } from "./MessageList";
 import { MobileModelSelector } from "./MobileModelSelector";
@@ -173,6 +174,7 @@ function EmptyState({ onSuggestionClick }: { onSuggestionClick: (text: string) =
 
 export function ChatPage() {
   const { t } = useTranslation();
+  const keyboardHeight = useKeyboardHeight();
   const {
     threads,
     loadAllThreads,
@@ -275,7 +277,14 @@ export function ChatPage() {
         </div>
 
         {/* Input */}
-        <div className="shrink-0 px-3 pb-2 pt-1" style={{ paddingBottom: "max(8px, env(safe-area-inset-bottom))" }}>
+        <div
+          className="shrink-0 px-3 pb-2 pt-1"
+          style={{
+            paddingBottom: keyboardHeight > 0
+              ? `${keyboardHeight + 8}px`
+              : "max(8px, env(safe-area-inset-bottom))",
+          }}
+        >
           <MobileChatInput onSend={handleSend} disabled={isStreaming} />
         </div>
       </div>
