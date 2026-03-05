@@ -182,7 +182,7 @@ export function MobileChatPanel({
         </div>
 
         <div className="absolute left-1/2 -translate-x-1/2 text-sm font-medium truncate max-w-[50vw]">
-          AI 助手
+          {t("chat.aiAssistant")}
         </div>
 
         <div className="flex items-center gap-1">

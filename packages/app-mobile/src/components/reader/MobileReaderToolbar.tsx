@@ -2,28 +2,36 @@
  * MobileReaderToolbar — top bar with back, title, TOC, settings.
  * Slides in/out based on visibility.
  */
-import { ArrowLeft, List, NotebookPen, Search, Settings } from "lucide-react";
+import { ArrowLeft, List, MessageSquare, NotebookPen, Search, Settings, Volume2 } from "lucide-react";
 
 interface MobileReaderToolbarProps {
   visible: boolean;
   title: string;
   chapterTitle: string;
+  ttsActive?: boolean;
+  chatActive?: boolean;
   onBack: () => void;
   onToggleToc: () => void;
   onToggleSettings: () => void;
   onToggleSearch: () => void;
   onToggleNotebook: () => void;
+  onToggleTTS?: () => void;
+  onToggleChat?: () => void;
 }
 
 export function MobileReaderToolbar({
   visible,
   title,
   chapterTitle,
+  ttsActive,
+  chatActive,
   onBack,
   onToggleToc,
   onToggleSettings,
   onToggleSearch,
   onToggleNotebook,
+  onToggleTTS,
+  onToggleChat,
 }: MobileReaderToolbarProps) {
   return (
     <header
@@ -59,6 +67,32 @@ export function MobileReaderToolbar({
           >
             <NotebookPen className="h-5 w-5" />
           </button>
+
+          {/* AI Chat */}
+          {onToggleChat && (
+            <button
+              type="button"
+              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full active:bg-white/20 ${
+                chatActive ? "text-primary bg-white/20" : "text-white"
+              }`}
+              onClick={onToggleChat}
+            >
+              <MessageSquare className="h-5 w-5" />
+            </button>
+          )}
+
+          {/* TTS */}
+          {onToggleTTS && (
+            <button
+              type="button"
+              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full active:bg-white/20 ${
+                ttsActive ? "text-primary bg-white/20" : "text-white"
+              }`}
+              onClick={onToggleTTS}
+            >
+              <Volume2 className="h-5 w-5" />
+            </button>
+          )}
 
           {/* TOC */}
           <button

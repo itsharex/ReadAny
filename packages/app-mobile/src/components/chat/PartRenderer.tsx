@@ -13,6 +13,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import type {
   Part,
   TextPart,
@@ -116,6 +117,7 @@ function TextPartView({
 function ReasoningPartView({ part }: { part: ReasoningPart }) {
   const [isOpen, setIsOpen] = useState(part.status === "running");
   const throttledText = useThrottledText(part.text);
+  const { t } = useTranslation();
 
   useEffect(() => {
     if (part.status === "running") setIsOpen(true);
@@ -138,7 +140,7 @@ function ReasoningPartView({ part }: { part: ReasoningPart }) {
               <Brain className="h-4 w-4 text-violet-600" />
             )}
             <span className="text-sm font-medium text-violet-700">
-              {part.status === "running" ? "正在思考..." : "思考过程"}
+              {part.status === "running" ? t("streaming.reasoningRunning") : t("streaming.reasoningDone")}
             </span>
           </div>
           <ChevronDown
@@ -160,31 +162,32 @@ function ReasoningPartView({ part }: { part: ReasoningPart }) {
   );
 }
 
-const TOOL_LABELS: Record<string, string> = {
-  ragSearch: "搜索书籍内容",
-  ragToc: "获取目录结构",
-  ragContext: "获取上下文",
-  summarize: "生成摘要",
-  extractEntities: "提取实体",
-  analyzeArguments: "分析论证",
-  findQuotes: "查找金句",
-  getAnnotations: "获取标注",
-  compareSections: "对比章节",
-  getCurrentChapter: "获取当前章节",
-  getSelection: "获取选中内容",
-  getReadingProgress: "获取阅读进度",
-  getRecentHighlights: "获取最近标注",
-  getSurroundingContext: "获取上下文",
-  listBooks: "查询书籍列表",
-  searchAllHighlights: "搜索所有高亮",
-  searchAllNotes: "搜索所有笔记",
-  getReadingStats: "获取阅读统计",
-  getSkills: "查询技能",
-  mindmap: "生成思维导图",
+const TOOL_LABEL_KEYS: Record<string, string> = {
+  ragSearch: "toolLabels.ragSearch",
+  ragToc: "toolLabels.ragToc",
+  ragContext: "toolLabels.ragContext",
+  summarize: "toolLabels.summarize",
+  extractEntities: "toolLabels.extractEntities",
+  analyzeArguments: "toolLabels.analyzeArguments",
+  findQuotes: "toolLabels.findQuotes",
+  getAnnotations: "toolLabels.getAnnotations",
+  compareSections: "toolLabels.compareSections",
+  getCurrentChapter: "toolLabels.getCurrentChapter",
+  getSelection: "toolLabels.getSelection",
+  getReadingProgress: "toolLabels.getReadingProgress",
+  getRecentHighlights: "toolLabels.getRecentHighlights",
+  getSurroundingContext: "toolLabels.getSurroundingContext",
+  listBooks: "toolLabels.listBooks",
+  searchAllHighlights: "toolLabels.searchAllHighlights",
+  searchAllNotes: "toolLabels.searchAllNotes",
+  getReadingStats: "toolLabels.getReadingStats",
+  getSkills: "toolLabels.getSkills",
+  mindmap: "toolLabels.mindmap",
 };
 
 function ToolCallPartView({ part }: { part: ToolCallPart }) {
   const [isOpen, setIsOpen] = useState(false);
+  const { t } = useTranslation();
 
   const getStatusIcon = () => {
     switch (part.status) {
@@ -201,7 +204,7 @@ function ToolCallPartView({ part }: { part: ToolCallPart }) {
     }
   };
 
-  const label = TOOL_LABELS[part.name] || part.name;
+  const label = TOOL_LABEL_KEYS[part.name] ? t(TOOL_LABEL_KEYS[part.name]) : part.name;
   const queryText = part.args.query ? String(part.args.query) : "";
 
   return (
@@ -233,7 +236,7 @@ function ToolCallPartView({ part }: { part: ToolCallPart }) {
           <div className="space-y-3 border-t border-neutral-100 bg-neutral-50/50 p-3">
             {Object.keys(part.args).length > 0 && (
               <div>
-                <h4 className="mb-1.5 text-xs font-medium text-neutral-500">参数</h4>
+                <h4 className="mb-1.5 text-xs font-medium text-neutral-500">{t("common.params")}</h4>
                 <div className="rounded border border-neutral-200 bg-white p-2 font-mono text-xs break-all">
                   {Object.entries(part.args).map(([key, value]) => (
                     <div key={key} className="mb-0.5 last:mb-0">
@@ -250,7 +253,7 @@ function ToolCallPartView({ part }: { part: ToolCallPart }) {
             )}
             {part.result !== undefined && (
               <div>
-                <h4 className="mb-1.5 text-xs font-medium text-neutral-500">结果</h4>
+                <h4 className="mb-1.5 text-xs font-medium text-neutral-500">{t("common.result")}</h4>
                 <div className="max-h-36 overflow-auto rounded border border-neutral-200 bg-white p-2 font-mono text-xs">
                   <pre className="whitespace-pre-wrap text-neutral-600">
                     {typeof part.result === "string" && part.result.length > 300

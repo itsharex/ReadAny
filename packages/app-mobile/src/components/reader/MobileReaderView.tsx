@@ -10,6 +10,8 @@ import { useReadingSession } from "@readany/core/hooks/use-reading-session";
 import { useAnnotationStore } from "@readany/core/stores/annotation-store";
 import { useNotebookStore } from "@readany/core/stores/notebook-store";
 import type { HighlightColor } from "@readany/core/types";
+import { useTTSStore } from "@readany/core/stores/tts-store";
+import { useSettingsStore } from "@readany/core/stores/settings-store";
 import { Loader2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -34,6 +36,8 @@ import { MobileSelectionPopover, type BookSelection } from "./MobileSelectionPop
 import { MobileSearchBar } from "./MobileSearchBar";
 import { MobileChatPanel } from "@/components/chat/MobileChatPanel";
 import { MobileNotebookPanel } from "./MobileNotebookPanel";
+import { MobileTTSControls } from "./MobileTTSControls";
+import { MobileTranslationPanel } from "./MobileTranslationPanel";
 
 // --- File loading ---
 /**
@@ -100,8 +104,8 @@ async function loadAndParseBook(filePath: string): Promise<{ bookDoc: BookDoc; f
   return { bookDoc: book, format };
 }
 
-// Default view settings
-const DEFAULT_VIEW_SETTINGS: ViewSettings = {
+// Mobile-specific defaults (slightly different from desktop)
+const MOBILE_DEFAULTS: ViewSettings = {
   fontSize: 18,
   lineHeight: 1.8,
   fontTheme: "default",
@@ -118,6 +122,10 @@ export function MobileReaderView() {
   const books = useLibraryStore((s) => s.books);
   const updateBook = useLibraryStore((s) => s.updateBook);
   const book = books.find((b) => b.id === bookId);
+
+  // Settings persistence
+  const readSettings = useSettingsStore((s) => s.readSettings);
+  const updateReadSettings = useSettingsStore((s) => s.updateReadSettings);
 
   const foliateRef = useRef<MobileFoliateViewerHandle>(null);
 
@@ -154,6 +162,17 @@ export function MobileReaderView() {
   // Selection state
   const [selection, setSelection] = useState<BookSelection | null>(null);
 
+  // TTS state
+  const [showTTS, setShowTTS] = useState(false);
+  const ttsPlay = useTTSStore((s) => s.play);
+  const ttsStop = useTTSStore((s) => s.stop);
+  const ttsSetOnEnd = useTTSStore((s) => s.setOnEnd);
+  const ttsContinuousRef = useRef(false);
+
+  // Translation state
+  const [showTranslation, setShowTranslation] = useState(false);
+  const [translationText, setTranslationText] = useState("");
+
   // Search state
   const [searchResults, setSearchResults] = useState<{ cfi: string; excerpt: string }[]>([]);
   const [searchIndex, setSearchIndex] = useState(0);
@@ -164,11 +183,28 @@ export function MobileReaderView() {
   const locationHistoryRef = useRef<string[]>([]);
   const lastCfiRef = useRef<string>("");
 
-  // View settings (local state)
-  const [viewSettings, setViewSettings] = useState<ViewSettings>(DEFAULT_VIEW_SETTINGS);
+  // View settings (persisted via settings store, merged with mobile defaults)
+  const viewSettings: ViewSettings = {
+    ...MOBILE_DEFAULTS,
+    fontSize: readSettings.fontSize || MOBILE_DEFAULTS.fontSize,
+    lineHeight: readSettings.lineHeight || MOBILE_DEFAULTS.lineHeight,
+    fontTheme: readSettings.fontTheme || MOBILE_DEFAULTS.fontTheme,
+    viewMode: readSettings.viewMode || MOBILE_DEFAULTS.viewMode,
+    paragraphSpacing: readSettings.paragraphSpacing ?? MOBILE_DEFAULTS.paragraphSpacing,
+    pageMargin: readSettings.pageMargin ?? MOBILE_DEFAULTS.pageMargin,
+  };
 
   // Reading session tracking (2.7)
   useReadingSession(bookId ?? null);
+
+  // Clean up TTS on unmount
+  useEffect(() => {
+    return () => {
+      ttsContinuousRef.current = false;
+      ttsSetOnEnd(null);
+      ttsStop();
+    };
+  }, [ttsStop, ttsSetOnEnd]);
 
   // Auto-hide timer
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -325,9 +361,9 @@ export function MobileReaderView() {
 
   const handleUpdateSettings = useCallback(
     (updates: Partial<ViewSettings>) => {
-      setViewSettings((prev) => ({ ...prev, ...updates }));
+      updateReadSettings(updates);
     },
-    [],
+    [updateReadSettings],
   );
 
   // --- Selection handlers ---
@@ -394,8 +430,8 @@ export function MobileReaderView() {
 
   const handleTranslate = useCallback(() => {
     if (!selection) return;
-    // TODO: integrate with translation service
-    console.log("[MobileReaderView] Translate:", selection.text.slice(0, 50));
+    setTranslationText(selection.text);
+    setShowTranslation(true);
     setSelection(null);
   }, [selection]);
 
@@ -418,10 +454,46 @@ export function MobileReaderView() {
 
   const handleSpeak = useCallback(() => {
     if (!selection) return;
-    // TODO: integrate with TTS service
-    console.log("[MobileReaderView] Speak:", selection.text.slice(0, 50));
+    ttsContinuousRef.current = false;
+    ttsSetOnEnd(null);
+    setShowTTS(true);
+    ttsPlay(selection.text);
     setSelection(null);
-  }, [selection]);
+  }, [selection, ttsPlay, ttsSetOnEnd]);
+
+  // Continuous TTS — auto-flip pages
+  const handleTTSPageEnd = useCallback(() => {
+    if (!ttsContinuousRef.current) return;
+    foliateRef.current?.goNext();
+    setTimeout(() => {
+      if (!ttsContinuousRef.current) return;
+      const text = foliateRef.current?.getVisibleText();
+      if (text?.trim()) {
+        ttsPlay(text);
+      } else {
+        ttsContinuousRef.current = false;
+        ttsStop();
+        setShowTTS(false);
+      }
+    }, 600);
+  }, [ttsPlay, ttsStop]);
+
+  const handleToggleTTS = useCallback(() => {
+    if (showTTS) {
+      ttsContinuousRef.current = false;
+      ttsSetOnEnd(null);
+      ttsStop();
+      setShowTTS(false);
+    } else {
+      const text = foliateRef.current?.getVisibleText();
+      if (text) {
+        ttsContinuousRef.current = true;
+        ttsSetOnEnd(handleTTSPageEnd);
+        setShowTTS(true);
+        ttsPlay(text);
+      }
+    }
+  }, [showTTS, ttsPlay, ttsStop, ttsSetOnEnd, handleTTSPageEnd]);
 
   const handleRemoveHighlight = useCallback(() => {
     if (!selection?.annotationId) return;
@@ -433,6 +505,70 @@ export function MobileReaderView() {
   const handleDismissSelection = useCallback(() => {
     setSelection(null);
   }, []);
+
+  // --- Annotation click handler (tap on existing highlight) ---
+  const handleShowAnnotation = useCallback(
+    (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      const { value, range } = detail;
+      if (!value || !range) return;
+
+      const highlight = highlights.find(
+        (h) => h.bookId === bookId && h.cfi === value,
+      );
+      if (!highlight) return;
+
+      // Get position from range for popover
+      const rect = range.getBoundingClientRect();
+      const iframe = (range.startContainer?.ownerDocument as Document)?.defaultView?.frameElement as HTMLIFrameElement | null;
+      const iframeRect = iframe?.getBoundingClientRect();
+      const offsetX = iframeRect?.left ?? 0;
+      const offsetY = iframeRect?.top ?? 0;
+
+      setSelection({
+        text: highlight.text,
+        cfi: value,
+        range,
+        position: {
+          x: offsetX + rect.left + rect.width / 2,
+          y: offsetY + rect.top - 8,
+        },
+        annotated: true,
+        annotationId: highlight.id,
+        color: highlight.color,
+      });
+    },
+    [highlights, bookId],
+  );
+
+  // --- Citation navigation with flash highlight ---
+  const flashCitationCfi = useCallback(
+    (cfi: string) => {
+      const view = foliateRef.current?.getView();
+      if (!view) return;
+
+      foliateRef.current?.goToCFI(cfi);
+
+      // Flash highlight effect — add temporary annotation then remove
+      let flashCount = 0;
+      const maxFlashes = 4;
+      const flashInterval = setInterval(() => {
+        flashCount++;
+        if (flashCount > maxFlashes) {
+          clearInterval(flashInterval);
+          try { view.addAnnotation?.({ value: cfi }, true); } catch { /* ignore */ }
+          try {
+            // Remove the flash annotation
+            setTimeout(() => {
+              try { view.addAnnotation?.({ value: cfi }, true); } catch { /* ignore */ }
+            }, 300);
+          } catch { /* ignore */ }
+          return;
+        }
+      }, 200);
+    },
+    [],
+  );
 
   // --- Search handlers ---
   const handleSearch = useCallback(
@@ -524,6 +660,8 @@ export function MobileReaderView() {
         visible={controlsVisible && !showSearch}
         title={book?.meta.title || ""}
         chapterTitle={chapterTitle}
+        ttsActive={showTTS}
+        chatActive={showChat}
         onBack={handleGoBack}
         onToggleToc={() => setShowToc(true)}
         onToggleSettings={() => setShowSettings(true)}
@@ -533,6 +671,8 @@ export function MobileReaderView() {
           if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
         }}
         onToggleNotebook={() => setShowNotebook(true)}
+        onToggleTTS={handleToggleTTS}
+        onToggleChat={() => setShowChat((prev) => !prev)}
       />
 
       {/* Search Bar */}
@@ -564,6 +704,7 @@ export function MobileReaderView() {
             onError={handleError}
             onTapCenter={toggleControls}
             onSelection={handleSelection}
+            onShowAnnotation={handleShowAnnotation}
           />
         ) : isLoading ? (
           <div className="flex h-full items-center justify-center">
@@ -660,10 +801,33 @@ export function MobileReaderView() {
         onNavigateToCitation={(citation) => {
           setShowChat(false);
           if (citation.cfi) {
-            foliateRef.current?.goToCFI(citation.cfi);
+            flashCitationCfi(citation.cfi);
           }
         }}
       />
+
+      {/* TTS Controls */}
+      {showTTS && (
+        <MobileTTSControls
+          onClose={() => {
+            ttsContinuousRef.current = false;
+            ttsSetOnEnd(null);
+            ttsStop();
+            setShowTTS(false);
+          }}
+        />
+      )}
+
+      {/* Translation Panel */}
+      {showTranslation && translationText && (
+        <MobileTranslationPanel
+          text={translationText}
+          onClose={() => {
+            setShowTranslation(false);
+            setTranslationText("");
+          }}
+        />
+      )}
 
       {/* Notebook Panel */}
       <MobileNotebookPanel

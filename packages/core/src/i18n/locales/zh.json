@@ -15,7 +15,15 @@
     "ask": "提问",
     "total": "总计",
     "back": "返回",
-    "retry": "重试"
+    "retry": "重试",
+    "unnamed": "未命名",
+    "current": "当前",
+    "delete": "删除",
+    "preview": "试听",
+    "params": "参数",
+    "result": "结果",
+    "less": "少",
+    "more": "多"
   },
   "sidebar": {
     "library": "书库",
@@ -29,6 +37,71 @@
     "renameTag": "重命名",
     "deleteTag": "删除标签",
     "noTags": "还没有标签"
+  },
+  "tabs": {
+    "library": "书库",
+    "ai": "AI",
+    "notes": "笔记",
+    "profile": "我的"
+  },
+  "profile": {
+    "title": "我的",
+    "booksRead": "已读",
+    "booksUnit": "本",
+    "totalTime": "总时长",
+    "streak": "连续阅读",
+    "daysUnit": "天",
+    "avgDaily": "日均",
+    "readingActivity": "阅读活动"
+  },
+  "skills": {
+    "title": "技能管理",
+    "builtinSkills": "内置技能",
+    "customSkills": "自定义技能",
+    "noCustomSkills": "还没有自定义技能，点击右上角创建"
+  },
+  "about": {
+    "title": "关于",
+    "desc": "一站式 AI 阅读助手，支持 EPUB、PDF、MOBI 等主流格式。本地优先，隐私安全，跨平台阅读体验。",
+    "techStack": "技术栈",
+    "links": "链接",
+    "nativeContainer": "原生容器",
+    "uiFramework": "UI 框架",
+    "ebookRenderer": "电子书渲染",
+    "localDatabase": "本地数据库",
+    "feedback": "问题反馈"
+  },
+  "streaming": {
+    "thinking": "正在思考...",
+    "toolCalling": "调用工具中...",
+    "callingTool": "正在调用 {{toolName}}...",
+    "responding": "正在回复...",
+    "reasoningRunning": "正在思考...",
+    "reasoningDone": "思考过程",
+    "scrollToBottom": "回到底部",
+    "loadingMindmap": "加载思维导图..."
+  },
+  "toolLabels": {
+    "ragSearch": "搜索书籍内容",
+    "ragToc": "获取目录结构",
+    "ragContext": "获取上下文",
+    "summarize": "生成摘要",
+    "extractEntities": "提取实体",
+    "analyzeArguments": "分析论证",
+    "findQuotes": "查找金句",
+    "getAnnotations": "获取标注",
+    "compareSections": "对比章节",
+    "getCurrentChapter": "获取当前章节",
+    "getSelection": "获取选中内容",
+    "getReadingProgress": "获取阅读进度",
+    "getRecentHighlights": "获取最近标注",
+    "getSurroundingContext": "获取上下文",
+    "listBooks": "查询书籍列表",
+    "searchAllHighlights": "搜索所有高亮",
+    "searchAllNotes": "搜索所有笔记",
+    "getReadingStats": "获取阅读统计",
+    "getSkills": "查询技能",
+    "mindmap": "生成思维导图"
   },
   "library": {
     "sortRecent": "最近打开",
@@ -135,7 +208,12 @@
       "parsing": "正在解析结构...",
       "rendering": "正在渲染页面..."
     },
-    "search": "搜索"
+    "search": "搜索",
+    "fontThemeDefault": "系统",
+    "fontThemeClassic": "经典",
+    "fontThemeModern": "现代",
+    "fontThemeElegant": "优雅",
+    "fontThemeLiterary": "文学"
   },
   "translation": {
     "translateTo": "翻译为 {{lang}}",
@@ -229,6 +307,10 @@
     "aboutDesc": "阅读无界，理解无限",
     "version": "版本",
     "techStack": "技术栈",
+    "techStackTauri": "跨平台桌面框架",
+    "techStackReact": "UI 组件库",
+    "techStackTypeScript": "类型安全",
+    "techStackFoliate": "电子书渲染引擎",
     "feedback": "反馈问题",
     "license": "基于 MIT 许可证开源",
     "checkUpdate": "检查更新",
@@ -259,6 +341,12 @@
     "autoSave": "自动保存间隔",
     "autoSaveDesc": "阅读进度保存频率",
     "languageDesc": "选择界面显示语言",
+    "appearance": "外观与语言",
+    "updaterNetworkError": "无法连接到更新服务器，请检查网络连接",
+    "updaterNoUpdate": "暂无可用更新或服务暂时不可用",
+    "updaterCheckFailed": "检查更新失败",
+    "updaterNoAvailable": "没有可用的更新",
+    "updaterDownloadFailed": "下载更新失败",
     "reading_title": "阅读设置",
     "reading_desc": "自定义你的阅读体验",
     "readingNotice": "字体和排版设置仅适用于 EPUB 等流式布局格式，PDF 不支持。",
@@ -303,6 +391,15 @@
     "ai_selectModel": "选择模型",
     "ai_selectEndpoint": "选择端点",
     "ai_noEndpoints": "暂无端点",
+    "ai_setDefault": "设为默认",
+    "ai_name": "名称",
+    "ai_providerLabel": "提供商",
+    "ai_deleteEndpoint": "删除端点",
+    "ai_globalParams": "全局参数",
+    "ai_contextWindow": "上下文窗口",
+    "ai_contextWindowUnit": "条",
+    "ai_addManualModelPlaceholder": "手动添加模型名...",
+    "ai_newEndpoint": "新端点",
     "model": "模型",
     "apiKey": "API 密钥",
     "baseUrl": "API 地址（可选）",
@@ -452,11 +549,21 @@
     "slower": "减速",
     "faster": "加速",
     "rate": "语速",
-    "pitch": "音调"
+    "pitch": "音调",
+    "language": "语言",
+    "browser": "系统语音",
+    "tongyi": "通义",
+    "ttsEngine": "朗读引擎",
+    "voiceSelect": "语音",
+    "noSystemVoices": "未检测到系统语音",
+    "testText": "这是一段测试语音，ReadAny 为你而读。",
+    "params": "参数"
   },
   "mindmap": {
     "title": "思维导图",
-    "description": "书籍 {{bookId}} 的可视化结构将在此显示。"
+    "description": "书籍 {{bookId}} 的可视化结构将在此显示。",
+    "exitFullscreen": "退出全屏 (Esc)",
+    "fullscreen": "全屏查看"
   },
   "commandPalette": {
     "placeholder": "搜索命令...",

@@ -101,6 +101,7 @@ interface MobileFoliateViewerProps {
   onError?: (error: Error) => void;
   onTapCenter?: () => void;
   onSelection?: (detail: SelectionDetail | null) => void;
+  onShowAnnotation?: (event: Event) => void;
 }
 
 export const MobileFoliateViewer = forwardRef<MobileFoliateViewerHandle, MobileFoliateViewerProps>(
@@ -118,6 +119,7 @@ export const MobileFoliateViewer = forwardRef<MobileFoliateViewerHandle, MobileF
       onError,
       onTapCenter,
       onSelection,
+      onShowAnnotation,
     },
     ref,
   ) {
@@ -406,6 +408,7 @@ export const MobileFoliateViewer = forwardRef<MobileFoliateViewerHandle, MobileF
       onLoad: docLoadHandler,
       onRelocate: relocateHandler,
       onDrawAnnotation: drawAnnotationHandler,
+      onShowAnnotation,
     });
 
     // Open book

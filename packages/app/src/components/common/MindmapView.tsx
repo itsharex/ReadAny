@@ -2,6 +2,7 @@
  * MindmapView — renders a mindmap from Markdown using markmap
  */
 import { useEffect, useRef, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { Transformer } from "markmap-lib";
 import { Markmap } from "markmap-view";
 import { Maximize2, Minimize2 } from "lucide-react";
@@ -18,6 +19,7 @@ interface MindmapViewProps {
 const transformer = new Transformer();
 
 export function MindmapView({ markdown, title }: MindmapViewProps) {
+  const { t } = useTranslation();
   const svgRef = useRef<SVGSVGElement>(null);
   const fullscreenSvgRef = useRef<SVGSVGElement>(null);
   const markmapRef = useRef<Markmap | null>(null);
@@ -105,13 +107,13 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
             {/* Header */}
             <div className="flex items-center justify-between border-b border-neutral-200 px-4 py-3 dark:border-neutral-700">
               <span className="text-base font-medium text-neutral-700 dark:text-neutral-300">
-                {title || "思维导图"}
+                {title || t("mindmap.title")}
               </span>
               <button
                 type="button"
                 onClick={() => setExpanded(false)}
                 className="rounded p-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800"
-                title="退出全屏 (Esc)"
+                title={t("mindmap.exitFullscreen")}
               >
                 <Minimize2 className="h-5 w-5 text-neutral-500" />
               </button>
@@ -130,13 +132,13 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
         {/* Header */}
         <div className="flex items-center justify-between border-b border-neutral-200 px-3 py-2 dark:border-neutral-700">
           <span className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
-            {title || "思维导图"}
+            {title || t("mindmap.title")}
           </span>
           <button
             type="button"
             onClick={() => setExpanded(true)}
             className="rounded p-1 hover:bg-neutral-100 dark:hover:bg-neutral-800"
-            title="全屏查看"
+            title={t("mindmap.fullscreen")}
           >
             <Maximize2 className="h-4 w-4 text-neutral-500" />
           </button>

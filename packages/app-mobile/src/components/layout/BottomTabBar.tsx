@@ -6,23 +6,25 @@ import {
   User,
 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router";
+import { useTranslation } from "react-i18next";
 
 interface TabItem {
   path: string;
-  label: string;
+  labelKey: string;
   icon: React.ComponentType<{ className?: string }>;
 }
 
 const tabs: TabItem[] = [
-  { path: "/library", label: "书库", icon: BookOpen },
-  { path: "/chat", label: "AI", icon: MessageSquare },
-  { path: "/notes", label: "笔记", icon: NotebookPen },
-  { path: "/profile", label: "我的", icon: User },
+  { path: "/library", labelKey: "tabs.library", icon: BookOpen },
+  { path: "/chat", labelKey: "tabs.ai", icon: MessageSquare },
+  { path: "/notes", labelKey: "tabs.notes", icon: NotebookPen },
+  { path: "/profile", labelKey: "tabs.profile", icon: User },
 ];
 
 export function BottomTabBar() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   const activeTab =
     tabs.find((t) => location.pathname.startsWith(t.path))?.path ?? "/library";
@@ -45,7 +47,7 @@ export function BottomTabBar() {
             )}
           >
             <Icon className="h-5 w-5" />
-            <span className="text-[10px] font-medium">{tab.label}</span>
+            <span className="text-[10px] font-medium">{t(tab.labelKey)}</span>
           </button>
         );
       })}

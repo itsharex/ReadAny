@@ -4,6 +4,7 @@
 import type { MessageV2, CitationPart, QuotePart } from "@readany/core/types/message";
 import { ArrowDown, Quote } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { PartRenderer } from "./PartRenderer";
 import { StreamingIndicator } from "./StreamingIndicator";
 
@@ -23,6 +24,7 @@ export function MessageList({
   isStreaming,
   currentStep,
 }: MessageListProps) {
+  const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
   const [showScrollDown, setShowScrollDown] = useState(false);
   const userAtBottomRef = useRef(true);
@@ -109,7 +111,7 @@ export function MessageList({
             className="pointer-events-auto flex items-center gap-1 rounded-full border bg-background/90 px-3 py-1.5 text-xs text-muted-foreground shadow-md backdrop-blur-sm active:bg-muted"
           >
             <ArrowDown className="size-3.5" />
-            <span>回到底部</span>
+            <span>{t("streaming.scrollToBottom")}</span>
           </button>
         </div>
       )}

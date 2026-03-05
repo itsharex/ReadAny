@@ -15,7 +15,15 @@
     "ask": "Ask",
     "total": "Total",
     "back": "Back",
-    "retry": "Retry"
+    "retry": "Retry",
+    "unnamed": "Unnamed",
+    "current": "Current",
+    "delete": "Delete",
+    "preview": "Preview",
+    "params": "Parameters",
+    "result": "Result",
+    "less": "Less",
+    "more": "More"
   },
   "sidebar": {
     "library": "Library",
@@ -29,6 +37,71 @@
     "renameTag": "Rename",
     "deleteTag": "Delete Tag",
     "noTags": "No tags yet"
+  },
+  "tabs": {
+    "library": "Library",
+    "ai": "AI",
+    "notes": "Notes",
+    "profile": "Me"
+  },
+  "profile": {
+    "title": "Me",
+    "booksRead": "Read",
+    "booksUnit": "books",
+    "totalTime": "Total Time",
+    "streak": "Streak",
+    "daysUnit": "days",
+    "avgDaily": "Daily Avg",
+    "readingActivity": "Reading Activity"
+  },
+  "skills": {
+    "title": "Skills",
+    "builtinSkills": "Built-in Skills",
+    "customSkills": "Custom Skills",
+    "noCustomSkills": "No custom skills yet, tap top-right to create"
+  },
+  "about": {
+    "title": "About",
+    "desc": "All-in-one AI reading assistant. Supports EPUB, PDF, MOBI and more. Local-first, privacy-safe, cross-platform reading experience.",
+    "techStack": "Tech Stack",
+    "links": "Links",
+    "nativeContainer": "Native Container",
+    "uiFramework": "UI Framework",
+    "ebookRenderer": "eBook Renderer",
+    "localDatabase": "Local Database",
+    "feedback": "Feedback"
+  },
+  "streaming": {
+    "thinking": "Thinking...",
+    "toolCalling": "Calling tool...",
+    "callingTool": "Calling {{toolName}}...",
+    "responding": "Responding...",
+    "reasoningRunning": "Thinking...",
+    "reasoningDone": "Reasoning",
+    "scrollToBottom": "Scroll to bottom",
+    "loadingMindmap": "Loading mindmap..."
+  },
+  "toolLabels": {
+    "ragSearch": "Searching book content",
+    "ragToc": "Getting table of contents",
+    "ragContext": "Getting context",
+    "summarize": "Generating summary",
+    "extractEntities": "Extracting entities",
+    "analyzeArguments": "Analyzing arguments",
+    "findQuotes": "Finding quotes",
+    "getAnnotations": "Getting annotations",
+    "compareSections": "Comparing sections",
+    "getCurrentChapter": "Getting current chapter",
+    "getSelection": "Getting selection",
+    "getReadingProgress": "Getting reading progress",
+    "getRecentHighlights": "Getting recent highlights",
+    "getSurroundingContext": "Getting context",
+    "listBooks": "Listing books",
+    "searchAllHighlights": "Searching all highlights",
+    "searchAllNotes": "Searching all notes",
+    "getReadingStats": "Getting reading stats",
+    "getSkills": "Querying skills",
+    "mindmap": "Generating mindmap"
   },
   "library": {
     "sortRecent": "Recently Opened",
@@ -135,7 +208,12 @@
       "parsing": "Parsing structure...",
       "rendering": "Rendering pages..."
     },
-    "search": "Search"
+    "search": "Search",
+    "fontThemeDefault": "System",
+    "fontThemeClassic": "Classic",
+    "fontThemeModern": "Modern",
+    "fontThemeElegant": "Elegant",
+    "fontThemeLiterary": "Literary"
   },
   "translation": {
     "translateTo": "Translate to {{lang}}",
@@ -229,6 +307,10 @@
     "aboutDesc": "Read Any, Understand More",
     "version": "Version",
     "techStack": "Tech Stack",
+    "techStackTauri": "Cross-platform desktop framework",
+    "techStackReact": "UI component library",
+    "techStackTypeScript": "Type safety",
+    "techStackFoliate": "eBook rendering engine",
     "feedback": "Feedback",
     "license": "Open source under MIT license",
     "checkUpdate": "Check for Updates",
@@ -259,6 +341,12 @@
     "autoSave": "Auto-save interval",
     "autoSaveDesc": "How often to save reading progress",
     "languageDesc": "Choose the display language",
+    "appearance": "Appearance & Language",
+    "updaterNetworkError": "Cannot connect to update server, please check network",
+    "updaterNoUpdate": "No updates available or service temporarily unavailable",
+    "updaterCheckFailed": "Failed to check for updates",
+    "updaterNoAvailable": "No updates available",
+    "updaterDownloadFailed": "Failed to download update",
     "reading_title": "Reading",
     "reading_desc": "Customize your reading experience",
     "readingNotice": "Font and layout settings only apply to EPUB and other reflowable formats, not PDF.",
@@ -303,6 +391,15 @@
     "ai_selectModel": "Select a model",
     "ai_selectEndpoint": "Select an endpoint",
     "ai_noEndpoints": "No endpoints configured",
+    "ai_setDefault": "Set as Default",
+    "ai_name": "Name",
+    "ai_providerLabel": "Provider",
+    "ai_deleteEndpoint": "Delete Endpoint",
+    "ai_globalParams": "Global Parameters",
+    "ai_contextWindow": "Context Window",
+    "ai_contextWindowUnit": "turns",
+    "ai_addManualModelPlaceholder": "Enter model name...",
+    "ai_newEndpoint": "New Endpoint",
     "model": "Model",
     "apiKey": "API Key",
     "baseUrl": "Base URL (optional)",
@@ -452,11 +549,21 @@
     "slower": "Slower",
     "faster": "Faster",
     "rate": "Rate",
-    "pitch": "Pitch"
+    "pitch": "Pitch",
+    "language": "Language",
+    "browser": "System Voice",
+    "tongyi": "Tongyi",
+    "ttsEngine": "TTS Engine",
+    "voiceSelect": "Voice",
+    "noSystemVoices": "No system voices detected",
+    "testText": "This is a test voice. ReadAny reads for you.",
+    "params": "Parameters"
   },
   "mindmap": {
     "title": "Mindmap View",
-    "description": "Visual book structure for {{bookId}} will render here."
+    "description": "Visual book structure for {{bookId}} will render here.",
+    "exitFullscreen": "Exit Fullscreen (Esc)",
+    "fullscreen": "Fullscreen"
   },
   "commandPalette": {
     "placeholder": "Type to search commands...",

@@ -14,6 +14,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { useState, useEffect, useRef, lazy, Suspense } from "react";
+import { useTranslation } from "react-i18next";
 import type { Part, TextPart, ReasoningPart, ToolCallPart, CitationPart, MindmapPart } from "@readany/core/types/message";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 
@@ -121,6 +122,7 @@ function TextPartView({
 }
 
 function ReasoningPartView({ part }: { part: ReasoningPart }) {
+  const { t } = useTranslation();
   // Start expanded when streaming; keep expanded after completion
   const [isOpen, setIsOpen] = useState(part.status === "running" || part.status === "completed");
   const throttledText = useThrottledText(part.text);
@@ -149,7 +151,7 @@ function ReasoningPartView({ part }: { part: ReasoningPart }) {
                   <Brain className="h-4 w-4 text-violet-600" />
                 )}
                 <span className="text-sm font-medium text-violet-700">
-                  {part.status === "running" ? "正在思考..." : "思考过程"}
+                  {part.status === "running" ? t("streaming.reasoningRunning") : t("streaming.reasoningDone")}
                 </span>
                 {part.thinkingType && (
                   <span className="rounded bg-violet-100 px-1.5 py-0.5 text-xs text-violet-500">
@@ -178,30 +180,31 @@ function ReasoningPartView({ part }: { part: ReasoningPart }) {
   );
 }
 
-const TOOL_LABELS: Record<string, string> = {
-  ragSearch: "搜索书籍内容",
-  ragToc: "获取目录结构",
-  ragContext: "获取上下文",
-  summarize: "生成摘要",
-  extractEntities: "提取实体",
-  analyzeArguments: "分析论证",
-  findQuotes: "查找金句",
-  getAnnotations: "获取标注",
-  compareSections: "对比章节",
-  getCurrentChapter: "获取当前章节",
-  getSelection: "获取选中内容",
-  getReadingProgress: "获取阅读进度",
-  getRecentHighlights: "获取最近标注",
-  getSurroundingContext: "获取上下文",
-  listBooks: "查询书籍列表",
-  searchAllHighlights: "搜索所有高亮",
-  searchAllNotes: "搜索所有笔记",
-  getReadingStats: "获取阅读统计",
-  getSkills: "查询技能",
-  mindmap: "生成思维导图",
+const TOOL_LABEL_KEYS: Record<string, string> = {
+  ragSearch: "toolLabels.ragSearch",
+  ragToc: "toolLabels.ragToc",
+  ragContext: "toolLabels.ragContext",
+  summarize: "toolLabels.summarize",
+  extractEntities: "toolLabels.extractEntities",
+  analyzeArguments: "toolLabels.analyzeArguments",
+  findQuotes: "toolLabels.findQuotes",
+  getAnnotations: "toolLabels.getAnnotations",
+  compareSections: "toolLabels.compareSections",
+  getCurrentChapter: "toolLabels.getCurrentChapter",
+  getSelection: "toolLabels.getSelection",
+  getReadingProgress: "toolLabels.getReadingProgress",
+  getRecentHighlights: "toolLabels.getRecentHighlights",
+  getSurroundingContext: "toolLabels.getSurroundingContext",
+  listBooks: "toolLabels.listBooks",
+  searchAllHighlights: "toolLabels.searchAllHighlights",
+  searchAllNotes: "toolLabels.searchAllNotes",
+  getReadingStats: "toolLabels.getReadingStats",
+  getSkills: "toolLabels.getSkills",
+  mindmap: "toolLabels.mindmap",
 };
 
 function ToolCallPartView({ part }: { part: ToolCallPart }) {
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
 
   const getStatusIcon = () => {
@@ -219,7 +222,7 @@ function ToolCallPartView({ part }: { part: ToolCallPart }) {
     }
   };
 
-  const label = TOOL_LABELS[part.name] || part.name;
+  const label = TOOL_LABEL_KEYS[part.name] ? t(TOOL_LABEL_KEYS[part.name]) : part.name;
   const queryText = part.args.query ? String(part.args.query) : "";
   const scopeText = part.args.scope ? String(part.args.scope) : "";
 
@@ -262,7 +265,7 @@ function ToolCallPartView({ part }: { part: ToolCallPart }) {
 
               {Object.keys(part.args).length > 0 && (
                 <div>
-                  <h4 className="mb-1.5 text-xs font-medium text-neutral-500">参数</h4>
+                  <h4 className="mb-1.5 text-xs font-medium text-neutral-500">{t("common.params")}</h4>
                   <div className="rounded border border-neutral-200 bg-white p-2 font-mono text-xs break-all">
                     {Object.entries(part.args).map(([key, value]) => (
                       <div key={key} className="mb-0.5 last:mb-0">
@@ -280,7 +283,7 @@ function ToolCallPartView({ part }: { part: ToolCallPart }) {
 
               {part.result !== undefined && (
                 <div>
-                  <h4 className="mb-1.5 text-xs font-medium text-neutral-500">结果</h4>
+                  <h4 className="mb-1.5 text-xs font-medium text-neutral-500">{t("common.result")}</h4>
                   <div className="max-h-48 overflow-auto rounded border border-neutral-200 bg-white p-2 font-mono text-xs">
                     <pre className="whitespace-pre-wrap text-neutral-600">
                       {typeof part.result === "string" && part.result.length > 500
@@ -305,9 +308,10 @@ function ToolCallPartView({ part }: { part: ToolCallPart }) {
 }
 
 function MindmapPartView({ part }: { part: MindmapPart }) {
+  const { t } = useTranslation();
   return (
     <div className="my-2">
-      <Suspense fallback={<div className="p-4 text-sm text-neutral-400">加载思维导图...</div>}>
+      <Suspense fallback={<div className="p-4 text-sm text-neutral-400">{t("streaming.loadingMindmap")}</div>}>
         <LazyMindmapView markdown={part.markdown} title={part.title} />
       </Suspense>
     </div>

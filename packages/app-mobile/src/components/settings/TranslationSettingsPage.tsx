@@ -1,0 +1,118 @@
+import { useNavigate } from "react-router";
+import { useSettingsStore } from "@readany/core/stores";
+import {
+  TRANSLATOR_PROVIDERS,
+  TRANSLATOR_LANGS,
+} from "@readany/core/types/translation";
+import { ArrowLeft, Check } from "lucide-react";
+
+export function TranslationSettingsPage() {
+  const navigate = useNavigate();
+  const { translationConfig, updateTranslationConfig, aiConfig } =
+    useSettingsStore();
+
+  return (
+    <div className="flex h-full flex-col bg-background">
+      <header
+        className="shrink-0 flex items-center gap-3 px-4 pb-3 border-b border-border bg-background"
+        style={{ paddingTop: "calc(var(--safe-area-top) + 12px)" }}
+      >
+        <button type="button" className="p-1 -ml-1" onClick={() => navigate(-1)}>
+          <ArrowLeft className="h-5 w-5" />
+        </button>
+        <h1 className="text-lg font-semibold">翻译设置</h1>
+      </header>
+
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-6">
+        {/* Provider */}
+        <section>
+          <h2 className="mb-3 text-sm font-medium text-muted-foreground uppercase tracking-wider">
+            翻译引擎
+          </h2>
+          <div className="rounded-xl bg-card border border-border overflow-hidden">
+            {TRANSLATOR_PROVIDERS.map((p, idx) => (
+              <button
+                key={p.id}
+                type="button"
+                className="flex w-full items-center justify-between px-4 py-3.5 active:bg-accent transition-colors"
+                style={
+                  idx < TRANSLATOR_PROVIDERS.length - 1
+                    ? { borderBottom: "1px solid var(--border)" }
+                    : undefined
+                }
+                onClick={() =>
+                  updateTranslationConfig({
+                    provider: { id: p.id, name: p.name },
+                  })
+                }
+              >
+                <div>
+                  <span className="text-base">{p.name}</span>
+                  {p.id === "ai" && (
+                    <span className="ml-2 text-xs text-muted-foreground">
+                      使用 {aiConfig.activeModel || "AI 模型"}
+                    </span>
+                  )}
+                </div>
+                {translationConfig.provider.id === p.id && (
+                  <Check className="h-4 w-4 text-primary" />
+                )}
+              </button>
+            ))}
+          </div>
+        </section>
+
+        {/* DeepL API Key */}
+        {translationConfig.provider.id === "deepl" && (
+          <section>
+            <h2 className="mb-3 text-sm font-medium text-muted-foreground uppercase tracking-wider">
+              DeepL API Key
+            </h2>
+            <input
+              className="w-full rounded-xl border border-border bg-card px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+              type="password"
+              value={(translationConfig.provider as Record<string, string>).apiKey || ""}
+              onChange={(e) =>
+                updateTranslationConfig({
+                  provider: { ...translationConfig.provider, apiKey: e.target.value },
+                })
+              }
+              placeholder="输入 DeepL API Key..."
+            />
+          </section>
+        )}
+
+        {/* Target Language */}
+        <section>
+          <h2 className="mb-3 text-sm font-medium text-muted-foreground uppercase tracking-wider">
+            目标语言
+          </h2>
+          <div className="rounded-xl bg-card border border-border overflow-hidden max-h-80 overflow-y-auto">
+            {TRANSLATOR_LANGS.map((lang, idx) => (
+              <button
+                key={lang.code}
+                type="button"
+                className={`flex w-full items-center justify-between px-4 py-3 active:bg-accent transition-colors ${
+                  translationConfig.targetLang === lang.code
+                    ? "text-primary font-medium"
+                    : ""
+                }`}
+                style={
+                  idx < TRANSLATOR_LANGS.length - 1
+                    ? { borderBottom: "1px solid var(--border)" }
+                    : undefined
+                }
+                onClick={() => updateTranslationConfig({ targetLang: lang.code })}
+              >
+                <span className="text-sm">{lang.name}</span>
+                {translationConfig.targetLang === lang.code && (
+                  <Check className="h-4 w-4 text-primary" />
+                )}
+              </button>
+            ))}
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+}

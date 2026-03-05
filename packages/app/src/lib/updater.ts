@@ -1,5 +1,6 @@
 import { check } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
+import i18n from "@readany/core/i18n";
 
 export interface UpdateInfo {
   version: string;
@@ -75,11 +76,11 @@ export async function checkForUpdate(): Promise<UpdateInfo | null> {
     
     const errorMsg = error instanceof Error ? error.message : String(error);
     if (errorMsg.includes("Could not fetch") || errorMsg.includes("network")) {
-      errorMessage = "无法连接到更新服务器，请检查网络连接";
+      errorMessage = i18n.t("settings.updaterNetworkError");
     } else if (errorMsg.includes("release") || errorMsg.includes("JSON")) {
-      errorMessage = "暂无可用更新或服务暂时不可用";
+      errorMessage = i18n.t("settings.updaterNoUpdate");
     } else {
-      errorMessage = "检查更新失败";
+      errorMessage = i18n.t("settings.updaterCheckFailed");
     }
     
     notifyListeners();
@@ -92,7 +93,7 @@ export async function downloadAndInstall(): Promise<boolean> {
 
   if (!update) {
     updateStatus = "error";
-    errorMessage = "没有可用的更新";
+    errorMessage = i18n.t("settings.updaterNoAvailable");
     notifyListeners();
     return false;
   }
@@ -136,7 +137,7 @@ export async function downloadAndInstall(): Promise<boolean> {
   } catch (error) {
     console.error("[Updater] Download/install failed:", error);
     updateStatus = "error";
-    errorMessage = "下载更新失败";
+    errorMessage = i18n.t("settings.updaterDownloadFailed");
     notifyListeners();
     return false;
   }

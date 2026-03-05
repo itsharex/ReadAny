@@ -1,187 +1,138 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router";
+import { useTranslation } from "react-i18next";
 import { cn } from "@readany/core/utils";
-import { Switch } from "@/components/ui/switch";
+import { readingStatsService } from "@readany/core/stats";
+import type { DailyStats, OverallStats } from "@readany/core/stats";
+import { useReadingSessionStore } from "@readany/core/stores/reading-session-store";
 import {
   ChevronRight,
-  Globe,
   Info,
   Palette,
-  Settings,
   Database,
   Puzzle,
-  Plus,
   BookOpen,
   Clock,
   Flame,
   TrendingUp,
-  ChevronDown,
-  ChevronUp,
+  Loader2,
+  Volume2,
+  Languages,
 } from "lucide-react";
-
-/* ── Mock data (replace with real stats service later) ── */
-
-const mockOverall = {
-  totalBooks: 12,
-  totalReadingTime: 2340,
-  currentStreak: 7,
-  avgDailyTime: 45,
-  longestStreak: 14,
-};
-
-function generateMockDailyStats() {
-  const stats: Array<{ date: string; time: number }> = [];
-  const today = new Date();
-  for (let i = 364; i >= 0; i--) {
-    const d = new Date(today);
-    d.setDate(d.getDate() - i);
-    const dateStr = d.toISOString().split("T")[0];
-    // Random reading: ~40% chance of reading, 0-120 minutes
-    const time = Math.random() > 0.6 ? Math.floor(Math.random() * 120) : 0;
-    stats.push({ date: dateStr, time });
-  }
-  return stats;
-}
-
-const mockDailyStats = generateMockDailyStats();
-
-/* ── Skills data ── */
-
-const builtinSkills = [
-  { id: "summary", name: "智能摘要", icon: "📝", description: "自动生成章节摘要和全书概述", enabled: true },
-  { id: "concept", name: "概念解释", icon: "💡", description: "深入解释书中的概念和术语", enabled: true },
-  { id: "argument", name: "论证分析", icon: "⚖️", description: "分析论点的逻辑结构和证据", enabled: true },
-  { id: "character", name: "人物追踪", icon: "👥", description: "追踪人物关系和发展", enabled: true },
-  { id: "quote", name: "金句收藏", icon: "✨", description: "识别和收藏精彩语句", enabled: true },
-  { id: "guide", name: "阅读向导", icon: "📖", description: "提供阅读建议和背景知识", enabled: true },
-  { id: "translate", name: "翻译", icon: "🌐", description: "多语言翻译", enabled: true },
-  { id: "vocabulary", name: "词汇", icon: "📚", description: "生词释义和词汇积累", enabled: true },
-];
 
 /* ── Settings menu ── */
 
-const menuSections = [
-  {
-    title: "通用",
-    items: [
-      { icon: Palette, label: "外观", path: "/settings/appearance" },
-      { icon: Globe, label: "语言", path: "/settings/language" },
-    ],
-  },
-  {
-    title: "数据",
-    items: [
-      { icon: Database, label: "AI 模型", path: "/settings/ai" },
-      { icon: Settings, label: "高级设置", path: "/settings/advanced" },
-    ],
-  },
-  {
-    title: "关于",
-    items: [
-      { icon: Info, label: "关于 ReadAny", path: "/settings/about" },
-    ],
-  },
-];
+function useMenuSections() {
+  const { t } = useTranslation();
+  return useMemo(() => [
+    {
+      title: t("settings.general"),
+      items: [
+        { icon: Palette, label: t("settings.appearance"), path: "/settings/appearance" },
+      ],
+    },
+    {
+      title: t("settings.skills"),
+      items: [
+        { icon: Database, label: t("settings.ai_title"), path: "/settings/ai" },
+        { icon: Volume2, label: t("tts.title"), path: "/settings/tts" },
+        { icon: Languages, label: t("settings.translationTab"), path: "/settings/translation" },
+        { icon: Puzzle, label: t("skills.title"), path: "/skills" },
+      ],
+    },
+    {
+      title: t("settings.about"),
+      items: [
+        { icon: Info, label: t("settings.about"), path: "/settings/about" },
+      ],
+    },
+  ], [t]);
+}
 
 /* ── Main Page ── */
 
 export function ProfilePage() {
-  const [skillsExpanded, setSkillsExpanded] = useState(false);
+  const navigate = useNavigate();
+  const { t } = useTranslation();
+  const menuSections = useMenuSections();
+  const [overall, setOverall] = useState<OverallStats | null>(null);
+  const [dailyStats, setDailyStats] = useState<DailyStats[]>([]);
+  const [statsLoading, setStatsLoading] = useState(true);
+  const saveCurrentSession = useReadingSessionStore((s) => s.saveCurrentSession);
+
+  useEffect(() => {
+    const loadStats = async () => {
+      try {
+        setStatsLoading(true);
+        await saveCurrentSession();
+
+        const endDate = new Date();
+        const startDate = new Date();
+        startDate.setDate(startDate.getDate() - 365);
+
+        const [daily, overallStats] = await Promise.all([
+          readingStatsService.getDailyStats(startDate, endDate),
+          readingStatsService.getOverallStats(),
+        ]);
+        setDailyStats(daily);
+        setOverall(overallStats);
+      } catch (err) {
+        console.error("[ProfilePage] Failed to load stats:", err);
+      } finally {
+        setStatsLoading(false);
+      }
+    };
+    loadStats();
+  }, [saveCurrentSession]);
 
   return (
     <div className="flex h-full flex-col">
       <header className="shrink-0 px-4 pb-3 pt-3 border-b border-border bg-background">
-        <h1 className="text-2xl font-bold">我的</h1>
+        <h1 className="text-2xl font-bold">{t("profile.title")}</h1>
       </header>
 
       <div className="flex-1 overflow-y-auto">
         {/* ── Reading Stats Cards ── */}
         <div className="px-4 pt-4">
-          <div className="grid grid-cols-2 gap-3">
-            <StatCard
-              icon={<BookOpen className="h-4 w-4" />}
-              title="已读"
-              value={`${mockOverall.totalBooks}`}
-              unit="本"
-            />
-            <StatCard
-              icon={<Clock className="h-4 w-4" />}
-              title="总时长"
-              value={formatTime(mockOverall.totalReadingTime)}
-            />
-            <StatCard
-              icon={<Flame className="h-4 w-4" />}
-              title="连续阅读"
-              value={`${mockOverall.currentStreak}`}
-              unit="天"
-            />
-            <StatCard
-              icon={<TrendingUp className="h-4 w-4" />}
-              title="日均"
-              value={formatTime(mockOverall.avgDailyTime)}
-            />
-          </div>
+          {statsLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              <StatCard
+                icon={<BookOpen className="h-4 w-4" />}
+                title={t("profile.booksRead")}
+                value={`${overall?.totalBooks ?? 0}`}
+                unit={t("profile.booksUnit")}
+              />
+              <StatCard
+                icon={<Clock className="h-4 w-4" />}
+                title={t("profile.totalTime")}
+                value={formatTime(overall?.totalReadingTime ?? 0)}
+              />
+              <StatCard
+                icon={<Flame className="h-4 w-4" />}
+                title={t("profile.streak")}
+                value={`${overall?.currentStreak ?? 0}`}
+                unit={t("profile.daysUnit")}
+              />
+              <StatCard
+                icon={<TrendingUp className="h-4 w-4" />}
+                title={t("profile.avgDaily")}
+                value={formatTime(overall?.avgDailyTime ?? 0)}
+              />
+            </div>
+          )}
         </div>
 
         {/* ── Reading Heatmap ── */}
         <div className="mx-4 mt-4 rounded-xl bg-card border border-border p-4">
           <h2 className="text-sm font-medium text-muted-foreground mb-3">
-            阅读活动
+            {t("profile.readingActivity")}
           </h2>
-          <MobileHeatmap dailyStats={mockDailyStats} />
+          <MobileHeatmap dailyStats={dailyStats.map((s) => ({ date: s.date, time: s.totalTime }))} />
           <HeatmapLegend />
-        </div>
-
-        {/* ── Skills Section (collapsible) ── */}
-        <div className="mx-4 mt-4 rounded-xl bg-card border border-border overflow-hidden">
-          <button
-            type="button"
-            className="flex w-full items-center gap-3 px-4 py-3.5 active:bg-accent transition-colors"
-            onClick={() => setSkillsExpanded(!skillsExpanded)}
-          >
-            <Puzzle className="h-5 w-5 text-muted-foreground" />
-            <span className="flex-1 text-base font-medium text-left">技能管理</span>
-            {skillsExpanded
-              ? <ChevronUp className="h-4 w-4 text-muted-foreground" />
-              : <ChevronDown className="h-4 w-4 text-muted-foreground" />
-            }
-          </button>
-
-          {skillsExpanded && (
-            <div className="border-t border-border">
-              {/* Built-in skills */}
-              <div className="px-4 py-3">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    内置技能
-                  </h3>
-                  <button
-                    type="button"
-                    className="flex items-center gap-1 rounded-full bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground active:scale-95 transition-transform"
-                  >
-                    <Plus className="h-3 w-3" />
-                    创建
-                  </button>
-                </div>
-                <div className="space-y-2">
-                  {builtinSkills.map((skill) => (
-                    <div
-                      key={skill.id}
-                      className="flex items-center gap-3 rounded-lg bg-background p-3"
-                    >
-                      <span className="text-xl shrink-0">{skill.icon}</span>
-                      <div className="flex-1 min-w-0">
-                        <h4 className="text-sm font-medium">{skill.name}</h4>
-                        <p className="text-xs text-muted-foreground truncate">
-                          {skill.description}
-                        </p>
-                      </div>
-                      <Switch defaultChecked={skill.enabled} />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
         </div>
 
         {/* ── Settings Menu ── */}
@@ -203,6 +154,7 @@ export function ProfilePage() {
                         ? { borderBottom: "1px solid var(--border)" }
                         : undefined
                     }
+                    onClick={() => navigate(item.path)}
                   >
                     <Icon className="h-5 w-5 text-muted-foreground" />
                     <span className="flex-1 text-base">{item.label}</span>
@@ -357,15 +309,16 @@ function MobileHeatmap({ dailyStats }: { dailyStats: Array<{ date: string; time:
 }
 
 function HeatmapLegend() {
+  const { t } = useTranslation();
   return (
     <div className="mt-2.5 flex items-center justify-end gap-1 text-[10px] text-muted-foreground">
-      <span>少</span>
+      <span>{t("common.less")}</span>
       <div className="h-[10px] w-[10px] rounded-[2px] bg-neutral-100" />
       <div className="h-[10px] w-[10px] rounded-[2px] bg-emerald-200" />
       <div className="h-[10px] w-[10px] rounded-[2px] bg-emerald-400" />
       <div className="h-[10px] w-[10px] rounded-[2px] bg-emerald-500" />
       <div className="h-[10px] w-[10px] rounded-[2px] bg-emerald-700" />
-      <span>多</span>
+      <span>{t("common.more")}</span>
     </div>
   );
 }

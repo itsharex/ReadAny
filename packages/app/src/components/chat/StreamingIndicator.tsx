@@ -3,6 +3,7 @@
  * Displays thinking/tool-calling/responding state with animation
  */
 import { Brain, Loader2, Wrench } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { cn } from "@readany/core/utils";
 
 interface StreamingIndicatorProps {
@@ -11,14 +12,8 @@ interface StreamingIndicatorProps {
   className?: string;
 }
 
-const STEP_LABELS = {
-  thinking: "正在思考...",
-  tool_calling: "调用工具中...",
-  responding: "正在回复...",
-  idle: "",
-};
-
 export function StreamingIndicator({ step, toolName, className }: StreamingIndicatorProps) {
+  const { t } = useTranslation();
   if (step === "idle") return null;
 
   return (
@@ -29,7 +24,7 @@ export function StreamingIndicator({ step, toolName, className }: StreamingIndic
             <div className="flex h-5 w-5 items-center justify-center">
               <Brain className="h-4 w-4 animate-pulse text-violet-500" />
             </div>
-            <span className="text-xs text-violet-600">{STEP_LABELS.thinking}</span>
+            <span className="text-xs text-violet-600">{t("streaming.thinking")}</span>
           </>
         )}
         {step === "tool_calling" && (
@@ -38,7 +33,7 @@ export function StreamingIndicator({ step, toolName, className }: StreamingIndic
               <Wrench className="h-4 w-4 animate-spin text-blue-500" />
             </div>
             <span className="text-xs text-blue-600">
-              {toolName ? `正在调用 ${toolName}...` : STEP_LABELS.tool_calling}
+              {toolName ? t("streaming.callingTool", { toolName }) : t("streaming.toolCalling")}
             </span>
           </>
         )}
@@ -47,7 +42,7 @@ export function StreamingIndicator({ step, toolName, className }: StreamingIndic
             <div className="flex h-5 w-5 items-center justify-center">
               <Loader2 className="h-4 w-4 animate-spin text-emerald-500" />
             </div>
-            <span className="text-xs text-emerald-600">{STEP_LABELS.responding}</span>
+            <span className="text-xs text-emerald-600">{t("streaming.responding")}</span>
           </>
         )}
       </div>

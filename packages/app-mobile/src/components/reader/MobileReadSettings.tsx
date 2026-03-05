@@ -14,11 +14,11 @@ interface MobileReadSettingsProps {
 }
 
 const FONT_THEMES = [
-  { id: "default", label: "系统" },
-  { id: "classic", label: "经典" },
-  { id: "modern", label: "现代" },
-  { id: "elegant", label: "优雅" },
-  { id: "literary", label: "文学" },
+  { id: "default", labelKey: "reader.fontThemeDefault" },
+  { id: "classic", labelKey: "reader.fontThemeClassic" },
+  { id: "modern", labelKey: "reader.fontThemeModern" },
+  { id: "elegant", labelKey: "reader.fontThemeElegant" },
+  { id: "literary", labelKey: "reader.fontThemeLiterary" },
 ];
 
 export function MobileReadSettings({ settings, onUpdate, onClose }: MobileReadSettingsProps) {
@@ -110,7 +110,7 @@ export function MobileReadSettings({ settings, onUpdate, onClose }: MobileReadSe
                   }`}
                   onClick={() => onUpdate({ fontTheme: theme.id })}
                 >
-                  {theme.label}
+                  {t(theme.labelKey)}
                 </button>
               ))}
             </div>

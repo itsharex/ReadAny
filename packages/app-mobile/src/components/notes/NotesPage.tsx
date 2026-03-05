@@ -475,6 +475,7 @@ function NoteDetailCard({
   onDeleteNote,
   onNavigate,
 }: NoteDetailCardProps) {
+  const { t } = useTranslation();
   return (
     <div className="rounded-lg border border-border bg-card p-3">
       <div
@@ -496,7 +497,7 @@ function NoteDetailCard({
             value={editNote}
             onChange={(e) => setEditNote(e.target.value)}
             className="min-h-[80px] w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            placeholder="添加笔记..."
+            placeholder={t("notebook.addNote")}
             autoFocus
           />
           <div className="mt-2 flex justify-end gap-2">
@@ -506,7 +507,7 @@ function NoteDetailCard({
               onClick={onCancelEdit}
             >
               <X className="h-3 w-3" />
-              取消
+              {t("common.cancel")}
             </button>
             <button
               type="button"
@@ -514,7 +515,7 @@ function NoteDetailCard({
               onClick={onSaveNote}
             >
               <Check className="h-3 w-3" />
-              保存
+              {t("common.save")}
             </button>
           </div>
         </div>

@@ -17,10 +17,10 @@ import {
 } from "@/components/ui/dialog";
 
 const TECH_STACK = [
-  { name: "Tauri", desc: "跨平台桌面框架", icon: Shield },
-  { name: "React", desc: "UI 组件库", icon: Code2 },
-  { name: "TypeScript", desc: "类型安全", icon: Zap },
-  { name: "Foliate", desc: "电子书渲染引擎", icon: BookOpen },
+  { name: "Tauri", descKey: "settings.techStackTauri", icon: Shield },
+  { name: "React", descKey: "settings.techStackReact", icon: Code2 },
+  { name: "TypeScript", descKey: "settings.techStackTypeScript", icon: Zap },
+  { name: "Foliate", descKey: "settings.techStackFoliate", icon: BookOpen },
 ];
 
 type DialogType = "none" | "updateAvailable" | "upToDate" | "error";
@@ -219,7 +219,7 @@ export function AboutSettings() {
           {t("settings.techStack", "技术栈")}
         </h2>
         <div className="grid grid-cols-2 gap-2">
-          {TECH_STACK.map(({ name, desc, icon: Icon }) => (
+          {TECH_STACK.map(({ name, descKey, icon: Icon }) => (
             <div
               key={name}
               className="flex items-center gap-3 rounded-lg bg-muted/60 p-3"
@@ -229,7 +229,7 @@ export function AboutSettings() {
               </div>
               <div>
                 <div className="text-sm font-medium text-neutral-900">{name}</div>
-                <div className="text-xs text-neutral-500">{desc}</div>
+                <div className="text-xs text-neutral-500">{t(descKey)}</div>
               </div>
             </div>
           ))}
