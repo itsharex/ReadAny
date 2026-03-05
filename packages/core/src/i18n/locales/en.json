@@ -117,6 +117,8 @@
     "noToc": "No table of contents",
     "noBookOpen": "No book open",
     "loadFailed": "Failed to load",
+    "hibernated": "Tab was hibernated to save memory",
+    "resumeReading": "Resume Reading",
     "settings": "Reading Settings",
     "fontSize": "Font Size",
     "lineHeight": "Line Height",

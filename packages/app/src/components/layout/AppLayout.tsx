@@ -7,6 +7,11 @@
  * Non-active tabs are hidden via `display:none` so renderers are never destroyed
  * on tab switch. Only closing a tab truly unmounts the ReaderView.
  *
+ * Idle Tab Reclaim: Reader tabs inactive for IDLE_TIMEOUT_MS are "hibernated" —
+ * their <ReaderView> is unmounted to release renderer / canvas memory.
+ * When the user switches back to a hibernated tab, it is re-mounted and the
+ * reader restores to the previously recorded CFI position automatically.
+ *
  * Home-type pages (home/chat/notes/skills/stats) share the left sidebar.
  * Reader pages are full-width (no sidebar).
  */
@@ -14,13 +19,16 @@ import { ChatPage as ChatPageComponent } from "@/components/chat/ChatPage";
 import { CommandPalette } from "@/components/command-palette/CommandPalette";
 import { HomePage } from "@/components/home/HomePage";
 import { NotesPage } from "@/components/notes/NotesPage";
-import { ReaderView } from "@/components/reader/ReaderView";
+import { ReaderView, evictBlobCache } from "@/components/reader/ReaderView";
 import { SettingsDialog } from "@/components/settings/SettingsDialog";
 import { ReadingStatsPanel } from "@/components/stats/ReadingStatsPanel";
 import SkillsPage from "@/pages/Skills";
 import { useAppStore } from "@/stores/app-store";
+import { useLibraryStore } from "@/stores/library-store";
 import { useReaderStore } from "@/stores/reader-store";
+import { BookOpen } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { HomeSidebar } from "./Sidebar";
 import { TabBar } from "./TabBar";
 
@@ -33,6 +41,12 @@ const HOME_VIEWS: { id: string; Component: React.ComponentType }[] = [
   { id: "stats", Component: ReadingStatsPanel },
 ];
 
+/** Idle timeout before a background reader tab is hibernated (30 minutes). */
+const IDLE_TIMEOUT_MS = 30 * 60 * 1000;
+
+/** How often we check for idle tabs (every 2 minutes). */
+const IDLE_CHECK_INTERVAL_MS = 2 * 60 * 1000;
+
 export function AppLayout() {
   const tabs = useAppStore((s) => s.tabs);
   const activeTabId = useAppStore((s) => s.activeTabId);
@@ -40,6 +54,8 @@ export function AppLayout() {
   const setShowSettings = useAppStore((s) => s.setShowSettings);
   const initTab = useReaderStore((s) => s.initTab);
   const readerStoreTabs = useReaderStore((s) => s.tabs);
+  const books = useLibraryStore((s) => s.books);
+  const { t } = useTranslation();
 
   // Command palette state
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
@@ -87,6 +103,85 @@ export function AppLayout() {
     }
   }, [readerTabs, initTab, readerStoreTabs]);
 
+  // --- Idle Tab Hibernate ---
+  // Set of tab IDs whose ReaderView has been unmounted to reclaim memory.
+  // When the user switches back, the tab is removed from this set and re-mounted.
+  const [hibernatedTabs, setHibernatedTabs] = useState<Set<string>>(new Set());
+
+  // Periodic idle check — every IDLE_CHECK_INTERVAL_MS, scan non-active reader tabs
+  // and hibernate any that have been idle longer than IDLE_TIMEOUT_MS.
+  useEffect(() => {
+    const check = () => {
+      const now = Date.now();
+      const currentTabs = useAppStore.getState().tabs;
+      const currentActiveId = useAppStore.getState().activeTabId;
+
+      const toHibernate: string[] = [];
+      for (const tab of currentTabs) {
+        if (tab.type !== "reader" || tab.id === currentActiveId) continue;
+        const lastActive = tab.lastActiveAt ?? 0;
+        if (now - lastActive >= IDLE_TIMEOUT_MS) {
+          toHibernate.push(tab.id);
+        }
+      }
+
+      if (toHibernate.length > 0) {
+        // Evict blob cache for hibernated books
+        for (const tabId of toHibernate) {
+          const tab = currentTabs.find((t) => t.id === tabId);
+          if (tab?.bookId) {
+            const book = books.find((b) => b.id === tab.bookId);
+            if (book?.filePath) {
+              evictBlobCache(book.filePath);
+            }
+          }
+        }
+
+        setHibernatedTabs((prev) => {
+          const next = new Set(prev);
+          for (const id of toHibernate) next.add(id);
+          return next;
+        });
+
+        console.log(
+          `[AppLayout] Hibernated ${toHibernate.length} idle tab(s):`,
+          toHibernate,
+        );
+      }
+    };
+
+    const interval = setInterval(check, IDLE_CHECK_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, [books]);
+
+  // Wake up a hibernated tab when it becomes active
+  useEffect(() => {
+    if (!activeTabId) return;
+    setHibernatedTabs((prev) => {
+      if (!prev.has(activeTabId)) return prev;
+      const next = new Set(prev);
+      next.delete(activeTabId);
+      console.log(`[AppLayout] Waking up hibernated tab: ${activeTabId}`);
+      return next;
+    });
+  }, [activeTabId]);
+
+  // Clean hibernatedTabs when tabs are removed
+  useEffect(() => {
+    const currentIds = new Set(readerTabs.map((t) => t.id));
+    setHibernatedTabs((prev) => {
+      let changed = false;
+      const next = new Set(prev);
+      for (const id of prev) {
+        if (!currentIds.has(id)) {
+          next.delete(id);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [readerTabs]);
+
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-muted">
       <TabBar />
@@ -113,19 +208,77 @@ export function AppLayout() {
           </div>
         </div>
 
-        {/* === Reader layers — one per open reader tab, all stay mounted === */}
-        {readerTabs.map((tab) => (
-          <div
-            key={tab.id}
-            className="absolute inset-0 overflow-hidden"
-            style={{ display: activeTabId === tab.id ? "block" : "none" }}
-          >
-            <ReaderView bookId={tab.bookId!} tabId={tab.id} />
-          </div>
-        ))}
+        {/* === Reader layers — one per open reader tab === */}
+        {readerTabs.map((tab) => {
+          const isHibernated = hibernatedTabs.has(tab.id);
+          const isActive = activeTabId === tab.id;
+
+          return (
+            <div
+              key={tab.id}
+              className="absolute inset-0 overflow-hidden"
+              style={{ display: isActive ? "block" : "none" }}
+            >
+              {isHibernated ? (
+                <HibernatedPlaceholder
+                  tabId={tab.id}
+                  title={tab.title}
+                  progress={readerStoreTabs[tab.id]?.progress}
+                  t={t}
+                />
+              ) : (
+                <ReaderView bookId={tab.bookId!} tabId={tab.id} />
+              )}
+            </div>
+          );
+        })}
       </main>
       <SettingsDialog open={showSettings} onClose={() => setShowSettings(false)} />
       <CommandPalette open={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} />
+    </div>
+  );
+}
+
+/** Placeholder shown for hibernated (idle-reclaimed) reader tabs. */
+function HibernatedPlaceholder({
+  tabId,
+  title,
+  progress,
+  t,
+}: {
+  tabId: string;
+  title: string;
+  progress?: number;
+  t: (key: string) => string;
+}) {
+  const setActiveTab = useAppStore((s) => s.setActiveTab);
+
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-4 bg-background">
+      <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted">
+        <BookOpen className="h-8 w-8 text-muted-foreground" />
+      </div>
+      <div className="flex flex-col items-center gap-1.5">
+        <h3 className="max-w-xs truncate text-sm font-medium text-foreground">{title}</h3>
+        {progress != null && progress > 0 && (
+          <p className="text-xs text-muted-foreground">
+            {Math.round(progress * 100)}%
+          </p>
+        )}
+        <p className="text-xs text-muted-foreground">
+          {t("reader.hibernated") || "Tab was hibernated to save memory"}
+        </p>
+      </div>
+      <button
+        type="button"
+        className="mt-2 rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground transition-colors hover:bg-primary/90"
+        onClick={() => {
+          // setActiveTab will trigger the wake-up effect and remove from hibernatedTabs
+          setActiveTab(tabId);
+        }}
+      >
+        {t("reader.resumeReading") || "Resume Reading"}
+      </button>
     </div>
   );
 }

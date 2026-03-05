@@ -59,6 +59,16 @@ async function loadFileAsBlob(filePath: string): Promise<Blob> {
 const fileBlobCache = new Map<string, Blob>();
 const MAX_CACHE_SIZE = 5;
 
+/** Remove a specific file from the blob cache (called on tab close / hibernate) */
+export function evictBlobCache(filePath: string): void {
+  fileBlobCache.delete(filePath);
+}
+
+/** Clear all entries from the blob cache */
+export function clearBlobCache(): void {
+  fileBlobCache.clear();
+}
+
 async function getCachedBlob(filePath: string): Promise<Blob> {
   const cached = fileBlobCache.get(filePath);
   if (cached) return cached;

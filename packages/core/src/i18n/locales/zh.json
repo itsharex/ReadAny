@@ -117,6 +117,8 @@
     "noToc": "暂无目录",
     "noBookOpen": "未打开书籍",
     "loadFailed": "加载失败",
+    "hibernated": "标签页已休眠以节省内存",
+    "resumeReading": "继续阅读",
     "settings": "阅读设置",
     "fontSize": "字号",
     "lineHeight": "行高",

@@ -4,6 +4,8 @@
  */
 import { type Tab, useAppStore } from "@/stores/app-store";
 import { useReaderStore } from "@/stores/reader-store";
+import { useLibraryStore } from "@/stores/library-store";
+import { evictBlobCache } from "@/components/reader/ReaderView";
 import { BookOpen, Home, MessageSquare, StickyNote, X } from "lucide-react";
 
 const TAB_ICONS: Record<string, React.ElementType> = {
@@ -16,10 +18,20 @@ const TAB_ICONS: Record<string, React.ElementType> = {
 export function TabBar() {
   const { tabs, activeTabId, setActiveTab, removeTab } = useAppStore();
   const removeReaderTab = useReaderStore((s) => s.removeTab);
+  const books = useLibraryStore((s) => s.books);
 
   const readerTabs = tabs.filter((t) => t.type !== "home");
 
   const handleTabClose = (tabId: string) => {
+    // Evict blob cache for this book before removing tab
+    const closingTab = tabs.find((t) => t.id === tabId);
+    if (closingTab?.bookId) {
+      const book = books.find((b) => b.id === closingTab.bookId);
+      if (book?.filePath) {
+        evictBlobCache(book.filePath);
+      }
+    }
+
     removeTab(tabId);
     removeReaderTab(tabId);
 

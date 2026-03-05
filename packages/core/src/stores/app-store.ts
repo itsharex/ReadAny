@@ -13,6 +13,7 @@ export interface Tab {
   threadId?: string; // for chat tabs
   initialCfi?: string; // for reader tabs - initial location to navigate to
   isModified?: boolean;
+  lastActiveAt?: number; // timestamp of last activation (for idle tab reclaim)
 }
 
 export type SidebarTab = "chat" | "notes" | "toc" | "highlights" | "stats";
@@ -47,18 +48,24 @@ export const useAppStore = create<AppState>((set) => ({
 
   addTab: (tab) =>
     set((state) => {
+      const now = Date.now();
       const existingIndex = state.tabs.findIndex((t) => t.id === tab.id);
       if (existingIndex >= 0) {
         const existingTab = state.tabs[existingIndex];
         if (tab.initialCfi && existingTab) {
           const updatedTabs = [...state.tabs];
-          updatedTabs[existingIndex] = { ...existingTab, initialCfi: tab.initialCfi };
+          updatedTabs[existingIndex] = { ...existingTab, initialCfi: tab.initialCfi, lastActiveAt: now };
           return { tabs: updatedTabs, activeTabId: tab.id };
         }
-        return { activeTabId: tab.id };
+        // Update lastActiveAt on re-activation
+        const updatedTabs = [...state.tabs];
+        if (updatedTabs[existingIndex]) {
+          updatedTabs[existingIndex] = { ...updatedTabs[existingIndex], lastActiveAt: now };
+        }
+        return { tabs: updatedTabs, activeTabId: tab.id };
       }
       return {
-        tabs: [...state.tabs, tab],
+        tabs: [...state.tabs, { ...tab, lastActiveAt: now }],
         activeTabId: tab.id,
       };
     }),
@@ -71,7 +78,14 @@ export const useAppStore = create<AppState>((set) => ({
       return { tabs, activeTabId };
     }),
 
-  setActiveTab: (tabId) => set({ activeTabId: tabId }),
+  setActiveTab: (tabId) =>
+    set((state) => {
+      const now = Date.now();
+      const updatedTabs = state.tabs.map((t) =>
+        t.id === tabId ? { ...t, lastActiveAt: now } : t,
+      );
+      return { tabs: updatedTabs, activeTabId: tabId };
+    }),
 
   reorderTabs: (fromIndex, toIndex) =>
     set((state) => {
