@@ -1,5 +1,5 @@
 /**
- * PartRenderer — renders individual message parts (text, reasoning, tool calls, citations)
+ * PartRenderer — renders individual message parts (text, reasoning, tool calls, citations, mindmaps)
  * Mobile-optimized version.
  */
 import { cn } from "@readany/core/utils";
@@ -12,7 +12,7 @@ import {
   Brain,
   Wrench,
 } from "lucide-react";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, lazy, Suspense } from "react";
 import { useTranslation } from "react-i18next";
 import type {
   Part,
@@ -20,8 +20,13 @@ import type {
   ReasoningPart,
   ToolCallPart,
   CitationPart,
+  MindmapPart,
 } from "@readany/core/types/message";
 import { MarkdownRenderer } from "./MarkdownRenderer";
+
+const LazyMobileMindmapView = lazy(() =>
+  import("./MobileMindmapView").then((m) => ({ default: m.MobileMindmapView }))
+);
 
 const TEXT_RENDER_THROTTLE_MS = 100;
 
@@ -73,7 +78,7 @@ export function PartRenderer({ part, citations, onCitationClick }: PartProps) {
     case "citation":
       return null;
     case "mindmap":
-      return null;
+      return <MindmapPartView part={part} />;
     default:
       return null;
   }
@@ -271,6 +276,17 @@ function ToolCallPartView({ part }: { part: ToolCallPart }) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function MindmapPartView({ part }: { part: MindmapPart }) {
+  const { t } = useTranslation();
+  return (
+    <div className="my-2">
+      <Suspense fallback={<div className="p-4 text-sm text-muted-foreground">{t("streaming.loadingMindmap") || "Loading mindmap..."}</div>}>
+        <LazyMobileMindmapView markdown={part.markdown} title={part.title} />
+      </Suspense>
     </div>
   );
 }

@@ -18,6 +18,7 @@ import {
   Loader2,
   Volume2,
   Languages,
+  Cpu,
 } from "lucide-react";
 
 /* ── Settings menu ── */
@@ -38,6 +39,7 @@ function useMenuSections() {
         { icon: Volume2, label: t("tts.title"), path: "/settings/tts" },
         { icon: Languages, label: t("settings.translationTab"), path: "/settings/translation" },
         { icon: Puzzle, label: t("skills.title"), path: "/skills" },
+        { icon: Cpu, label: t("settings.vm_title"), path: "/settings/vector-model" },
       ],
     },
     {

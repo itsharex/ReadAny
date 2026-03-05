@@ -12,6 +12,7 @@ import { AISettingsPage } from "@/components/settings/AISettingsPage";
 import { TTSSettingsPage } from "@/components/settings/TTSSettingsPage";
 import { TranslationSettingsPage } from "@/components/settings/TranslationSettingsPage";
 import { AboutPage } from "@/components/settings/AboutPage";
+import { VectorModelSettingsPage } from "@/components/settings/VectorModelSettingsPage";
 
 export default function App() {
   return (
@@ -34,6 +35,7 @@ export default function App() {
         <Route path="/settings/tts" element={<TTSSettingsPage />} />
         <Route path="/settings/translation" element={<TranslationSettingsPage />} />
         <Route path="/settings/about" element={<AboutPage />} />
+        <Route path="/settings/vector-model" element={<VectorModelSettingsPage />} />
         <Route path="/skills" element={<SkillsPage />} />
 
         {/* Default redirect */}

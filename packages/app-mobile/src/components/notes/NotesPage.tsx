@@ -317,13 +317,25 @@ export function NotesPage() {
         ) : (
           <div className="px-4 py-3">
             <h1 className="text-2xl font-bold">{t("notes.title")}</h1>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              {t("notes.stats", {
-                highlights: stats?.totalHighlights || 0,
-                notes: stats?.highlightsWithNotes || 0,
-                books: stats?.totalBooks || 0,
-              })}
-            </p>
+            {stats && (
+              <div className="mt-2.5 flex gap-3">
+                <div className="flex items-center gap-1.5 rounded-lg bg-muted/50 px-2.5 py-1.5">
+                  <Highlighter className="h-3.5 w-3.5 text-amber-500" />
+                  <span className="text-sm font-semibold">{stats.totalHighlights || 0}</span>
+                  <span className="text-[10px] text-muted-foreground">{t("notebook.highlightsSection")}</span>
+                </div>
+                <div className="flex items-center gap-1.5 rounded-lg bg-muted/50 px-2.5 py-1.5">
+                  <MessageSquareText className="h-3.5 w-3.5 text-blue-500" />
+                  <span className="text-sm font-semibold">{stats.highlightsWithNotes || 0}</span>
+                  <span className="text-[10px] text-muted-foreground">{t("notebook.notesSection")}</span>
+                </div>
+                <div className="flex items-center gap-1.5 rounded-lg bg-muted/50 px-2.5 py-1.5">
+                  <BookOpen className="h-3.5 w-3.5 text-emerald-500" />
+                  <span className="text-sm font-semibold">{stats.totalBooks || 0}</span>
+                  <span className="text-[10px] text-muted-foreground">{t("profile.booksUnit") || "books"}</span>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </header>

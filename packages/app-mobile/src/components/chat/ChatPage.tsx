@@ -22,6 +22,7 @@ import { useTranslation } from "react-i18next";
 import { MobileChatInput } from "./MobileChatInput";
 import { MessageList } from "./MessageList";
 import { MobileModelSelector } from "./MobileModelSelector";
+import { MobileContextPopover } from "./MobileContextPopover";
 
 function formatRelativeTime(ts: number, t: (key: string) => string): string {
   const diff = Date.now() - ts;
@@ -243,6 +244,7 @@ export function ChatPage() {
               <span className="font-medium text-foreground">{bookTitle}</span>
             </span>
           )}
+          {!bookTitle && <MobileContextPopover />}
         </div>
         <div className="flex items-center gap-1">
           <MobileModelSelector />
