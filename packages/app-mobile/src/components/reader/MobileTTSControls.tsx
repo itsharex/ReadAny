@@ -57,12 +57,12 @@ export function MobileTTSControls({ onClose }: MobileTTSControlsProps) {
 
   const stateLabel =
     playState === "loading"
-      ? t("tts.loading", "加载中...")
+      ? t("tts.loading")
       : playState === "playing"
-        ? t("tts.playing", "播放中")
+        ? t("tts.playing")
         : playState === "paused"
-          ? t("tts.paused", "已暂停")
-          : t("tts.stopped", "已停止");
+          ? t("tts.paused")
+          : t("tts.stopped");
 
   // Get edge voices — group by lang for display
   const currentEdgeLang = config.edgeVoice?.split("-").slice(0, 2).join("-") || "zh-CN";
@@ -70,9 +70,9 @@ export function MobileTTSControls({ onClose }: MobileTTSControlsProps) {
   const edgeVoicesForLang = EDGE_TTS_VOICES.filter((v: EdgeTTSVoice) => v.lang === currentEdgeLang);
 
   const engines: { id: TTSEngine; label: string }[] = [
-    { id: "edge", label: "Edge TTS" },
-    { id: "browser", label: t("tts.browser", "系统语音") },
-    { id: "dashscope", label: "DashScope" },
+    { id: "edge", label: t("tts.edgeEngine") },
+    { id: "browser", label: t("tts.browser") },
+    { id: "dashscope", label: t("tts.dashscopeEngine") },
   ];
 
   return (
@@ -86,7 +86,7 @@ export function MobileTTSControls({ onClose }: MobileTTSControlsProps) {
           {/* Engine selection */}
           <div>
             <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
-              {t("tts.engine", "引擎")}
+              {t("tts.engine")}
             </label>
             <div className="flex gap-1.5">
               {engines.map((eng) => (
@@ -112,7 +112,7 @@ export function MobileTTSControls({ onClose }: MobileTTSControlsProps) {
               {/* Language selector */}
               <div>
                 <label className="text-xs font-medium text-muted-foreground mb-1 block">
-                  {t("tts.language", "语言")}
+                  {t("tts.language")}
                 </label>
                 <select
                   className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
@@ -133,7 +133,7 @@ export function MobileTTSControls({ onClose }: MobileTTSControlsProps) {
               {/* Voice selector */}
               <div>
                 <label className="text-xs font-medium text-muted-foreground mb-1 block">
-                  {t("tts.voice", "声音")}
+                  {t("tts.voice")}
                 </label>
                 <select
                   className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
@@ -151,14 +151,14 @@ export function MobileTTSControls({ onClose }: MobileTTSControlsProps) {
           {config.engine === "browser" && (
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">
-                {t("tts.voice", "声音")}
+                {t("tts.voice")}
               </label>
               <select
                 className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
                 value={config.voiceName}
                 onChange={(e) => updateConfig({ voiceName: e.target.value })}
               >
-                <option value="">({t("tts.defaultVoice", "默认")})</option>
+                <option value="">({t("tts.defaultVoice")})</option>
                 {browserVoices.map((v) => (
                   <option key={v.voiceURI} value={v.name}>
                     {v.name} ({v.lang})
@@ -172,7 +172,7 @@ export function MobileTTSControls({ onClose }: MobileTTSControlsProps) {
             <div className="space-y-2">
               <div>
                 <label className="text-xs font-medium text-muted-foreground mb-1 block">
-                  {t("tts.voice", "声音")}
+                  {t("tts.voice")}
                 </label>
                 <select
                   className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
@@ -186,7 +186,7 @@ export function MobileTTSControls({ onClose }: MobileTTSControlsProps) {
               </div>
               <div>
                 <label className="text-xs font-medium text-muted-foreground mb-1 block">
-                  API Key
+                  {t("tts.apiKey")}
                 </label>
                 <input
                   type="password"
@@ -201,7 +201,7 @@ export function MobileTTSControls({ onClose }: MobileTTSControlsProps) {
 
           {/* Pitch control */}
           <div className="flex items-center justify-between">
-            <span className="text-xs text-muted-foreground">{t("tts.pitch", "音调")}</span>
+            <span className="text-xs text-muted-foreground">{t("tts.pitch")}</span>
             <div className="flex items-center gap-2">
               <button
                 type="button"

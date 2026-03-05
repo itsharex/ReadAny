@@ -112,7 +112,7 @@ export function AboutPage() {
         </div>
 
         <p className="mt-4 mb-8 text-center text-xs text-muted-foreground">
-          Made with ❤️ by NicePkg
+          {t("about.madeBy")}
         </p>
       </div>
     </div>

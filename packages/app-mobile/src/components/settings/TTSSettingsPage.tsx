@@ -198,7 +198,7 @@ export function TTSSettingsPage() {
               {/* DashScope API Key */}
               <div className="mt-3">
                 <label className="mb-1.5 block text-xs text-muted-foreground">
-                  DashScope API Key
+                  {t("tts.apiKey")}
                 </label>
                 <input
                   className="w-full rounded-lg border border-border bg-card px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-ring"

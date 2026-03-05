@@ -176,7 +176,7 @@ export function AISettingsPage() {
 
                   {/* API Key */}
                   <div>
-                    <label className="mb-1.5 block text-xs text-muted-foreground">API Key</label>
+                    <label className="mb-1.5 block text-xs text-muted-foreground">{t("settings.ai_apiKey")}</label>
                     <input
                       className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
                       type="password"
@@ -188,7 +188,7 @@ export function AISettingsPage() {
 
                   {/* Base URL */}
                   <div>
-                    <label className="mb-1.5 block text-xs text-muted-foreground">Base URL</label>
+                    <label className="mb-1.5 block text-xs text-muted-foreground">{t("settings.ai_baseUrl")}</label>
                     <input
                       className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
                       value={ep.baseUrl}
@@ -296,7 +296,7 @@ export function AISettingsPage() {
           {/* Temperature */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-muted-foreground">Temperature</span>
+              <span className="text-sm text-muted-foreground">{t("settings.ai_temperature")}</span>
               <span className="text-sm font-mono">{aiConfig.temperature.toFixed(1)}</span>
             </div>
             <input
@@ -313,7 +313,7 @@ export function AISettingsPage() {
           {/* Max Tokens */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-muted-foreground">Max Tokens</span>
+              <span className="text-sm text-muted-foreground">{t("settings.ai_maxTokens")}</span>
               <span className="text-sm font-mono">{aiConfig.maxTokens}</span>
             </div>
             <input

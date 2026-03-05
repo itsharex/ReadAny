@@ -1,4 +1,5 @@
 import { useNavigate } from "react-router";
+import { useTranslation } from "react-i18next";
 import { useSettingsStore } from "@readany/core/stores";
 import {
   TRANSLATOR_PROVIDERS,
@@ -8,6 +9,7 @@ import { ArrowLeft, Check } from "lucide-react";
 
 export function TranslationSettingsPage() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const { translationConfig, updateTranslationConfig, aiConfig } =
     useSettingsStore();
 
@@ -20,14 +22,14 @@ export function TranslationSettingsPage() {
         <button type="button" className="p-1 -ml-1" onClick={() => navigate(-1)}>
           <ArrowLeft className="h-5 w-5" />
         </button>
-        <h1 className="text-lg font-semibold">翻译设置</h1>
+        <h1 className="text-lg font-semibold">{t("translation.settingsTitle")}</h1>
       </header>
 
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-6">
         {/* Provider */}
         <section>
           <h2 className="mb-3 text-sm font-medium text-muted-foreground uppercase tracking-wider">
-            翻译引擎
+            {t("translation.engine")}
           </h2>
           <div className="rounded-xl bg-card border border-border overflow-hidden">
             {TRANSLATOR_PROVIDERS.map((p, idx) => (
@@ -50,7 +52,7 @@ export function TranslationSettingsPage() {
                   <span className="text-base">{p.name}</span>
                   {p.id === "ai" && (
                     <span className="ml-2 text-xs text-muted-foreground">
-                      使用 {aiConfig.activeModel || "AI 模型"}
+                      {t("translation.useAIModel", { model: aiConfig.activeModel || "AI" })}
                     </span>
                   )}
                 </div>
@@ -66,7 +68,7 @@ export function TranslationSettingsPage() {
         {translationConfig.provider.id === "deepl" && (
           <section>
             <h2 className="mb-3 text-sm font-medium text-muted-foreground uppercase tracking-wider">
-              DeepL API Key
+              {t("translation.deeplApiKey")}
             </h2>
             <input
               className="w-full rounded-xl border border-border bg-card px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-ring"
@@ -77,7 +79,7 @@ export function TranslationSettingsPage() {
                   provider: { ...translationConfig.provider, apiKey: e.target.value },
                 })
               }
-              placeholder="输入 DeepL API Key..."
+              placeholder={t("translation.deeplApiKeyPlaceholder")}
             />
           </section>
         )}
@@ -85,7 +87,7 @@ export function TranslationSettingsPage() {
         {/* Target Language */}
         <section>
           <h2 className="mb-3 text-sm font-medium text-muted-foreground uppercase tracking-wider">
-            目标语言
+            {t("translation.targetLanguage")}
           </h2>
           <div className="rounded-xl bg-card border border-border overflow-hidden max-h-80 overflow-y-auto">
             {TRANSLATOR_LANGS.map((lang, idx) => (

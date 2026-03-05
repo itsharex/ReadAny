@@ -221,7 +221,13 @@
     "translationLabel": "译文",
     "translating": "翻译中...",
     "noTranslation": "暂无翻译",
-    "translationFailed": "翻译失败"
+    "translationFailed": "翻译失败",
+    "settingsTitle": "翻译设置",
+    "engine": "翻译引擎",
+    "useAIModel": "使用 {{model}}",
+    "deeplApiKey": "DeepL API Key",
+    "deeplApiKeyPlaceholder": "输入 DeepL API Key...",
+    "targetLanguage": "目标语言"
   },
   "highlights": {
     "yellow": "黄色",

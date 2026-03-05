@@ -168,7 +168,7 @@ export function ProfilePage() {
 
         {/* Version info */}
         <p className="mt-8 mb-6 text-center text-xs text-muted-foreground">
-          ReadAny Mobile v1.0.0
+          {t("profile.version", { version: "1.0.0" })}
         </p>
       </div>
     </div>

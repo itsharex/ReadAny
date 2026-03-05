@@ -418,6 +418,7 @@ function HighlightNoteItem({
   onDeleteNote: () => void;
   isActive?: boolean;
 }) {
+  const { t } = useTranslation();
   return (
     <div
       className={cn(
@@ -456,7 +457,7 @@ function HighlightNoteItem({
             e.stopPropagation();
             onEdit();
           }}
-          title="编辑笔记"
+          title={t("notebook.editNote")}
         >
           <Edit3 className="h-3.5 w-3.5" />
         </button>
@@ -467,7 +468,7 @@ function HighlightNoteItem({
             e.stopPropagation();
             onDeleteNote();
           }}
-          title="删除笔记"
+          title={t("notebook.deleteNote")}
         >
           <Trash2 className="h-3.5 w-3.5" />
         </button>
@@ -487,6 +488,7 @@ function HighlightItem({
   onAddNote: () => void;
   onDelete: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div
       className="group mt-2 flex items-start gap-2 rounded-md p-2.5 transition-colors cursor-pointer active:bg-muted/50"
@@ -514,7 +516,7 @@ function HighlightItem({
             e.stopPropagation();
             onAddNote();
           }}
-          title="添加笔记"
+          title={t("notebook.addNoteBtn")}
         >
           <StickyNote className="h-3.5 w-3.5" />
         </button>
@@ -525,7 +527,7 @@ function HighlightItem({
             e.stopPropagation();
             onDelete();
           }}
-          title="删除高亮"
+          title={t("notebook.deleteHighlightBtn")}
         >
           <Trash2 className="h-3.5 w-3.5" />
         </button>

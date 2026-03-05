@@ -160,12 +160,12 @@ export function MobileTranslationPanel({ text, onClose }: MobileTranslationPanel
                   {copied ? (
                     <>
                       <Check className="h-3 w-3" />
-                      <span>{t("common.copied", "已复制")}</span>
+                      <span>{t("common.copied")}</span>
                     </>
                   ) : (
                     <>
                       <Copy className="h-3 w-3" />
-                      <span>{t("common.copy", "复制")}</span>
+                      <span>{t("common.copy")}</span>
                     </>
                   )}
                 </button>

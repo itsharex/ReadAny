@@ -52,7 +52,8 @@
     "streak": "Streak",
     "daysUnit": "days",
     "avgDaily": "Daily Avg",
-    "readingActivity": "Reading Activity"
+    "readingActivity": "Reading Activity",
+    "version": "ReadAny Mobile v{{version}}"
   },
   "skills": {
     "title": "Skills",
@@ -69,7 +70,8 @@
     "uiFramework": "UI Framework",
     "ebookRenderer": "eBook Renderer",
     "localDatabase": "Local Database",
-    "feedback": "Feedback"
+    "feedback": "Feedback",
+    "madeBy": "Made with ❤️ by NicePkg"
   },
   "streaming": {
     "thinking": "Thinking...",
@@ -221,7 +223,13 @@
     "translationLabel": "Translation",
     "translating": "Translating...",
     "noTranslation": "No translation available",
-    "translationFailed": "Translation failed"
+    "translationFailed": "Translation failed",
+    "settingsTitle": "Translation Settings",
+    "engine": "Translation Engine",
+    "useAIModel": "Using {{model}}",
+    "deeplApiKey": "DeepL API Key",
+    "deeplApiKeyPlaceholder": "Enter DeepL API Key...",
+    "targetLanguage": "Target Language"
   },
   "highlights": {
     "yellow": "Yellow",
@@ -294,7 +302,9 @@
     "highlightsSection": "Highlights",
     "empty": "No highlights or notes",
     "emptyHint": "Select text in the book to highlight or add notes",
-    "editNote": "Edit note"
+    "editNote": "Edit note",
+    "addNoteBtn": "Add note",
+    "deleteHighlightBtn": "Delete highlight"
   },
   "settings": {
     "title": "Settings",
@@ -396,6 +406,8 @@
     "ai_providerLabel": "Provider",
     "ai_deleteEndpoint": "Delete Endpoint",
     "ai_globalParams": "Global Parameters",
+    "ai_temperature": "Temperature",
+    "ai_maxTokens": "Max Tokens",
     "ai_contextWindow": "Context Window",
     "ai_contextWindowUnit": "turns",
     "ai_addManualModelPlaceholder": "Enter model name...",
