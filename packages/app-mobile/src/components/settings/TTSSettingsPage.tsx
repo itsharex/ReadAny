@@ -180,7 +180,7 @@ export function TTSSettingsPage() {
                     onClick={() => updateConfig({ dashscopeVoice: v.id })}
                   >
                     <span>
-                      {v.name} <span className="text-xs text-muted-foreground">{v.id}</span>
+                      {v.label} <span className="text-xs text-muted-foreground">{v.id}</span>
                     </span>
                     {config.dashscopeVoice === v.id && (
                       <Mic className="h-3.5 w-3.5 text-primary" />

@@ -4,6 +4,7 @@ import { useSettingsStore } from "@readany/core/stores";
 import {
   TRANSLATOR_PROVIDERS,
   TRANSLATOR_LANGS,
+  type TranslationTargetLang,
 } from "@readany/core/types/translation";
 import { ArrowLeft, Check } from "lucide-react";
 
@@ -73,7 +74,7 @@ export function TranslationSettingsPage() {
             <input
               className="w-full rounded-xl border border-border bg-card px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-ring"
               type="password"
-              value={(translationConfig.provider as Record<string, string>).apiKey || ""}
+              value={translationConfig.provider.apiKey || ""}
               onChange={(e) =>
                 updateTranslationConfig({
                   provider: { ...translationConfig.provider, apiKey: e.target.value },
@@ -99,7 +100,7 @@ export function TranslationSettingsPage() {
                     ? "text-primary font-medium"
                     : ""
                 }`}
-                onClick={() => updateTranslationConfig({ targetLang: code })}
+                onClick={() => updateTranslationConfig({ targetLang: code as TranslationTargetLang })}
               >
                 <span className="text-sm">{name}</span>
                 {translationConfig.targetLang === code && (

@@ -8,7 +8,6 @@ import {
   Plus,
   Trash2,
   RefreshCw,
-  Check,
   ChevronDown,
   ChevronUp,
   Loader2,
