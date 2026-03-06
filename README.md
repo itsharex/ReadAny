@@ -5,15 +5,15 @@
 <h1 align="center">ReadAny</h1>
 
 <p align="center">
-  <strong>不只是读，更懂你读的书</strong>
+  <strong>Read Any, Understand More</strong>
 </p>
 
 <p align="center">
-  <em>"为什么读完就忘？为什么笔记零散？为什么搜索只能找关键词？"</em>
+  <em>"Why do I forget what I read? Why are my notes scattered? Why can I only search by keywords?"</em>
 </p>
 
 <p align="center">
-  AI 驱动的电子书阅读器 —— 语义搜索、智能对话、知识管理，一站式解决
+  An AI-powered e-book reader with semantic search, intelligent chat, and knowledge management
 </p>
 
 <p align="center">
@@ -43,24 +43,24 @@
 
 ## Why ReadAny?
 
-| 痛点 | 传统阅读器 | ReadAny |
-|------|-----------|---------|
-| 搜索内容 | 只能关键词 | **语义搜索**，理解你的意图 |
-| 提问书籍 | 自己翻找答案 | **AI 直接回答 + 定位** |
-| 做笔记 | 手动复制粘贴 | **选中即高亮**，一键导出 |
-| 知识管理 | 笔记散落各处 | **统一管理**，多格式导出 |
-| 隐私安全 | 上传云端 | **本地向量库**，完全离线可用 |
+| Problem | Traditional Readers | ReadAny |
+|---------|---------------------|---------|
+| Search content | Keywords only | **Semantic search** that understands your intent |
+| Ask questions | Find answers yourself | **AI answers directly + locates sources** |
+| Take notes | Manual copy-paste | **Select to highlight**, one-click export |
+| Knowledge management | Scattered notes | **Unified management**, multi-format export |
+| Privacy | Upload to cloud | **Local vector store**, fully offline capable |
 
-### 与竞品对比
+### Comparison with Alternatives
 
-| 特性 | ReadAny | Calibre | KOReader | Apple Books |
-|------|---------|---------|----------|-------------|
-| AI 对话 | ✅ | ❌ | ❌ | ❌ |
-| 语义搜索 (RAG) | ✅ | ❌ | ❌ | ❌ |
-| 本地向量库 | ✅ | - | - | ❌ |
-| 多格式支持 | 8+ | 15+ | 10+ | 2 |
-| 笔记导出 | 5 种格式 | 有限 | 有限 | 有限 |
-| 开源免费 | ✅ | ✅ | ✅ | ❌ |
+| Feature | ReadAny | Calibre | KOReader | Apple Books |
+|---------|---------|---------|----------|-------------|
+| AI Chat | ✅ | ❌ | ❌ | ❌ |
+| Semantic Search (RAG) | ✅ | ❌ | ❌ | ❌ |
+| Local Vector Store | ✅ | - | - | ❌ |
+| Format Support | 8+ | 15+ | 10+ | 2 |
+| Note Export | 5 formats | Limited | Limited | Limited |
+| Open Source | ✅ | ✅ | ✅ | ❌ |
 
 ---
 
@@ -77,7 +77,7 @@
 </div>
 
 <p align="center">
-  <sub>📚 书库管理 | 📖 沉浸阅读 | 🤖 AI 对话 | 📝 笔记管理</sub>
+  <sub>📚 Library | 📖 Reader | 🤖 AI Chat | 📝 Notes</sub>
 </p>
 
 ---
@@ -86,16 +86,16 @@
 
 ### 🤖 AI-Powered Reading
 
-- **智能对话** - 针对书籍内容提问，AI 知道你的位置、选中文字、高亮笔记
-- **语义搜索** - 超越关键词，向量检索 + BM25 混合搜索
-- **即时翻译** - AI 翻译或 DeepL，支持 19 种语言
-- **多模型支持** - OpenAI、Claude、Gemini、Ollama、DeepSeek
+- **Intelligent Chat** - Ask questions about your books, AI knows your position, selected text, and highlights
+- **Semantic Search** - Beyond keywords, vector retrieval + BM25 hybrid search
+- **Instant Translation** - AI translation or DeepL, 19 languages supported
+- **Multiple AI Providers** - OpenAI, Claude, Gemini, Ollama, DeepSeek
 
 ### 📝 Annotation & Knowledge Management
 
-- **5 色高亮** - 黄/绿/蓝/粉/紫，悬停预览笔记
-- **Markdown 笔记** - TipTap 编辑器，所见即所得
-- **多格式导出** - Markdown、HTML、JSON、Obsidian、Notion
+- **5-Color Highlights** - Yellow/Green/Blue/Pink/Purple, hover to preview notes
+- **Markdown Notes** - TipTap editor, WYSIWYG
+- **Multi-format Export** - Markdown, HTML, JSON, Obsidian, Notion
 
 ### 📚 Multi-Format Support
 
@@ -103,46 +103,46 @@
 
 ### 🎨 Customizable Experience
 
-- 5 种字体主题（含 CJK 优化）
-- 明/暗主题切换
-- 分页/连续滚动
-- 快捷键支持
-- 中英双语界面
+- 5 font themes (CJK optimized)
+- Light/Dark mode
+- Paginated/Continuous scroll
+- Keyboard shortcuts
+- English/Chinese interface
 
 ---
 
 ## Quick Start
 
-### 下载安装
+### Download
 
-| 平台 | 下载 |
-|------|------|
-| macOS (Apple Silicon) | [下载 .dmg](https://github.com/codedogQBY/ReadAny/releases/latest) |
-| macOS (Intel) | [下载 .dmg](https://github.com/codedogQBY/ReadAny/releases/latest) |
-| Windows | [下载 .msi](https://github.com/codedogQBY/ReadAny/releases/latest) |
-| Linux | [下载 .AppImage](https://github.com/codedogQBY/ReadAny/releases/latest) |
+| Platform | Download |
+|----------|----------|
+| macOS (Apple Silicon) | [Download .dmg](https://github.com/codedogQBY/ReadAny/releases/latest) |
+| macOS (Intel) | [Download .dmg](https://github.com/codedogQBY/ReadAny/releases/latest) |
+| Windows | [Download .msi](https://github.com/codedogQBY/ReadAny/releases/latest) |
+| Linux | [Download .AppImage](https://github.com/codedogQBY/ReadAny/releases/latest) |
 
-### 3 步上手
+### 3 Steps to Get Started
 
-1. **导入书籍** - 拖拽文件到书库
-2. **开始阅读** - 双击打开，沉浸体验
-3. **配置 AI**（可选）- 设置 → AI → 填入 API Key
+1. **Import Books** - Drag and drop files into library
+2. **Start Reading** - Double-click to open, immersive experience
+3. **Configure AI** (Optional) - Settings → AI → Enter API Key
 
-### AI 配置
+### AI Configuration
 
-| Provider | 获取方式 |
-|----------|---------|
+| Provider | Get API Key |
+|----------|-------------|
 | OpenAI | [platform.openai.com](https://platform.openai.com/) |
 | Anthropic Claude | [console.anthropic.com](https://console.anthropic.com/) |
 | Google Gemini | [aistudio.google.com](https://aistudio.google.com/) |
-| Ollama / DeepSeek | 本地或自定义端点 |
+| Ollama / DeepSeek | Local or custom endpoint |
 
 ---
 
 ## Tech Stack
 
 | Layer | Technology |
-|-------|-----------|
+|-------|------------|
 | Desktop | [Tauri 2](https://tauri.app/) (Rust) |
 | Frontend | [React 19](https://react.dev/) + TypeScript |
 | Build | [Vite 7](https://vite.dev/) |
@@ -178,21 +178,21 @@ pnpm tauri build
 
 ## Roadmap
 
-- [ ] 更多 AI 模型（Qwen、GLM、Llama）
-- [ ] PDF 重排/重渲染
-- [ ] 云同步
-- [ ] 移动端支持
-- [ ] 插件系统
+- [ ] More AI models (Qwen, GLM, Llama)
+- [ ] PDF reflow/re-render
+- [ ] Cloud sync
+- [ ] Mobile support
+- [ ] Plugin system
 
 ---
 
 ## Contributing
 
-欢迎贡献代码、报告 Bug、提出建议！
+Contributions welcome! Bug reports, feature requests, pull requests all appreciated.
 
 1. Fork → 2. Branch → 3. PR
 
-提交前请运行 `pnpm lint` 确保代码风格一致。
+Please run `pnpm lint` before submitting to ensure code style consistency.
 
 ---
 
@@ -204,11 +204,11 @@ pnpm tauri build
 
 ## Acknowledgments
 
-- [foliate-js](https://github.com/johnfactotum/foliate-js) - 电子书渲染引擎
-- [Tauri](https://tauri.app/) - 跨平台桌面框架
-- [LangChain.js](https://js.langchain.com/) - AI 编排框架
-- [Radix UI](https://www.radix-ui.com/) - 无障碍 UI 组件
-- [Lucide](https://lucide.dev/) - 图标库
+- [foliate-js](https://github.com/johnfactotum/foliate-js) - E-book rendering engine
+- [Tauri](https://tauri.app/) - Cross-platform desktop framework
+- [LangChain.js](https://js.langchain.com/) - AI orchestration framework
+- [Radix UI](https://www.radix-ui.com/) - Accessible UI components
+- [Lucide](https://lucide.dev/) - Icon library
 
 ---
 
