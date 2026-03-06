@@ -5,24 +5,20 @@
 <h1 align="center">ReadAny</h1>
 
 <p align="center">
-  <strong>阅读无界，理解无限</strong>
+  <strong>不只是读，更懂你读的书</strong>
 </p>
 
 <p align="center">
-  一款 AI 驱动的桌面电子书阅读器，支持智能对话、语义搜索、标注笔记与知识管理。
+  <em>"为什么读完就忘？为什么笔记零散？为什么搜索只能找关键词？"</em>
 </p>
 
 <p align="center">
-  <a href="#功能特性">功能特性</a> •
-  <a href="#应用截图">应用截图</a> •
-  <a href="#安装">安装</a> •
-  <a href="#开发">开发</a> •
-  <a href="README.md">English</a>
+  AI 驱动的电子书阅读器 —— 语义搜索、智能对话、知识管理，一站式解决
 </p>
 
 <p align="center">
-  <a href="https://github.com/codedogQBY/ReadAny/releases">
-    <img src="https://img.shields.io/github/v/release/codedogQBY/ReadAny?color=blue" alt="Release">
+  <a href="https://github.com/codedogQBY/ReadAny/releases/latest">
+    <img src="https://img.shields.io/github/v/release/codedogQBY/ReadAny?color=blue&label=下载" alt="Release">
   </a>
   <a href="https://github.com/codedogQBY/ReadAny/stargazers">
     <img src="https://img.shields.io/github/stars/codedogQBY/ReadAny?color=yellow" alt="Stars">
@@ -31,86 +27,115 @@
     <img src="https://img.shields.io/github/license/codedogQBY/ReadAny?color=green" alt="License">
   </a>
   <img src="https://img.shields.io/badge/平台-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey" alt="Platform">
+  <a href="README.md">
+    <img src="https://img.shields.io/badge/lang-English-blue" alt="English">
+  </a>
 </p>
 
 ---
 
-## 功能特性
+<!-- TODO: 添加你的 Hero 截图或 GIF -->
+<!--
+<p align="center">
+  <img src="docs/screenshots/hero.gif" alt="ReadAny Demo" width="100%">
+</p>
+-->
 
-### 多格式支持
+## 为什么选择 ReadAny？
 
-支持主流电子书格式，开箱即用：
+| 痛点 | 传统阅读器 | ReadAny |
+|------|-----------|---------|
+| 搜索内容 | 只能关键词 | **语义搜索**，理解你的意图 |
+| 提问书籍 | 自己翻找答案 | **AI 直接回答 + 定位** |
+| 做笔记 | 手动复制粘贴 | **选中即高亮**，一键导出 |
+| 知识管理 | 笔记散落各处 | **统一管理**，多格式导出 |
+| 隐私安全 | 上传云端 | **本地向量库**，完全离线可用 |
 
-- **EPUB**、**PDF**、**MOBI**、**AZW**、**AZW3**、**FB2**、**FBZ**、**CBZ**
+### 与竞品对比
 
-### AI 智能阅读
-
-- **AI 对话助手** &mdash; 基于书籍内容的智能问答，AI 能感知你当前的阅读位置、选中文本、最近标注和章节信息。
-- **多 AI 提供商** &mdash; 支持 OpenAI、Anthropic Claude（含深度思考）、Google Gemini，以及 OpenAI 兼容端点（Ollama、DeepSeek、vLLM 等）。
-- **语义搜索 (RAG)** &mdash; 超越关键词搜索，按语义查找段落。自动向量化书籍，支持混合检索（向量相似度 + BM25 关键词匹配）。可使用 Hugging Face 本地嵌入模型或远程 API。
-- **翻译功能** &mdash; 选中文本即时翻译，支持 AI 翻译和 DeepL API，覆盖 19 种语言。
-- **AI 技能系统** &mdash; 可扩展的技能框架，内置分析、摘要、实体提取等技能，也可自定义创建。
-
-### 标注与笔记
-
-- **高亮标注** &mdash; 5 种颜色（黄、绿、蓝、粉、紫），有笔记时以波浪线标识
-- **Markdown 笔记** &mdash; 基于 TipTap 的富文本 Markdown 编辑器
-- **悬浮预览** &mdash; 鼠标悬停在标注上即可预览笔记内容
-- **笔记面板** &mdash; 集中浏览、编辑和管理所有高亮与笔记
-- **导出** &mdash; 支持导出为 Markdown、HTML、JSON、Obsidian、Notion 格式
-
-### 书库管理
-
-- **书籍整理** &mdash; 拖拽导入，自动提取元数据
-- **搜索与筛选** &mdash; 按书名、作者、标签搜索；支持多种排序方式
-- **进度追踪** &mdash; 自动保存阅读进度，下次打开自动定位
-
-### 阅读统计
-
-- 按会话和按书籍统计阅读时长，支持空闲检测
-- 日期范围筛选和历史数据图表
-
-### 个性化阅读
-
-- **字体设置** &mdash; 字号（12&ndash;32px）、行高、边距、段间距可调
-- **字体主题** &mdash; 5 种内置主题，良好的中日韩字体支持（系统默认、经典衬线、现代无衬线、雅致楷体、Literata）
-- **阅读模式** &mdash; 翻页模式或连续滚动
-- **明暗主题** &mdash; 支持亮色和暗色模式
-- **多标签** &mdash; 同时打开多本书和多个对话
-- **快捷键** &mdash; 键盘控制导航、搜索和阅读器操作
-- **多语言** &mdash; 支持中文和英文界面
+| 特性 | ReadAny | Calibre | KOReader | Apple Books |
+|------|---------|---------|----------|-------------|
+| AI 对话 | ✅ | ❌ | ❌ | ❌ |
+| 语义搜索 (RAG) | ✅ | ❌ | ❌ | ❌ |
+| 本地向量库 | ✅ | - | - | ❌ |
+| 多格式支持 | 8+ | 15+ | 10+ | 2 |
+| 笔记导出 | 5 种格式 | 有限 | 有限 | 有限 |
+| 开源免费 | ✅ | ✅ | ✅ | ❌ |
 
 ---
 
 ## 应用截图
 
-> 📸 截图即将上线！应用包含现代书库视图、沉浸式阅读器、AI 对话面板和全面的笔记管理功能。
+<div align="center">
+  <img src="docs/screenshots/library.png" width="45%" alt="书库">
+  <img src="docs/screenshots/reader.png" width="45%" alt="阅读器">
+</div>
+
+<div align="center">
+  <img src="docs/screenshots/chat.png" width="45%" alt="AI 对话">
+  <img src="docs/screenshots/notes.png" width="45%" alt="笔记管理">
+</div>
+
+<p align="center">
+  <sub>📚 书库管理 | 📖 沉浸阅读 | 🤖 AI 对话 | 📝 笔记管理</sub>
+</p>
 
 ---
 
-## 社区与支持
+## 核心功能
 
-<p align="center">
-  <a href="https://github.com/codedogQBY/ReadAny/discussions">
-    <img src="https://img.shields.io/badge/GitHub-讨论区-blue?logo=github" alt="GitHub Discussions">
-  </a>
-  <a href="https://github.com/codedogQBY/ReadAny/issues">
-    <img src="https://img.shields.io/badge/GitHub-问题反馈-green?logo=github" alt="GitHub Issues">
-  </a>
-  <a href="#">
-    <img src="https://img.shields.io/badge/Discord-即将上线-5865F2?logo=discord" alt="Discord">
-  </a>
-  <a href="#">
-    <img src="https://img.shields.io/badge/Twitter-即将上线-1DA1F2?logo=twitter" alt="Twitter">
-  </a>
-</p>
+### 🤖 AI 智能阅读
 
-- **💬 讨论区** - 参与讨论、提问、分享想法，请访问 [GitHub Discussions](https://github.com/codedogQBY/ReadAny/discussions)
-- **🐛 问题反馈** - 发现 Bug？请提交 [Issue](https://github.com/codedogQBY/ReadAny/issues)
-- **💡 功能建议** - 有好点子？欢迎在 [讨论区](https://github.com/codedogQBY/ReadAny/discussions/categories/ideas) 分享
-- **🎮 Discord** - *即将上线* - 加入社区聊天
-- **🐦 Twitter/X** - *即将上线* - 关注获取更新和技巧
-- **💬 微信群** - *即将上线* - 面向中文用户
+- **智能对话** - 针对书籍内容提问，AI 知道你的位置、选中文字、高亮笔记
+- **语义搜索** - 超越关键词，向量检索 + BM25 混合搜索
+- **即时翻译** - AI 翻译或 DeepL，支持 19 种语言
+- **多模型支持** - OpenAI、Claude、Gemini、Ollama、DeepSeek
+
+### 📝 标注与知识管理
+
+- **5 色高亮** - 黄/绿/蓝/粉/紫，悬停预览笔记
+- **Markdown 笔记** - TipTap 编辑器，所见即所得
+- **多格式导出** - Markdown、HTML、JSON、Obsidian、Notion
+
+### 📚 多格式支持
+
+**EPUB** · **PDF** · **MOBI** · **AZW** · **AZW3** · **FB2** · **FBZ** · **CBZ**
+
+### 🎨 个性化体验
+
+- 5 种字体主题（含 CJK 优化）
+- 明/暗主题切换
+- 分页/连续滚动
+- 快捷键支持
+- 中英双语界面
+
+---
+
+## 快速开始
+
+### 下载安装
+
+| 平台 | 下载 |
+|------|------|
+| macOS (Apple Silicon) | [下载 .dmg](https://github.com/codedogQBY/ReadAny/releases/latest) |
+| macOS (Intel) | [下载 .dmg](https://github.com/codedogQBY/ReadAny/releases/latest) |
+| Windows | [下载 .msi](https://github.com/codedogQBY/ReadAny/releases/latest) |
+| Linux | [下载 .AppImage](https://github.com/codedogQBY/ReadAny/releases/latest) |
+
+### 3 步上手
+
+1. **导入书籍** - 拖拽文件到书库
+2. **开始阅读** - 双击打开，沉浸体验
+3. **配置 AI**（可选）- 设置 → AI → 填入 API Key
+
+### AI 配置
+
+| Provider | 获取方式 |
+|----------|---------|
+| OpenAI | [platform.openai.com](https://platform.openai.com/) |
+| Anthropic Claude | [console.anthropic.com](https://console.anthropic.com/) |
+| Google Gemini | [aistudio.google.com](https://aistudio.google.com/) |
+| Ollama / DeepSeek | 本地或自定义端点 |
 
 ---
 
@@ -118,181 +143,80 @@
 
 | 层级 | 技术 |
 |------|------|
-| 桌面运行时 | [Tauri 2](https://tauri.app/)（Rust） |
-| 前端 | [React 19](https://react.dev/) + [TypeScript 5](https://www.typescriptlang.org/) |
-| 构建工具 | [Vite 7](https://vite.dev/) |
+| 桌面框架 | [Tauri 2](https://tauri.app/) (Rust) |
+| 前端 | [React 19](https://react.dev/) + TypeScript |
+| 构建 | [Vite 7](https://vite.dev/) |
 | 样式 | [Tailwind CSS 4](https://tailwindcss.com/) + [Radix UI](https://www.radix-ui.com/) |
-| 状态管理 | [Zustand](https://zustand.docs.pmnd.rs/) |
-| 数据库 | SQLite via [tauri-plugin-sql](https://github.com/nicepkg/tauri-plugin-sql) |
-| 电子书渲染 | [foliate-js](https://github.com/johnfactotum/foliate-js) |
-| AI / LLM | [LangChain.js](https://js.langchain.com/) + [LangGraph](https://langchain-ai.github.io/langgraphjs/) |
-| 向量嵌入 | [Hugging Face Transformers.js](https://huggingface.co/docs/transformers.js) |
-| Markdown | [TipTap](https://tiptap.dev/) + [marked](https://marked.js.org/) |
-| 国际化 | [i18next](https://www.i18next.com/) |
-| 图标 | [Lucide](https://lucide.dev/) |
+| 状态 | [Zustand](https://zustand.docs.pmnd.rs/) |
+| 数据库 | SQLite |
+| 电子书 | [foliate-js](https://github.com/johnfactotum/foliate-js) |
+| AI/LLM | [LangChain.js](https://js.langchain.com/) + [LangGraph](https://langchain-ai.github.io/langgraphjs/) |
+| 嵌入模型 | [Transformers.js](https://huggingface.co/docs/transformers.js) |
 
 ---
 
-## 安装
-
-### 下载
-
-根据你的平台下载最新版本：
-
-- [macOS (Apple Silicon)](https://github.com/codedogQBY/ReadAny/releases/latest)
-- [macOS (Intel)](https://github.com/codedogQBY/ReadAny/releases/latest)
-- [Windows](https://github.com/codedogQBY/ReadAny/releases/latest)
-- [Linux](https://github.com/codedogQBY/ReadAny/releases/latest)
-
-### 从源码构建
-
-#### 环境要求
-
-- [Node.js](https://nodejs.org/) >= 18
-- [pnpm](https://pnpm.io/) >= 9
-- [Rust](https://www.rust-lang.org/tools/install)
-- 平台相关 Tauri 依赖 &mdash; 参阅 [Tauri 环境准备指南](https://v2.tauri.app/start/prerequisites/)
-
-#### 构建步骤
+## 开发
 
 ```bash
-# 克隆仓库
+# 克隆
 git clone https://github.com/codedogQBY/ReadAny.git
 cd ReadAny
 
 # 安装依赖
 pnpm install
 
-# 构建应用
+# 开发模式
+pnpm tauri dev
+
+# 构建
 pnpm tauri build
 ```
 
-构建产物位于 `packages/app/src-tauri/target/release/bundle/`。
+**环境要求：** Node.js ≥18, pnpm ≥9, Rust
 
 ---
 
-## 开发
+## 开发路线
 
-### 快速开始
-
-```bash
-# 安装依赖
-pnpm install
-
-# 以开发模式启动完整 Tauri 桌面应用
-pnpm tauri dev
-```
-
-### 常用命令
-
-| 命令 | 说明 |
-|------|------|
-| `pnpm dev` | 启动 Vite 开发服务器（仅 Web） |
-| `pnpm tauri dev` | 以开发模式启动完整 Tauri 桌面应用 |
-| `pnpm tauri build` | 构建生产版本桌面应用 |
-| `pnpm lint` | 使用 Biome 检查代码 |
-| `pnpm lint:fix` | 自动修复 lint 问题 |
-
-### 项目结构
-
-```
-ReadAny/
-├── packages/
-│   ├── app/                    # 主 Tauri + React 应用
-│   │   ├── src/
-│   │   │   ├── components/     # 按功能组织的 React 组件
-│   │   │   │   ├── reader/     # 阅读界面
-│   │   │   │   ├── chat/       # AI 对话 UI
-│   │   │   │   ├── annotation/ # 高亮与笔记
-│   │   │   │   ├── home/       # 书库 / 首页
-│   │   │   │   ├── notes/      # 笔记视图
-│   │   │   │   ├── settings/   # 设置
-│   │   │   │   ├── stats/      # 统计
-│   │   │   │   ├── layout/     # 应用布局、侧边栏、标签页
-│   │   │   │   └── ui/         # 可复用 UI 基础组件
-│   │   │   ├── pages/          # 页面级组件
-│   │   │   ├── stores/         # Zustand 状态管理
-│   │   │   ├── lib/            # 核心库
-│   │   │   │   ├── ai/         # LLM 提供商、Agent、技能、工具
-│   │   │   │   ├── rag/        # 向量化、分块、搜索
-│   │   │   │   ├── reader/     # 书籍加载、字体主题、进度
-│   │   │   │   ├── translation/# 翻译服务
-│   │   │   │   ├── db/         # SQLite 数据库层
-│   │   │   │   ├── export/     # 导出工具
-│   │   │   │   └── stats/      # 阅读统计
-│   │   │   ├── hooks/          # 自定义 React Hooks
-│   │   │   ├── types/          # TypeScript 类型定义
-│   │   │   ├── i18n/           # 国际化（en / zh）
-│   │   │   └── styles/         # 全局样式
-│   │   ├── src-tauri/          # Rust 后端 & Tauri 配置
-│   │   └── public/             # 静态资源（Logo、字体、第三方库）
-│   └── foliate-js/             # 电子书渲染引擎（fork）
-├── package.json                # pnpm 工作区根配置
-├── pnpm-workspace.yaml
-└── biome.json                  # 代码检查与格式化配置
-```
+- [ ] 更多 AI 模型（Qwen、GLM、Llama）
+- [ ] PDF 重排/重渲染
+- [ ] 云同步
+- [ ] 移动端支持
+- [ ] 插件系统
 
 ---
 
-## 配置
+## 参与贡献
 
-### AI 提供商
+欢迎贡献代码、报告 Bug、提出建议！
 
-在 **设置 > AI** 中配置：
+1. Fork → 2. Branch → 3. PR
 
-| 提供商 | 所需配置 |
-|--------|---------|
-| OpenAI | [platform.openai.com](https://platform.openai.com/) 获取 API Key |
-| Anthropic Claude | [console.anthropic.com](https://console.anthropic.com/) 获取 API Key |
-| Google Gemini | [aistudio.google.com](https://aistudio.google.com/) 获取 API Key |
-| Ollama / DeepSeek / vLLM | 自定义端点 URL（OpenAI 兼容） |
-
-### 向量嵌入模型
-
-用于语义搜索（RAG），可选择：
-
-- **本地模型**（默认）&mdash; 使用 Hugging Face Transformers.js，完全离线运行
-- **远程 API** &mdash; 使用 OpenAI 或其他嵌入 API
-
-### 翻译
-
-- **AI 翻译** &mdash; 直接使用已配置的 LLM，无需额外设置
-- **DeepL** &mdash; 需在 [deepl.com/pro-api](https://www.deepl.com/pro-api) 获取 API Key
+提交前请运行 `pnpm lint` 确保代码风格一致。
 
 ---
 
-## 贡献
+## 开源协议
 
-欢迎贡献！无论是 Bug 报告、功能建议还是代码提交，都非常感谢。
-
-1. Fork 本仓库
-2. 创建功能分支（`git checkout -b feature/amazing-feature`）
-3. 提交更改（`git commit -m 'Add amazing feature'`）
-4. 推送到分支（`git push origin feature/amazing-feature`）
-5. 发起 Pull Request
-
-提交前请运行 `pnpm lint` 并遵循现有代码风格。
-
----
-
-## 许可证
-
-本项目基于 MIT 许可证开源 &mdash; 详见 [LICENSE](LICENSE) 文件。
-
-内置的 [foliate-js](packages/foliate-js/) 库由 [John Factotum](https://github.com/johnfactotum/foliate-js) 开发，同样基于 MIT 许可证。
+[MIT](LICENSE) © 2024 ReadAny Team
 
 ---
 
 ## 致谢
 
-- [foliate-js](https://github.com/johnfactotum/foliate-js) &mdash; 电子书渲染引擎
-- [Tauri](https://tauri.app/) &mdash; 跨平台桌面运行时
-- [LangChain.js](https://js.langchain.com/) &mdash; AI/LLM 编排框架
-- [Radix UI](https://www.radix-ui.com/) &mdash; 无障碍 UI 组件
-- [Lucide](https://lucide.dev/) &mdash; 图标库
+- [foliate-js](https://github.com/johnfactotum/foliate-js) - 电子书渲染引擎
+- [Tauri](https://tauri.app/) - 跨平台桌面框架
+- [LangChain.js](https://js.langchain.com/) - AI 编排框架
+- [Radix UI](https://www.radix-ui.com/) - 无障碍 UI 组件
+- [Lucide](https://lucide.dev/) - 图标库
 
 ---
 
 <p align="center">
-  由 ReadAny 团队用 &#10084; 打造
+  用 ❤️ 打造 by ReadAny Team
+</p>
+
+<p align="center">
+  <a href="https://github.com/codedogQBY/ReadAny/discussions">💬 讨论区</a> •
+  <a href="https://github.com/codedogQBY/ReadAny/issues">🐛 问题反馈</a>
 </p>
