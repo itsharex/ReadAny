@@ -370,11 +370,91 @@ export const MobileFoliateViewer = forwardRef<MobileFoliateViewerHandle, MobileF
 
       // Selection change detection
       let selectionTimer: ReturnType<typeof setTimeout> | null = null;
+
+      // Helper: compute selection detail and notify parent
+      const emitSelection = (sel: Selection, range: Range) => {
+        const text = sel.toString().trim();
+        if (!text) return;
+        // Use getClientRects for precise multi-line bounding
+        const rects = Array.from(range.getClientRects()).filter(r => r.width > 0 && r.height > 0);
+        const boundingRect = range.getBoundingClientRect();
+        // Convert iframe-local coords to main window coords
+        const iframe = doc.defaultView?.frameElement as HTMLIFrameElement | null;
+        const iframeRect = iframe?.getBoundingClientRect();
+        const offsetX = iframeRect?.left ?? 0;
+        const offsetY = iframeRect?.top ?? 0;
+
+        // Find topmost and bottommost rects across all lines
+        let minTop = boundingRect.top;
+        let maxBottom = boundingRect.bottom;
+        for (const r of rects) {
+          if (r.top < minTop) minTop = r.top;
+          if (r.bottom > maxBottom) maxBottom = r.bottom;
+        }
+
+        // Get CFI from foliate-view
+        const view = viewRef.current;
+        let cfi = "";
+        try {
+          if (view?.getCFI) {
+            const index = view.renderer?.sectionIndex;
+            cfi = view.getCFI(index, range) || "";
+          }
+        } catch { /* ignore */ }
+
+        onSelectionRef.current?.({
+          text,
+          cfi,
+          range,
+          position: {
+            x: offsetX + boundingRect.left + boundingRect.width / 2,
+            y: offsetY + minTop - 8,
+            selectionTop: offsetY + minTop,
+            selectionBottom: offsetY + maxBottom,
+          },
+        });
+      };
+
+      // iOS hack: dismiss the system edit menu by quickly removing and
+      // re-adding the selection range. The 30ms gap is enough for iOS to
+      // tear down its native menu while being imperceptible to the user.
+      // Executed on touchend (finger lift) rather than selectionchange so
+      // dragging selection handles doesn't cause visible flicker.
+      // Adapted from Readest (MIT): useTextSelector.ts#makeSelectionOnIOS
+      let iosHackPending = false;
+      const dismissSystemMenuAndReselect = (sel: Selection, range: Range) => {
+        iosHackPending = true;
+        // biome-ignore lint: runtime flag to skip selectionchange during jiggle
+        (doc as any).__readany_isJiggling = true;
+        sel.removeAllRanges();
+        setTimeout(() => {
+          sel.addRange(range);
+          // biome-ignore lint: runtime flag
+          (doc as any).__readany_isJiggling = false;
+          iosHackPending = false;
+          emitSelection(sel, range);
+        }, 30);
+      };
+
+      // On touchend: if there is a valid selection, jiggle it to kill
+      // the system menu. This fires once per finger-lift, not during drag.
+      doc.addEventListener("touchend", () => {
+        // Small delay so the selection has settled after the touch ends
+        setTimeout(() => {
+          if (iosHackPending) return;
+          const sel = doc.getSelection();
+          if (!sel || sel.isCollapsed || !sel.toString().trim() || !sel.rangeCount) return;
+          const range = sel.getRangeAt(0);
+          dismissSystemMenuAndReselect(sel, range);
+        }, 50);
+      }, { passive: true });
+
       doc.addEventListener("selectionchange", () => {
         // Skip jiggle-induced selectionchange — the removeAllRanges/addRange
         // cycle momentarily collapses the selection and would clear the popover
         // biome-ignore lint: runtime flag
         if ((doc as any).__readany_isJiggling) return;
+        if (iosHackPending) return;
         if (selectionTimer) clearTimeout(selectionTimer);
         selectionTimer = setTimeout(() => {
           const sel = doc.getSelection();
@@ -382,47 +462,10 @@ export const MobileFoliateViewer = forwardRef<MobileFoliateViewerHandle, MobileF
             onSelectionRef.current?.(null);
             return;
           }
-          const text = sel.toString().trim();
-          if (!text) return;
+          if (!sel.rangeCount) return;
           const range = sel.getRangeAt(0);
-          // Use getClientRects for precise multi-line bounding
-          const rects = Array.from(range.getClientRects()).filter(r => r.width > 0 && r.height > 0);
-          const boundingRect = range.getBoundingClientRect();
-          // Convert iframe-local coords to main window coords
-          const iframe = doc.defaultView?.frameElement as HTMLIFrameElement | null;
-          const iframeRect = iframe?.getBoundingClientRect();
-          const offsetX = iframeRect?.left ?? 0;
-          const offsetY = iframeRect?.top ?? 0;
-
-          // Find topmost and bottommost rects across all lines
-          let minTop = boundingRect.top;
-          let maxBottom = boundingRect.bottom;
-          for (const r of rects) {
-            if (r.top < minTop) minTop = r.top;
-            if (r.bottom > maxBottom) maxBottom = r.bottom;
-          }
-
-          // Get CFI from foliate-view
-          const view = viewRef.current;
-          let cfi = "";
-          try {
-            if (view?.getCFI) {
-              const index = view.renderer?.sectionIndex;
-              cfi = view.getCFI(index, range) || "";
-            }
-          } catch { /* ignore */ }
-
-          onSelectionRef.current?.({
-            text,
-            cfi,
-            range,
-            position: {
-              x: offsetX + boundingRect.left + boundingRect.width / 2,
-              y: offsetY + minTop - 8,
-              selectionTop: offsetY + minTop,
-              selectionBottom: offsetY + maxBottom,
-            },
-          });
+          // During drag just update the popover position, no jiggle
+          emitSelection(sel, range);
         }, 300);
       });
     }, []);
@@ -546,6 +589,9 @@ function applyDocumentStyles(doc: Document, isFixedLayout: boolean) {
       -webkit-user-select: text !important;
       user-select: text !important;
     }
+    ::selection {
+      background: rgba(250, 204, 21, 0.4) !important;
+    }
   `;
   doc.head.appendChild(suppressStyle);
 
@@ -555,74 +601,6 @@ function applyDocumentStyles(doc: Document, isFixedLayout: boolean) {
     e.stopPropagation();
     return false;
   }, true);
-
-  // Suppress iOS native edit menu (UIEditMenuInteraction).
-  // Strategy: on every selection-producing gesture, rapidly toggle
-  // the selection (removeAllRanges → addRange) which resets UIKit's
-  // internal state so the system menu never fires.
-  //
-  // Guard against jiggle-induced selectionchange loops — the
-  // removeAllRanges/addRange cycle itself fires selectionchange.
-  // biome-ignore lint: runtime flag on doc for cross-function access
-  (doc as any).__readany_isJiggling = false;
-  // biome-ignore lint: runtime flag
-  (doc as any).__readany_isTouching = false;
-
-  const jiggleSelection = (d: Document) => {
-    const sel = d.getSelection();
-    if (!sel || sel.isCollapsed || !sel.rangeCount) return;
-    const range = sel.getRangeAt(0).cloneRange();
-    // biome-ignore lint: runtime flag
-    (d as any).__readany_isJiggling = true;
-    sel.removeAllRanges();
-    sel.addRange(range);
-    // Reset flag after the browser processes the synthetic
-    // selectionchange fired by removeAllRanges+addRange.
-    // biome-ignore lint: runtime flag
-    requestAnimationFrame(() => { (d as any).__readany_isJiggling = false; });
-  };
-
-  // Track touch state — while finger is down, selectionchange is
-  // triggered by dragging handles; iOS shows the menu on touchend.
-  doc.addEventListener("touchstart", () => {
-    // biome-ignore lint: runtime flag
-    (doc as any).__readany_isTouching = true;
-  }, { passive: true });
-
-  // Jiggle aggressively on touchend (covers long-press selection
-  // and selection handle drag release)
-  const jiggleTimers: ReturnType<typeof setTimeout>[] = [];
-  doc.addEventListener("touchend", () => {
-    // biome-ignore lint: runtime flag
-    (doc as any).__readany_isTouching = false;
-    // Clear any pending timers
-    for (const t of jiggleTimers) clearTimeout(t);
-    jiggleTimers.length = 0;
-    // Multiple jiggle passes at staggered timings to reliably
-    // beat the iOS UIEditMenuInteraction trigger (variable delay)
-    for (const delay of [0, 10, 30, 60, 100, 150, 200, 300]) {
-      jiggleTimers.push(setTimeout(() => jiggleSelection(doc), delay));
-    }
-  }, { passive: true });
-
-  // Jiggle on selectionchange — but ONLY when not touching.
-  // While the user is dragging selection handles (isTouching=true),
-  // jiggling would reset the selection back to a stale snapshot,
-  // preventing the user from expanding the selection.
-  // iOS only shows the native menu after touchend, so skipping
-  // jiggle during touch does not compromise menu suppression.
-  let pendingJiggle: ReturnType<typeof setTimeout> | null = null;
-  doc.addEventListener("selectionchange", () => {
-    // biome-ignore lint: runtime flag
-    if ((doc as any).__readany_isJiggling) return;
-    // biome-ignore lint: runtime flag
-    if ((doc as any).__readany_isTouching) return; // don't interfere with handle dragging
-    if (pendingJiggle) clearTimeout(pendingJiggle);
-    pendingJiggle = setTimeout(() => {
-      jiggleSelection(doc);
-      pendingJiggle = null;
-    }, 30);
-  });
 }
 
 function applyRendererSettings(view: FoliateView, settings: ViewSettings, isFixedLayout: boolean) {
