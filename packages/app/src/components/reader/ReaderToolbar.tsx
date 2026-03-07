@@ -3,7 +3,7 @@ import type { TOCItem } from "./FoliateViewer";
 import { useAppStore } from "@/stores/app-store";
 import { useReaderStore } from "@/stores/reader-store";
 import { useNotebookStore } from "@/stores/notebook-store";
-import { ArrowLeft, List, MessageSquare, Search, Settings, StickyNote, Volume2, Undo } from "lucide-react";
+import { ArrowLeft, List, MessageSquare, NotebookPen, Search, Settings, Volume2, Undo } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
   Tooltip,
@@ -119,7 +119,7 @@ export function ReaderToolbar({
           onClick={toggleNotebook}
           title={t("notebook.title")}
         >
-          <StickyNote className="h-3.5 w-3.5" />
+          <NotebookPen className="h-3.5 w-3.5" />
         </Button>
       </div>
 

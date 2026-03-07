@@ -18,6 +18,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
 import { useLibraryStore } from "@/stores/library-store";
+import { triggerVectorizeBook, type VectorizeStatusCallback } from "@/lib/rag/vectorize-trigger";
+import { useVectorModelStore } from "@readany/core/stores/vector-model-store";
+import { ConfigGuideDialog, type ConfigGuideType } from "@/components/shared/ConfigGuideDialog";
 import { MobileBookCard } from "./MobileBookCard";
 import { TagManageSheet } from "./TagManageSheet";
 
@@ -52,6 +55,13 @@ export function LibraryPage() {
   const [showSort, setShowSort] = useState(false);
   const [tagSheetOpen, setTagSheetOpen] = useState(false);
   const [tagSheetBook, setTagSheetBook] = useState<Book | null>(null);
+  const [vectorizingBookId, setVectorizingBookId] = useState<string | null>(null);
+  const [vectorProgress, setVectorProgress] = useState<{
+    status: string;
+    processedChunks: number;
+    totalChunks: number;
+  } | null>(null);
+  const [configGuide, setConfigGuide] = useState<ConfigGuideType>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Load books on mount
@@ -145,6 +155,28 @@ export function LibraryPage() {
     setTagSheetBook(book);
     setTagSheetOpen(true);
   }, []);
+
+  const handleVectorize = useCallback(async (book: Book) => {
+    if (vectorizingBookId) return;
+
+    if (!useVectorModelStore.getState().hasVectorCapability()) {
+      setConfigGuide("vectorModel");
+      return;
+    }
+
+    setVectorizingBookId(book.id);
+    setVectorProgress(null);
+    try {
+      await triggerVectorizeBook(book.id, book.filePath, (progress) => {
+        setVectorProgress({ ...progress });
+      });
+    } catch (err) {
+      console.error("[LibraryPage] Vectorization failed:", err);
+    } finally {
+      setVectorizingBookId(null);
+      setVectorProgress(null);
+    }
+  }, [vectorizingBookId]);
 
   const handleSortChange = useCallback(
     (field: SortField) => {
@@ -372,6 +404,9 @@ export function LibraryPage() {
                 onOpen={handleOpen}
                 onDelete={removeBook}
                 onManageTags={handleManageTags}
+                onVectorize={handleVectorize}
+                isVectorizing={vectorizingBookId === book.id}
+                vectorProgress={vectorizingBookId === book.id ? vectorProgress : null}
               />
             ))}
           </div>
@@ -388,6 +423,8 @@ export function LibraryPage() {
         onAddTagToBook={addTagToBook}
         onRemoveTagFromBook={removeTagFromBook}
       />
+
+      <ConfigGuideDialog type={configGuide} onClose={() => setConfigGuide(null)} />
     </div>
   );
 }

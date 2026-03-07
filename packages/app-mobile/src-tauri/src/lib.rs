@@ -1,5 +1,8 @@
 mod db;
 
+#[cfg(target_os = "ios")]
+mod webview_helper;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -13,6 +16,15 @@ pub fn run() {
             if let Err(e) = db::init_database_sync(&app_handle) {
                 eprintln!("Failed to initialize database: {}", e);
             }
+
+            #[cfg(target_os = "ios")]
+            {
+                use tauri::Manager;
+                if let Some(webview_window) = app_handle.get_webview_window("main") {
+                    webview_helper::initialize_keyboard_adjustment(&webview_window);
+                }
+            }
+
             Ok(())
         })
         .run(tauri::generate_context!())

@@ -30,7 +30,10 @@ export function BottomTabBar() {
     tabs.find((t) => location.pathname.startsWith(t.path))?.path ?? "/library";
 
   return (
-    <nav className="flex shrink-0 items-end border-t border-border bg-background/95 backdrop-blur-sm">
+    <nav
+      className="flex shrink-0 items-end border-t border-border bg-background/95 backdrop-blur-sm"
+      style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
+    >
       {tabs.map((tab) => {
         const isActive = activeTab === tab.path;
         const Icon = tab.icon;

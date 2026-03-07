@@ -5,6 +5,7 @@ import { useStreamingChat } from "@/hooks/use-streaming-chat";
 import { convertToMessageV2, mergeMessagesWithStreaming } from "@readany/core/utils/chat-utils";
 import { useChatReaderStore } from "@/stores/chat-reader-store";
 import { useChatStore } from "@/stores/chat-store";
+import { useSettingsStore } from "@/stores/settings-store";
 import type { CitationPart } from "@readany/core/types";
 import {
   BookOpen,
@@ -19,6 +20,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { ConfigGuideDialog, type ConfigGuideType } from "@/components/shared/ConfigGuideDialog";
 import { ChatInput } from "./ChatInput";
 import { ContextPopover } from "./ContextPopover";
 import { MessageList } from "./MessageList";
@@ -182,6 +184,7 @@ export function ChatPage() {
   });
   
   const [showThreads, setShowThreads] = useState(false);
+  const [configGuide, setConfigGuide] = useState<ConfigGuideType>(null);
 
   useEffect(() => {
     if (!initialized) {
@@ -194,6 +197,13 @@ export function ChatPage() {
 
   const handleSend = useCallback(
     async (content: string, deepThinking: boolean = false) => {
+      const { aiConfig } = useSettingsStore.getState();
+      const endpoint = aiConfig.endpoints.find((e) => e.id === aiConfig.activeEndpointId);
+      if (!endpoint?.apiKey || !aiConfig.activeModel) {
+        setConfigGuide("ai");
+        return;
+      }
+
       if (!activeThreadId) {
         await createThread(undefined, content.slice(0, 50));
         setTimeout(() => sendMessage(content, contextBookId || undefined, deepThinking), 50);
@@ -273,6 +283,8 @@ export function ChatPage() {
           <ChatInput onSend={handleSend} disabled={isStreaming} />
         </div>
       </div>
+
+      <ConfigGuideDialog type={configGuide} onClose={() => setConfigGuide(null)} />
     </div>
   );
 }

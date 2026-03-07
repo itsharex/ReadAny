@@ -3,10 +3,10 @@
  */
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { 
-  X, 
-  StickyNote, 
-  Highlighter, 
+import {
+  X,
+  NotebookPen,
+  Highlighter,
   Save,
   Trash2,
   Edit3,
@@ -305,7 +305,7 @@ export function NotebookPanel({ bookId, onClose, onGoToCfi, onAddAnnotation, onD
               ) : (
                 <ChevronRight className="h-4 w-4 text-muted-foreground" />
               )}
-              <StickyNote className="h-4 w-4 text-muted-foreground" />
+              <NotebookPen className="h-4 w-4 text-muted-foreground" />
               <span className="text-sm font-medium">
                 {t("notebook.notesSection")}
               </span>
@@ -370,7 +370,7 @@ export function NotebookPanel({ bookId, onClose, onGoToCfi, onAddAnnotation, onD
         {/* Empty state */}
         {bookHighlights.length === 0 && !isEditing && (
           <div className="flex h-full flex-col items-center justify-center p-6 text-center">
-            <StickyNote className="mb-3 h-10 w-10 text-muted-foreground/50" />
+            <NotebookPen className="mb-3 h-10 w-10 text-muted-foreground/50" />
             <p className="text-sm text-muted-foreground">
               {t("notebook.empty")}
             </p>
@@ -493,7 +493,7 @@ function HighlightItem({ highlight, onClick, onAddNote, onDelete }: HighlightIte
           }}
           title="添加笔记"
         >
-          <StickyNote className="h-3.5 w-3.5" />
+          <NotebookPen className="h-3.5 w-3.5" />
         </button>
         <button
           type="button"

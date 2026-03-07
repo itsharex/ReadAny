@@ -2,14 +2,14 @@
  * MobileSelectionPopover — floating menu when text is selected in the reader.
  * Supports: highlight (6 colors + underline), note, copy, translate, ask AI, TTS, edit/delete.
  */
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Copy,
   Highlighter,
   Languages,
+  NotebookPen,
   Sparkles,
-  StickyNote,
   Trash2,
   Volume2,
 } from "lucide-react";
@@ -79,6 +79,23 @@ export function MobileSelectionPopover({
   const padding = 8;
   const totalH = showColors ? popoverH + colorRowH + 6 : popoverH; // 6 for mb-1.5
 
+  // Read safe-area-inset-top for top boundary clamping
+  const safeAreaTop = useMemo(() => {
+    const el = document.documentElement;
+    const val = getComputedStyle(el).getPropertyValue("--safe-area-top")?.trim();
+    if (val) return parseInt(val, 10) || 0;
+    // Fallback: read env(safe-area-inset-top) via a temp element
+    const tmp = document.createElement("div");
+    tmp.style.position = "fixed";
+    tmp.style.top = "env(safe-area-inset-top, 0px)";
+    tmp.style.visibility = "hidden";
+    document.body.appendChild(tmp);
+    const top = tmp.getBoundingClientRect().top;
+    document.body.removeChild(tmp);
+    return top;
+  }, []);
+
+  const topPadding = padding + safeAreaTop;
   const { selectionTop, selectionBottom } = selection.position;
 
   // X: centered on selection, clamped to viewport
@@ -90,7 +107,7 @@ export function MobileSelectionPopover({
   // Y: prefer above selection, fallback below
   const yAbove = selectionTop - totalH - gap;
   const yBelow = selectionBottom + gap;
-  const aboveValid = yAbove >= padding;
+  const aboveValid = yAbove >= topPadding;
   const belowValid = yBelow + totalH + padding <= window.innerHeight;
 
   let y: number;
@@ -100,9 +117,9 @@ export function MobileSelectionPopover({
     y = yBelow;
   } else {
     // Neither fits perfectly — pick whichever has more space
-    const spaceAbove = selectionTop;
+    const spaceAbove = selectionTop - safeAreaTop;
     const spaceBelow = window.innerHeight - selectionBottom;
-    y = spaceAbove > spaceBelow ? Math.max(padding, yAbove) : yBelow;
+    y = spaceAbove > spaceBelow ? Math.max(topPadding, yAbove) : yBelow;
   }
 
   const style: React.CSSProperties = {
@@ -160,7 +177,7 @@ export function MobileSelectionPopover({
 
           {/* Note */}
           <IconButton
-            icon={<StickyNote className="h-[18px] w-[18px]" />}
+            icon={<NotebookPen className="h-[18px] w-[18px]" />}
             tooltip={t("reader.note")}
             onClick={onNote}
           />

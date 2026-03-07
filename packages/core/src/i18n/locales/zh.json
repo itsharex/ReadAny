@@ -169,7 +169,10 @@
     "aiAssistantDesc": "分析内容、回答问题，帮助你更好地理解书籍。",
     "deepThinking": "深度思考",
     "deepThinkingHint": "启用更深入的分析和推理过程，响应时间可能更长",
-    "currentModel": "模型"
+    "currentModel": "模型",
+    "notConfigured": "请先配置 AI 模型",
+    "notConfiguredDesc": "需要配置 API 密钥和选择模型后才能使用 AI 功能。",
+    "goSettings": "去配置"
   },
   "reader": {
     "untitled": "无标题",
@@ -528,7 +531,10 @@
     "complete": "向量化完成！",
     "progress": "{{status}}... {{processed}}/{{total}} 分块",
     "description": "将书籍拆分为分块并生成嵌入向量，用于语义搜索。",
-    "start": "开始向量化"
+    "start": "开始向量化",
+    "notConfigured": "请先配置向量模型",
+    "notConfiguredDesc": "需要下载内置模型或配置远程向量模型后才能进行向量化。",
+    "goSettings": "去配置"
   },
   "tts": {
     "title": "语音朗读",

@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 import {
-  StickyNote,
+  NotebookPen,
   Highlighter,
   BookOpen,
   Trash2,
@@ -201,7 +201,7 @@ export function NotesPage() {
 
         <div className="flex flex-1 flex-col items-center justify-center text-center px-6">
           <div className="mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-muted">
-            <StickyNote className="h-10 w-10 text-muted-foreground" />
+            <NotebookPen className="h-10 w-10 text-muted-foreground" />
           </div>
           <h2 className="mb-2 text-lg font-semibold">{t("notes.empty")}</h2>
           <p className="text-sm text-muted-foreground max-w-[260px]">

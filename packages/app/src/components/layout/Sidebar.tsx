@@ -1,6 +1,6 @@
 import { useAppStore } from "@/stores/app-store";
 import { useLibraryStore } from "@/stores/library-store";
-import { BarChart3, BookOpen, ChevronDown, ChevronRight, Hash, MessageSquare, MoreHorizontal, Pencil, Plus, Puzzle, Search, Settings, StickyNote, Trash2, X } from "lucide-react";
+import { BarChart3, BookOpen, ChevronDown, ChevronRight, Hash, MessageSquare, MoreHorizontal, NotebookPen, Pencil, Plus, Puzzle, Search, Settings, Trash2, X } from "lucide-react";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -14,7 +14,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { tabType: "home", labelKey: "sidebar.library", icon: BookOpen, expandable: true },
   { tabType: "chat", labelKey: "sidebar.chat", icon: MessageSquare },
-  { tabType: "notes", labelKey: "sidebar.notes", icon: StickyNote },
+  { tabType: "notes", labelKey: "sidebar.notes", icon: NotebookPen },
   { tabType: "skills", labelKey: "sidebar.skills", icon: Puzzle },
 ];
 

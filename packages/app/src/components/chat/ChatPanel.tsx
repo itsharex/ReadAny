@@ -4,10 +4,12 @@
 import { useStreamingChat } from "@/hooks/use-streaming-chat";
 import { convertToMessageV2, mergeMessagesWithStreaming } from "@readany/core/utils/chat-utils";
 import { useChatStore } from "@/stores/chat-store";
+import { useSettingsStore } from "@/stores/settings-store";
 import type { Book, CitationPart } from "@readany/core/types";
 import { Brain, History, MessageCirclePlus, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { ConfigGuideDialog, type ConfigGuideType } from "@/components/shared/ConfigGuideDialog";
 import { ChatInput, type AttachedQuote } from "./ChatInput";
 import { MessageList } from "./MessageList";
 import { ModelSelector } from "./ModelSelector";
@@ -69,6 +71,7 @@ export function ChatPanel({ book, onNavigateToCitation }: ChatPanelProps) {
 
   const [showThreadList, setShowThreadList] = useState(false);
   const [attachedQuotes, setAttachedQuotes] = useState<AttachedQuote[]>([]);
+  const [configGuide, setConfigGuide] = useState<ConfigGuideType>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
 
   // Close popover on outside click
@@ -85,8 +88,14 @@ export function ChatPanel({ book, onNavigateToCitation }: ChatPanelProps) {
 
   const handleSend = useCallback(
     (content: string, deepThinking: boolean = false, quotes?: AttachedQuote[]) => {
+      const { aiConfig } = useSettingsStore.getState();
+      const endpoint = aiConfig.endpoints.find((e) => e.id === aiConfig.activeEndpointId);
+      if (!endpoint?.apiKey || !aiConfig.activeModel) {
+        setConfigGuide("ai");
+        return;
+      }
+
       sendMessage(content, bookId, deepThinking, quotes);
-      // Clear quotes after sending
       setAttachedQuotes([]);
     },
     [sendMessage, bookId],
@@ -315,6 +324,8 @@ export function ChatPanel({ book, onNavigateToCitation }: ChatPanelProps) {
           onRemoveQuote={handleRemoveQuote}
         />
       </div>
+
+      <ConfigGuideDialog type={configGuide} onClose={() => setConfigGuide(null)} />
     </div>
   );
 }

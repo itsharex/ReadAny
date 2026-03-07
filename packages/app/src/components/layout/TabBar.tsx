@@ -6,13 +6,13 @@ import { type Tab, useAppStore } from "@/stores/app-store";
 import { useReaderStore } from "@/stores/reader-store";
 import { useLibraryStore } from "@/stores/library-store";
 import { evictBlobCache } from "@/components/reader/ReaderView";
-import { BookOpen, Home, MessageSquare, StickyNote, X } from "lucide-react";
+import { BookOpen, Home, MessageSquare, NotebookPen, X } from "lucide-react";
 
 const TAB_ICONS: Record<string, React.ElementType> = {
   home: Home,
   reader: BookOpen,
   chat: MessageSquare,
-  notes: StickyNote,
+  notes: NotebookPen,
 };
 
 export function TabBar() {

@@ -7,7 +7,12 @@ export function MobileLayout() {
   const isKeyboardOpen = keyboardHeight > 0;
 
   return (
-    <div className="flex h-full flex-col bg-background">
+    <div
+      className="flex h-full flex-col bg-background"
+      style={{
+        paddingTop: "env(safe-area-inset-top, 0px)",
+      }}
+    >
       {/* Main content area */}
       <main className="flex-1 overflow-y-auto overflow-x-hidden min-h-0">
         <Outlet />

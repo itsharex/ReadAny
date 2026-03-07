@@ -4,11 +4,13 @@
  */
 import { useStreamingChat } from "@readany/core/hooks";
 import { convertToMessageV2, mergeMessagesWithStreaming } from "@readany/core/utils/chat-utils";
-import { useChatStore } from "@readany/core/stores";
+import { useChatStore, useSettingsStore } from "@readany/core/stores";
 import type { AttachedQuote, Book, CitationPart } from "@readany/core/types";
 import { Brain, History, MessageCirclePlus, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useKeyboardHeight } from "@/lib/use-keyboard-height";
+import { ConfigGuideDialog, type ConfigGuideType } from "@/components/shared/ConfigGuideDialog";
 import { MobileChatInput } from "./MobileChatInput";
 import { MessageList } from "./MessageList";
 import { MobileModelSelector } from "./MobileModelSelector";
@@ -41,6 +43,7 @@ export function MobileChatPanel({
 }: MobileChatPanelProps) {
   const { t } = useTranslation();
   const bookId = book?.id;
+  const keyboardHeight = useKeyboardHeight();
 
   const {
     threads,
@@ -65,6 +68,7 @@ export function MobileChatPanel({
 
   const [showThreadList, setShowThreadList] = useState(false);
   const [attachedQuotes, setAttachedQuotes] = useState<AttachedQuote[]>([]);
+  const [configGuide, setConfigGuide] = useState<ConfigGuideType>(null);
   const threadListRef = useRef<HTMLDivElement>(null);
 
   // Close thread list on outside tap
@@ -127,6 +131,13 @@ export function MobileChatPanel({
 
   const handleSend = useCallback(
     (content: string, deepThinking: boolean = false, quotes?: AttachedQuote[]) => {
+      const { aiConfig } = useSettingsStore.getState();
+      const endpoint = aiConfig.endpoints.find((e) => e.id === aiConfig.activeEndpointId);
+      if (!endpoint?.apiKey || !aiConfig.activeModel) {
+        setConfigGuide("ai");
+        return;
+      }
+
       sendMessage(content, bookId, deepThinking, quotes);
       setAttachedQuotes([]);
     },
@@ -156,7 +167,10 @@ export function MobileChatPanel({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-background animate-in slide-in-from-bottom duration-300">
+    <div
+      className="fixed inset-0 z-50 flex flex-col bg-background animate-in slide-in-from-bottom duration-300"
+      style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
+    >
       {/* Header */}
       <div className="relative flex h-12 shrink-0 items-center justify-between border-b border-border/50 px-3">
         <div className="flex items-center gap-2">
@@ -296,8 +310,12 @@ export function MobileChatPanel({
 
       {/* Input */}
       <div
-        className="shrink-0 px-3 pb-2 pt-1"
-        style={{ paddingBottom: "max(8px, env(safe-area-inset-bottom))" }}
+        className="shrink-0 px-3 pt-1"
+        style={{
+          paddingBottom: keyboardHeight > 0
+            ? `${keyboardHeight + 8}px`
+            : "max(8px, env(safe-area-inset-bottom))",
+        }}
       >
         <MobileChatInput
           onSend={handleSend}
@@ -307,6 +325,8 @@ export function MobileChatPanel({
           onRemoveQuote={handleRemoveQuote}
         />
       </div>
+
+      <ConfigGuideDialog type={configGuide} onClose={() => setConfigGuide(null)} />
     </div>
   );
 }

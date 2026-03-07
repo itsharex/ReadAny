@@ -4,7 +4,7 @@
  */
 import { useStreamingChat } from "@readany/core/hooks";
 import { convertToMessageV2, mergeMessagesWithStreaming } from "@readany/core/utils/chat-utils";
-import { useChatReaderStore, useChatStore } from "@readany/core/stores";
+import { useChatReaderStore, useChatStore, useSettingsStore } from "@readany/core/stores";
 import type { CitationPart } from "@readany/core/types";
 import {
   BookOpen,
@@ -20,6 +20,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useKeyboardHeight } from "@/lib/use-keyboard-height";
+import { ConfigGuideDialog, type ConfigGuideType } from "@/components/shared/ConfigGuideDialog";
 import { MobileChatInput } from "./MobileChatInput";
 import { MessageList } from "./MessageList";
 import { MobileModelSelector } from "./MobileModelSelector";
@@ -191,6 +192,7 @@ export function ChatPage() {
     });
 
   const [showThreads, setShowThreads] = useState(false);
+  const [configGuide, setConfigGuide] = useState<ConfigGuideType>(null);
 
   useEffect(() => {
     if (!initialized) loadAllThreads();
@@ -201,6 +203,13 @@ export function ChatPage() {
 
   const handleSend = useCallback(
     async (content: string, deepThinking: boolean = false) => {
+      const { aiConfig } = useSettingsStore.getState();
+      const endpoint = aiConfig.endpoints.find((e) => e.id === aiConfig.activeEndpointId);
+      if (!endpoint?.apiKey || !aiConfig.activeModel) {
+        setConfigGuide("ai");
+        return;
+      }
+
       if (!activeThreadId) {
         await createThread(undefined, content.slice(0, 50));
         setTimeout(() => sendMessage(content, contextBookId || undefined, deepThinking), 50);
@@ -278,16 +287,18 @@ export function ChatPage() {
 
         {/* Input */}
         <div
-          className="shrink-0 px-3 pb-2 pt-1"
+          className="shrink-0 px-3 pt-1"
           style={{
             paddingBottom: keyboardHeight > 0
               ? `${keyboardHeight + 8}px`
-              : "max(8px, env(safe-area-inset-bottom))",
+              : "4px",
           }}
         >
           <MobileChatInput onSend={handleSend} disabled={isStreaming} />
         </div>
       </div>
+
+      <ConfigGuideDialog type={configGuide} onClose={() => setConfigGuide(null)} />
     </div>
   );
 }

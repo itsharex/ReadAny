@@ -6,7 +6,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import {
   X,
-  StickyNote,
+  NotebookPen,
   Highlighter,
   Save,
   Trash2,
@@ -204,18 +204,12 @@ export function MobileNotebookPanel({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50">
-      <div
-        className="absolute inset-0 bg-black/20 transition-opacity duration-300"
-        onClick={onClose}
-      />
-      <div
-        className={cn(
-          "absolute right-0 top-0 h-full w-full max-w-[340px] transform bg-background shadow-xl transition-transform duration-300 ease-out flex flex-col",
-          open ? "translate-x-0" : "translate-x-full",
-        )}
-        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
-      >
+    <div
+      className="fixed inset-0 z-50 flex flex-col bg-background animate-in slide-in-from-bottom duration-300"
+      style={{
+        paddingTop: "env(safe-area-inset-top, 0px)",
+      }}
+    >
         <div className="flex h-11 shrink-0 items-center justify-between border-b border-border/40 px-3">
           <span className="text-sm font-medium text-foreground">
             {t("notebook.title")}
@@ -327,7 +321,7 @@ export function MobileNotebookPanel({
                 ) : (
                   <ChevronRight className="h-4 w-4 text-muted-foreground" />
                 )}
-                <StickyNote className="h-4 w-4 text-muted-foreground" />
+                <NotebookPen className="h-4 w-4 text-muted-foreground" />
                 <span className="text-sm font-medium">
                   {t("notebook.notesSection")}
                 </span>
@@ -390,7 +384,7 @@ export function MobileNotebookPanel({
 
           {bookHighlights.length === 0 && !isEditing && (
             <div className="flex h-48 flex-col items-center justify-center p-6 text-center">
-              <StickyNote className="mb-3 h-10 w-10 text-muted-foreground/50" />
+              <NotebookPen className="mb-3 h-10 w-10 text-muted-foreground/50" />
               <p className="text-sm text-muted-foreground">
                 {t("notebook.empty")}
               </p>
@@ -400,8 +394,10 @@ export function MobileNotebookPanel({
             </div>
           )}
         </div>
+
+        {/* Bottom safe area */}
+        <div style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }} />
       </div>
-    </div>
   );
 }
 
@@ -518,7 +514,7 @@ function HighlightItem({
           }}
           title={t("notebook.addNoteBtn")}
         >
-          <StickyNote className="h-3.5 w-3.5" />
+          <NotebookPen className="h-3.5 w-3.5" />
         </button>
         <button
           type="button"

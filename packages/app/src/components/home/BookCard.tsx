@@ -9,6 +9,7 @@ import type { Book, VectorizeProgress } from "@readany/core/types";
 import { Check, ChevronRight, Database, Hash, Loader2, MoreVertical, Plus, Trash2 } from "lucide-react";
 import { memo, useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { ConfigGuideDialog, type ConfigGuideType } from "@/components/shared/ConfigGuideDialog";
 
 interface BookCardProps {
   book: Book;
@@ -30,6 +31,7 @@ export const BookCard = memo(function BookCard({ book }: BookCardProps) {
   const [imageError, setImageError] = useState(false);
   const [vectorizing, setVectorizing] = useState(false);
   const [vectorProgress, setVectorProgress] = useState<VectorizeProgress | null>(null);
+  const [configGuide, setConfigGuide] = useState<ConfigGuideType>(null);
   const coverRef = useRef<HTMLDivElement>(null);
   const menuBtnRef = useRef<HTMLButtonElement>(null);
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
@@ -55,6 +57,11 @@ export const BookCard = memo(function BookCard({ book }: BookCardProps) {
       setShowMenu(false);
       setMenuPos(null);
       if (vectorizing) return;
+
+      if (!hasVectorCapability()) {
+        setConfigGuide("vectorModel");
+        return;
+      }
 
       setVectorizing(true);
       try {
@@ -206,11 +213,11 @@ export const BookCard = memo(function BookCard({ book }: BookCardProps) {
             <button
               type="button"
               className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors ${
-                !hasVectorCapability() || vectorizing
+                vectorizing
                   ? "text-muted-foreground opacity-50 cursor-not-allowed"
                   : "text-foreground hover:bg-muted"
               }`}
-              disabled={!hasVectorCapability() || vectorizing}
+              disabled={vectorizing}
               onClick={handleVectorize}
             >
               {book.isVectorized ? (
@@ -340,6 +347,8 @@ export const BookCard = memo(function BookCard({ book }: BookCardProps) {
           </span>
         </div>
       </div>
+
+      <ConfigGuideDialog type={configGuide} onClose={() => setConfigGuide(null)} />
     </div>
   );
 });

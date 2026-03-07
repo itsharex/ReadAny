@@ -2,7 +2,7 @@
  * SelectionPopover — popover on text selection with highlight colors
  */
 import { useState } from "react";
-import { Check, Copy, Highlighter, Languages, Sparkles, StickyNote, Trash2, Volume2 } from "lucide-react";
+import { Check, Copy, Highlighter, Languages, NotebookPen, Sparkles, Trash2, Volume2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { cn } from "@readany/core/utils";
 import type { HighlightColor } from "@readany/core/types";
@@ -72,7 +72,7 @@ export function SelectionPopover({
       isHighlight: true,
       disabled: isPdf,
     },
-    { icon: StickyNote, label: t("reader.note"), onClick: onNote, disabled: isPdf },
+    { icon: NotebookPen, label: t("reader.note"), onClick: onNote, disabled: isPdf },
     { icon: Copy, label: t("common.copy"), onClick: onCopy },
     { icon: Languages, label: t("reader.translate"), onClick: onTranslate },
     { icon: Sparkles, label: t("reader.askAI"), onClick: onAskAI },

@@ -669,7 +669,13 @@ export function MobileReaderView() {
   }
 
   return (
-    <div className="relative flex h-full flex-col bg-background">
+    <div
+      className="relative flex h-full flex-col bg-background"
+      style={{
+        paddingTop: "env(safe-area-inset-top, 0px)",
+        paddingBottom: "env(safe-area-inset-bottom, 0px)",
+      }}
+    >
       {/* Toolbar */}
       <MobileReaderToolbar
         visible={controlsVisible && !showSearch}

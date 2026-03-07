@@ -171,7 +171,10 @@
     "aiAssistantDesc": "Analyze content, answer questions, and help you understand your books better.",
     "deepThinking": "Deep Thinking",
     "deepThinkingHint": "Enable deeper analysis and reasoning, response time may be longer",
-    "currentModel": "Model"
+    "currentModel": "Model",
+    "notConfigured": "Please configure an AI model first",
+    "notConfiguredDesc": "You need to set up an API key and select a model before using AI features.",
+    "goSettings": "Configure"
   },
   "reader": {
     "untitled": "Untitled",
@@ -534,7 +537,10 @@
     "complete": "Vectorization complete!",
     "progress": "{{status}}... {{processed}}/{{total}} chunks",
     "description": "This will split the book into chunks and generate embeddings for semantic search.",
-    "start": "Start Vectorization"
+    "start": "Start Vectorization",
+    "notConfigured": "Please configure a vector model first",
+    "notConfiguredDesc": "You need to download a built-in model or configure a remote vector model before vectorizing.",
+    "goSettings": "Configure"
   },
   "tts": {
     "title": "Text to Speech",

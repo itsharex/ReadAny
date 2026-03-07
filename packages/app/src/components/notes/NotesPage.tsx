@@ -7,7 +7,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import {
-  StickyNote,
+  NotebookPen,
   Highlighter,
   BookOpen,
   Trash2,
@@ -248,7 +248,7 @@ export function NotesPage() {
   if (bookNotebooks.length === 0) {
     return (
       <div className="flex h-full flex-col items-center justify-center p-6 text-center">
-        <StickyNote className="mb-3 h-12 w-12 text-muted-foreground/50" />
+        <NotebookPen className="mb-3 h-12 w-12 text-muted-foreground/50" />
         <p className="text-sm font-medium text-muted-foreground">{t("notes.empty")}</p>
         <p className="mt-1 text-xs text-muted-foreground/70">{t("notes.emptyHint")}</p>
       </div>
