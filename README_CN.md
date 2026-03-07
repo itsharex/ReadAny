@@ -5,7 +5,7 @@
 <h1 align="center">ReadAny</h1>
 
 <p align="center">
-  <strong>不只是读，更懂你读的书</strong>
+  <strong>阅读无界，理解无限</strong>
 </p>
 
 <p align="center">
