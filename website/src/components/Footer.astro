@@ -6,26 +6,17 @@ interface Props {
 const { t } = Astro.props
 ---
 
-<footer class="border-t border-border bg-muted/30 py-8">
-  <div class="mx-auto max-w-6xl px-4">
+<footer class="border-t border-border/50 py-8">
+  <div class="mx-auto max-w-5xl px-6">
     <div class="flex flex-col items-center justify-between gap-4 sm:flex-row">
       <div class="flex items-center gap-2">
-        <img src="/logo.svg" alt="ReadAny" class="h-6 w-6" />
-        <span class="font-semibold">ReadAny</span>
+        <img src="/logo.svg" alt="ReadAny" class="h-5 w-5" />
+        <span class="text-sm font-medium">ReadAny</span>
       </div>
       
       <p class="text-sm text-muted-foreground">
-        {t('footer.made')}
+        {t('footer.copyright')}
       </p>
-      
-      <a
-        href="https://github.com/codedogQBY/ReadAny/blob/main/LICENSE"
-        target="_blank"
-        rel="noopener noreferrer"
-        class="text-sm text-muted-foreground hover:text-foreground"
-      >
-        {t('footer.license')}
-      </a>
     </div>
   </div>
 </footer>

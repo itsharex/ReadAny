@@ -1,54 +1,52 @@
 ---
-import { languages } from '../i18n/ui'
+import { languages, defaultLang } from '../i18n/ui'
 
 interface Props {
-  lang: keyof typeof languages
+  lang?: keyof typeof languages
   t: (key: string) => string
 }
 
-const { lang, t } = Astro.props
+const { lang = defaultLang, t } = Astro.props
+
+const navItems = [
+  { href: '#features', label: t('nav.features') },
+  { href: '#download', label: t('nav.download') },
+  { href: '#community', label: t('nav.community') },
+]
 ---
 
-<header class="fixed top-0 left-0 right-0 z-50 border-b border-border bg-background/80 backdrop-blur-sm">
-  <nav class="mx-auto flex h-16 max-w-6xl items-center justify-between px-4">
+<!-- Vercel-style: Clean, minimal header -->
+<header class="fixed top-0 left-0 right-0 z-50 border-b border-border/50 bg-background/80 backdrop-blur-sm">
+  <nav class="mx-auto flex h-14 max-w-5xl items-center justify-between px-6">
     <a href={`/${lang === 'en' ? '' : lang}`} class="flex items-center gap-2">
-      <img src="/logo.svg" alt="ReadAny" class="h-8 w-8" />
-      <span class="text-xl font-semibold">ReadAny</span>
+      <img src="/logo.svg" alt="ReadAny" class="h-5 w-5" />
+      <span class="font-medium">ReadAny</span>
     </a>
     
-    <div class="hidden items-center gap-6 md:flex">
-      <a href="#features" class="text-muted-foreground transition-colors hover:text-foreground">
-        {t('nav.features')}
-      </a>
-      <a href="#download" class="text-muted-foreground transition-colors hover:text-foreground">
-        {t('nav.download')}
-      </a>
-      <a href="#community" class="text-muted-foreground transition-colors hover:text-foreground">
-        {t('nav.community')}
-      </a>
-      <a
-        href="https://github.com/codedogQBY/ReadAny"
-        target="_blank"
-        rel="noopener noreferrer"
-        class="text-muted-foreground transition-colors hover:text-foreground"
-      >
-        {t('nav.github')}
-      </a>
-    </div>
-
-    <div class="flex items-center gap-2">
-      {Object.entries(languages).map(([code, name]) => (
-        <a
-          href={code === 'en' ? '/' : `/${code}/`}
-          class={`rounded-md px-2 py-1 text-sm transition-colors ${
-            lang === code
-              ? 'bg-primary text-primary-foreground'
-              : 'text-muted-foreground hover:text-foreground'
-          }`}
+    <div class="flex items-center gap-6">
+      {navItems.map((item) => (
+        <a 
+          href={item.href} 
+          class="text-sm text-muted-foreground transition-colors hover:text-foreground hidden sm:block"
         >
-          {name}
+          {item.label}
         </a>
       ))}
+      
+      <div class="flex items-center gap-2">
+        {Object.entries(languages).map(([code, name]) => (
+          <a
+            href={code === 'en' ? '/' : `/${code}/`}
+            class={`text-sm transition-colors ${
+              lang === code
+                ? 'text-foreground'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            {name}
+          </a>
+        ))}
+      </div>
     </div>
   </nav>
 </header>
