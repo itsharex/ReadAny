@@ -52,7 +52,8 @@ function processCitationText(
         const match = part.match(/\[(\d+)\]/);
         if (match) {
           const num = parseInt(match[1]);
-          const citation = citations[num - 1];
+          // Look up by explicit citationIndex first, fall back to array position
+          const citation = citations.find(c => c.citationIndex === num) ?? citations[num - 1];
           if (citation) {
             return (
               <button

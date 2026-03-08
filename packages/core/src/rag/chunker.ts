@@ -43,6 +43,9 @@ export function chunkContent(
   let currentTokens = 0;
   let startCfi = "";
   let endCfi = "";
+  // Track which segment index each entry in currentTexts corresponds to,
+  // so overlap CFI lookups are accurate even when empty segments are skipped.
+  let segmentIndices: number[] = [];
 
   for (let i = 0; i < segments.length; i++) {
     const seg = segments[i];
@@ -63,13 +66,16 @@ export function chunkContent(
       ));
 
       const overlapTokens = Math.floor(currentTokens * config.overlapRatio);
-      const overlapResult = getOverlapSegments(currentTexts, segments, i, overlapTokens);
+      const overlapResult = getOverlapSegments(currentTexts, segments, i, overlapTokens, segmentIndices);
       currentTexts = overlapResult.texts;
       currentTokens = overlapResult.tokens;
       startCfi = overlapResult.startCfi;
+      // Rebuild segmentIndices for the overlap portion
+      segmentIndices = segmentIndices.slice(segmentIndices.length - currentTexts.length);
       endCfi = seg.cfi;
       currentTexts.push(segText);
       currentTokens += segTokens;
+      segmentIndices.push(i);
     } else {
       if (currentTexts.length === 0) {
         startCfi = seg.cfi;
@@ -77,6 +83,7 @@ export function chunkContent(
       currentTexts.push(segText);
       currentTokens += segTokens;
       endCfi = seg.cfi;
+      segmentIndices.push(i);
     }
   }
 
@@ -119,23 +126,27 @@ function createChunkFromSegments(
 function getOverlapSegments(
   currentTexts: string[],
   segments: TextSegment[],
-  currentIndex: number,
+  _currentIndex: number,
   targetTokens: number,
+  segmentIndices: number[],
 ): { texts: string[]; tokens: number; startCfi: string } {
   const targetChars = targetTokens * 4;
   let charCount = 0;
   const overlapTexts: string[] = [];
+  let overlapStartIdx = segmentIndices.length;
 
   for (let i = currentTexts.length - 1; i >= 0; i--) {
     const text = currentTexts[i];
     charCount += text.length;
     overlapTexts.unshift(text);
+    overlapStartIdx = i;
     if (charCount >= targetChars) break;
   }
 
-  const segmentOffset = currentIndex - overlapTexts.length;
-  const startCfi = segmentOffset >= 0 && segments[segmentOffset]
-    ? segments[segmentOffset].cfi
+  // Use the tracked segment indices to get the correct CFI
+  const actualSegIdx = segmentIndices[overlapStartIdx];
+  const startCfi = actualSegIdx !== undefined && segments[actualSegIdx]
+    ? segments[actualSegIdx].cfi
     : (segments[0]?.cfi || "");
 
   return {

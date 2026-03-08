@@ -423,7 +423,8 @@ export function useStreamingChat(options?: StreamingChatOptions) {
               citation.chapterTitle,
               citation.chapterIndex,
               citation.cfi,
-              citation.text
+              citation.text,
+              citation.citationIndex
             );
             currentParts.push(citationPart);
             setState((prev) => ({

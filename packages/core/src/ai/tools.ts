@@ -464,8 +464,13 @@ function createAddCitationTool(bookId: string): ToolDefinition {
   return {
     name: "addCitation",
     description:
-      "CRITICAL: Register a citation for specific content from the book. You MUST call this tool whenever you reference factual information from the book in your response. This creates a verifiable citation that users can click to jump to the exact location. Returns citation metadata that you should reference using [1], [2], [3] format in your response text.",
+      "CRITICAL: Register a citation for specific content from the book. You MUST call this tool whenever you reference factual information from the book in your response. This creates a verifiable citation that users can click to jump to the exact location. Returns citation metadata that you should reference using [1], [2], [3] format in your response text. The citationIndex parameter determines the number — pass 1 for [1], 2 for [2], etc.",
     parameters: {
+      citationIndex: {
+        type: "number",
+        description: "The citation number you will use in your response text. If you write [1] in your response, pass 1 here. If you write [2], pass 2. This MUST match the [N] marker in your response text.",
+        required: true,
+      },
       chapterTitle: {
         type: "string",
         description: "The chapter title where this content is from (get this from ragSearch or other tool results)",
@@ -493,6 +498,7 @@ function createAddCitationTool(bookId: string): ToolDefinition {
       },
     },
     execute: async (args) => {
+      const citationIndex = args.citationIndex as number;
       const chapterTitle = args.chapterTitle as string;
       const chapterIndex = args.chapterIndex as number;
       const cfi = (args.cfi as string) || "";
@@ -507,8 +513,9 @@ function createAddCitationTool(bookId: string): ToolDefinition {
         chapterIndex,
         cfi,
         text: quotedText,
+        citationIndex,
         timestamp: Date.now(),
-        message: `Citation registered: "${chapterTitle}" - Use this citation in your response with [N] format where N is the citation number.`,
+        message: `Citation [${citationIndex}] registered: "${chapterTitle}" - Reference this in your response as [${citationIndex}].`,
       };
     },
   };

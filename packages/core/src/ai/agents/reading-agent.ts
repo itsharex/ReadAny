@@ -36,6 +36,7 @@ export type AgentStreamEvent =
         chapterIndex: number;
         cfi: string;
         text: string;
+        citationIndex?: number;
       };
     }
   | { type: "error"; error: string };
@@ -353,6 +354,7 @@ export async function* streamReadingAgent(
                 chapterIndex: citationData.chapterIndex as number,
                 cfi: citationData.cfi as string,
                 text: citationData.text as string,
+                citationIndex: citationData.citationIndex as number | undefined,
               },
             };
           }

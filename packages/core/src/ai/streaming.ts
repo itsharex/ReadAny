@@ -38,6 +38,7 @@ export interface StreamingOptions {
     chapterIndex: number;
     cfi: string;
     text: string;
+    citationIndex?: number;
   }) => void;
 }
 

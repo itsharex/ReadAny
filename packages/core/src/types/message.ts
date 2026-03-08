@@ -42,6 +42,8 @@ export interface CitationPart extends BasePart {
   chapterIndex: number;
   cfi: string;
   text: string;
+  /** Explicit citation number from AI — [1] maps to citationIndex=1, etc. */
+  citationIndex?: number;
 }
 
 /** A user-attached quote from selected text (used in user messages) */
@@ -136,7 +138,8 @@ export function createCitationPart(
   chapterTitle: string,
   chapterIndex: number,
   cfi: string,
-  text: string
+  text: string,
+  citationIndex?: number
 ): CitationPart {
   return {
     id: `citation-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -146,6 +149,7 @@ export function createCitationPart(
     chapterIndex,
     cfi,
     text,
+    citationIndex,
     status: "completed",
     createdAt: Date.now(),
   };
