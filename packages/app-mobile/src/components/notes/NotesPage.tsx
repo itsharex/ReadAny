@@ -5,6 +5,7 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
+import { useCoverUrl } from "@/lib/use-cover-url";
 import {
   NotebookPen,
   Highlighter,
@@ -100,6 +101,8 @@ export function NotesPage() {
     if (!selectedBookId) return null;
     return bookNotebooks.find((b) => b.bookId === selectedBookId) || null;
   }, [selectedBookId, bookNotebooks]);
+
+  const selectedBookCover = useCoverUrl(selectedBook?.coverUrl);
 
   const { notes, highlightsOnly } = useMemo(() => {
     if (!selectedBook) return { notes: [], highlightsOnly: [] };
@@ -230,9 +233,9 @@ export function NotesPage() {
                 <ChevronLeft className="h-5 w-5" />
               </button>
 
-              {selectedBook?.coverUrl ? (
+              {selectedBookCover ? (
                 <img
-                  src={selectedBook.coverUrl}
+                  src={selectedBookCover}
                   alt=""
                   className="h-10 w-7 shrink-0 rounded object-cover shadow-sm"
                 />
@@ -423,15 +426,16 @@ interface NotebookCardProps {
 }
 
 function NotebookCard({ book, onClick }: NotebookCardProps) {
+  const resolvedCover = useCoverUrl(book.coverUrl);
   return (
     <button
       type="button"
       className="flex w-full items-start gap-3 rounded-xl border border-border bg-card p-3 text-left active:bg-muted/50 transition-colors"
       onClick={onClick}
     >
-      {book.coverUrl ? (
+      {resolvedCover ? (
         <img
-          src={book.coverUrl}
+          src={resolvedCover}
           alt=""
           className="h-16 w-11 shrink-0 rounded object-cover shadow-sm"
         />

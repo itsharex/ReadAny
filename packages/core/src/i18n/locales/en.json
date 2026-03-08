@@ -53,6 +53,7 @@
     "daysUnit": "days",
     "avgDaily": "Daily Avg",
     "readingActivity": "Reading Activity",
+    "viewDetails": "View Details",
     "version": "ReadAny Mobile v{{version}}"
   },
   "skills": {

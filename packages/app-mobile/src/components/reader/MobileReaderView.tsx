@@ -547,6 +547,7 @@ export function MobileReaderView() {
           y: offsetY + minTop - 8,
           selectionTop: offsetY + minTop,
           selectionBottom: offsetY + maxBottom,
+          direction: "forward",
         },
         annotated: true,
         annotationId: highlight.id,

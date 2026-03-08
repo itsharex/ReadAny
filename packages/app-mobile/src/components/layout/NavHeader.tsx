@@ -33,11 +33,14 @@ export function NavHeader({
   return (
     <header
       className={cn(
-        "relative flex h-11 shrink-0 items-center px-4",
+        "relative flex shrink-0 items-center px-4",
         !transparent && "border-b border-border bg-background",
         className,
       )}
-      style={{ paddingTop: "var(--safe-area-top)" }}
+      style={{
+        paddingTop: "var(--safe-area-top, 0px)",
+        height: "calc(2.75rem + var(--safe-area-top, 0px))",
+      }}
     >
       {/* Left: back button */}
       {showBack && (
@@ -52,7 +55,10 @@ export function NavHeader({
 
       {/* Center: title */}
       {title && (
-        <h1 className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-base font-semibold truncate max-w-[60%]">
+        <h1
+          className="absolute left-1/2 -translate-x-1/2 text-base font-semibold truncate max-w-[60%]"
+          style={{ top: "calc(var(--safe-area-top, 0px) + 1.375rem)", transform: "translate(-50%, -50%)" }}
+        >
           {title}
         </h1>
       )}

@@ -22,7 +22,7 @@ export interface BookSelection {
   annotated?: boolean;
   annotationId?: string;
   color?: string;
-  position: { x: number; y: number; selectionTop: number; selectionBottom: number };
+  position: { x: number; y: number; selectionTop: number; selectionBottom: number; direction?: "forward" | "backward" };
 }
 
 interface MobileSelectionPopoverProps {
@@ -96,7 +96,7 @@ export function MobileSelectionPopover({
   }, []);
 
   const topPadding = padding + safeAreaTop;
-  const { selectionTop, selectionBottom } = selection.position;
+  const { selectionTop, selectionBottom, direction } = selection.position;
 
   // X: centered on selection, clamped to viewport
   const x = Math.max(padding, Math.min(
@@ -104,29 +104,39 @@ export function MobileSelectionPopover({
     window.innerWidth - popoverWidth - padding,
   ));
 
-  // Y: prefer above selection, fallback below
+  // Y positioning: direction-aware with viewport clamp
   const yAbove = selectionTop - totalH - gap;
   const yBelow = selectionBottom + gap;
   const aboveValid = yAbove >= topPadding;
   const belowValid = yBelow + totalH + padding <= window.innerHeight;
 
   let y: number;
-  if (aboveValid) {
-    y = yAbove;
-  } else if (belowValid) {
-    y = yBelow;
+  if (direction === "backward") {
+    // User selected upward — prefer placing above the selection top
+    if (aboveValid) {
+      y = yAbove;
+    } else {
+      // Can't fit above — place at the top of the visible area
+      y = topPadding;
+    }
   } else {
-    // Neither fits perfectly — pick whichever has more space
-    const spaceAbove = selectionTop - safeAreaTop;
-    const spaceBelow = window.innerHeight - selectionBottom;
-    y = spaceAbove > spaceBelow ? Math.max(topPadding, yAbove) : yBelow;
+    // User selected downward (or unknown) — prefer placing below the selection bottom
+    if (belowValid) {
+      y = yBelow;
+    } else {
+      // Can't fit below — place at the bottom of the visible area
+      y = window.innerHeight - totalH - padding;
+    }
   }
+
+  // Final clamp: always keep fully visible within the safe viewport
+  y = Math.max(topPadding, Math.min(y, window.innerHeight - totalH - padding));
 
   const style: React.CSSProperties = {
     position: "fixed",
     left: x,
     top: y,
-    zIndex: 50,
+    zIndex: 9999,
   };
 
   return (
@@ -136,7 +146,7 @@ export function MobileSelectionPopover({
           to expand the selection. Dismissal is handled by the iframe's
           own click/tap handler which clears the selection. */}
 
-      <div style={style} className="z-50 animate-in fade-in zoom-in-95 duration-150">
+      <div style={style} className="animate-in fade-in zoom-in-95 duration-150">
         {/* Color picker row */}
         {showColors && (
           <div className="mb-1.5 flex items-center gap-1.5 rounded-xl bg-popover p-2 shadow-lg border">

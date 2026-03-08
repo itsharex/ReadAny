@@ -71,7 +71,7 @@ export interface SelectionDetail {
   text: string;
   cfi: string;
   range?: Range;
-  position: { x: number; y: number; selectionTop: number; selectionBottom: number };
+  position: { x: number; y: number; selectionTop: number; selectionBottom: number; direction: "forward" | "backward" };
 }
 
 /** Imperative handle exposed to parent */
@@ -392,6 +392,17 @@ export const MobileFoliateViewer = forwardRef<MobileFoliateViewerHandle, MobileF
           if (r.bottom > maxBottom) maxBottom = r.bottom;
         }
 
+        // Determine selection direction: compare anchor (start) vs focus (end)
+        let direction: "forward" | "backward" = "forward";
+        if (sel.anchorNode && sel.focusNode) {
+          const pos = sel.anchorNode.compareDocumentPosition(sel.focusNode);
+          if (pos & Node.DOCUMENT_POSITION_PRECEDING) {
+            direction = "backward";
+          } else if (pos === 0 && sel.focusOffset < sel.anchorOffset) {
+            direction = "backward";
+          }
+        }
+
         // Get CFI from foliate-view
         const view = viewRef.current;
         let cfi = "";
@@ -411,6 +422,7 @@ export const MobileFoliateViewer = forwardRef<MobileFoliateViewerHandle, MobileF
             y: offsetY + minTop - 8,
             selectionTop: offsetY + minTop,
             selectionBottom: offsetY + maxBottom,
+            direction,
           },
         });
       };

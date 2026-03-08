@@ -52,7 +52,8 @@
     "streak": "连续阅读",
     "daysUnit": "天",
     "avgDaily": "日均",
-    "readingActivity": "阅读活动"
+    "readingActivity": "阅读活动",
+    "viewDetails": "查看详情"
   },
   "skills": {
     "title": "技能管理",
