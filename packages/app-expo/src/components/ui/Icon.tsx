@@ -261,6 +261,13 @@ export const HighlighterIcon = icon(() => (
   </>
 ));
 
+export const CopyIcon = icon(() => (
+  <>
+    <Rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
+    <Path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+  </>
+));
+
 export const Trash2Icon = icon(() => (
   <>
     <Path d="M3 6h18" />
@@ -268,6 +275,16 @@ export const Trash2Icon = icon(() => (
     <Path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
     <Line x1="10" x2="10" y1="11" y2="17" />
     <Line x1="14" x2="14" y1="11" y2="17" />
+  </>
+));
+
+export const SparklesIcon = icon(() => (
+  <>
+    <Path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
+    <Path d="M5 3v4" />
+    <Path d="M19 17v4" />
+    <Path d="M3 5h4" />
+    <Path d="M17 19h4" />
   </>
 ));
 
@@ -321,6 +338,10 @@ export const StopCircleIcon = icon(() => (
 
 export const ChevronDownIcon = icon(() => (
   <Path d="m6 9 6 6 6-6" />
+));
+
+export const ChevronUpIcon = icon(() => (
+  <Path d="m18 15-6-6-6 6" />
 ));
 
 export const CheckIcon = icon(() => (
@@ -379,4 +400,18 @@ export const SunIcon = icon(() => (
 
 export const MoonIcon = icon(() => (
   <Path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
+));
+
+export const Undo2Icon = icon(() => (
+  <>
+    <Path d="M9 14 4 9l5-5" />
+    <Path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5v0a5.5 5.5 0 0 1-5.5 5.5H11" />
+  </>
+));
+
+export const Redo2Icon = icon(() => (
+  <>
+    <Path d="m15 14 5-5-5-5" />
+    <Path d="M20 9H9.5A5.5 5.5 0 0 0 4 14.5v0A5.5 5.5 0 0 0 9.5 20H13" />
+  </>
 ));

@@ -229,7 +229,7 @@ export function NotesScreen() {
   // Detail view
   if (selectedBookId && selectedBook) {
     return (
-      <SafeAreaView style={[s.container, { backgroundColor: colors.background }]} edges={["top"]}>
+      <SafeAreaView style={[s.container, { backgroundColor: colors.background }]} edges={["top", "bottom"]}>
         {/* Detail header */}
         <View style={s.detailHeader}>
           <View style={s.detailHeaderTop}>
@@ -384,7 +384,7 @@ export function NotesScreen() {
 
   // Main list view
   return (
-    <SafeAreaView style={[s.container, { backgroundColor: colors.background }]} edges={["top"]}>
+    <SafeAreaView style={[s.container, { backgroundColor: colors.background }]} edges={["top", "bottom"]}>
       <View style={s.header}>
         <View style={s.headerRow}>
           <Text style={s.headerTitle}>{t("notes.title", "笔记")}</Text>

@@ -237,6 +237,25 @@
 
         el.addEventListener('delete-annotation', () => { /* no-op */ });
 
+        el.addEventListener('show-annotation', (e) => {
+          const { value, index, range } = e.detail;
+          if (!value || !range) return;
+          const rect = range.getBoundingClientRect();
+          const contents = view.renderer?.getContents?.() || [];
+          const found = contents.find(c => c.index === index);
+          const iframe = found?.doc?.defaultView?.frameElement;
+          const iframeRect = iframe ? iframe.getBoundingClientRect() : { left: 0, top: 0 };
+          postToRN('show-annotation', {
+            value,
+            position: {
+              x: iframeRect.left + rect.left + rect.width / 2,
+              y: iframeRect.top + rect.top - 8,
+              selectionTop: iframeRect.top + rect.top,
+              selectionBottom: iframeRect.top + rect.bottom,
+            },
+          });
+        });
+
         container.appendChild(el);
         view = el;
 
@@ -418,12 +437,22 @@
 
       const LONG_HOLD_MS = 500;
       let holdTimer = null;
+      let selectionActive = false;
+
+      // Track selection state
+      doc.addEventListener('selectionchange', () => {
+        const sel = doc.getSelection();
+        selectionActive = sel && !sel.isCollapsed && sel.toString().trim().length > 0;
+      }, { passive: true });
 
       doc.addEventListener('touchstart', () => {
         holdTimer = setTimeout(() => { holdTimer = null; }, LONG_HOLD_MS);
       }, { passive: true });
 
       doc.addEventListener('click', (e) => {
+        // Don't handle tap if there's an active selection
+        if (selectionActive) return;
+        
         if (!holdTimer) return;
         clearTimeout(holdTimer);
         holdTimer = null;

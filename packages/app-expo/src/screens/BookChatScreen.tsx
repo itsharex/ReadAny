@@ -87,7 +87,7 @@ export function BookChatScreen({ route, navigation }: Props) {
   );
 
   return (
-    <SafeAreaView style={s.container} edges={["top"]}>
+    <SafeAreaView style={s.container} edges={["top", "bottom"]}>
       <View style={s.header}>
         <TouchableOpacity
           style={s.backBtn}

@@ -1,33 +1,51 @@
 /**
  * SelectionPopover — floating action bar shown when text is selected in the reader.
- * Provides highlight (5 colors), copy, AI chat, and TTS actions.
+ * Provides highlight (5 colors), note, copy, translate, AI chat, TTS, and delete actions.
+ * Matches app-mobile styling with icon buttons and expandable color picker.
  */
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   View,
-  Text,
   TouchableOpacity,
   StyleSheet,
   Dimensions,
+  Modal,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import * as Speech from "expo-speech";
 import { useTranslation } from "react-i18next";
 import type { SelectionEvent } from "@/hooks/use-reader-bridge";
-import { useColors, fontSize as fs, radius, spacing, fontWeight as fw } from "@/styles/theme";
+import { useColors, radius, spacing } from "@/styles/theme";
 import type { ThemeColors } from "@/styles/theme";
+import {
+  CopyIcon,
+  NotebookPenIcon,
+  LanguagesIcon,
+  SparklesIcon,
+  Volume2Icon,
+  Trash2Icon,
+  HighlighterIcon,
+  XIcon,
+} from "@/components/ui/Icon";
 
 const HIGHLIGHT_COLORS = [
   { key: "yellow", hex: "#facc15" },
+  { key: "red", hex: "#f87171" },
   { key: "green", hex: "#4ade80" },
   { key: "blue", hex: "#60a5fa" },
+  { key: "violet", hex: "#a78bfa" },
   { key: "pink", hex: "#f472b6" },
-  { key: "purple", hex: "#c084fc" },
 ] as const;
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
-const POPOVER_WIDTH = SCREEN_WIDTH - 32;
-const POPOVER_MARGIN = 16;
+const SCREEN_HEIGHT = Dimensions.get("window").height;
+const POPOVER_MARGIN = 8;
+const POPOVER_PADDING = 4;
+const BUTTON_SIZE = 36;
+const GAP = 2;
 
 interface Props {
   selection: SelectionEvent;
@@ -35,6 +53,10 @@ interface Props {
   onDismiss: () => void;
   onCopy: () => void;
   onAIChat: () => void;
+  onNote?: (text: string, cfi: string) => void;
+  onTranslate?: (text: string) => void;
+  onRemoveHighlight?: () => void;
+  existingHighlight?: { id: string; color: string; note?: string } | null;
 }
 
 export function SelectionPopover({
@@ -43,21 +65,48 @@ export function SelectionPopover({
   onDismiss,
   onCopy,
   onAIChat,
+  onNote,
+  onTranslate,
+  onRemoveHighlight,
+  existingHighlight,
 }: Props) {
   const { t } = useTranslation();
   const colors = useColors();
   const s = useMemo(() => makeStyles(colors), [colors]);
+  const [showNoteModal, setShowNoteModal] = useState(false);
+  const [noteText, setNoteText] = useState(existingHighlight?.note || "");
+  const [showColors, setShowColors] = useState(!!existingHighlight);
 
-  const top = useMemo(() => {
+  const buttonCount = 5 + (onNote ? 1 : 0) + (onTranslate ? 1 : 0) + (existingHighlight && onRemoveHighlight ? 1 : 0);
+  const colorRowHeight = showColors ? 40 : 0;
+  const popoverHeight = 44 + colorRowHeight + POPOVER_PADDING * 2 + GAP;
+  const popoverWidth = Math.min(buttonCount * (BUTTON_SIZE + GAP) + POPOVER_PADDING * 2, SCREEN_WIDTH - POPOVER_MARGIN * 2);
+
+  const position = useMemo(() => {
     const selTop = selection.position.selectionTop;
     const selBottom = selection.position.selectionBottom;
-    // Place above selection if there's room, otherwise below
-    const popoverHeight = 100;
-    if (selTop > popoverHeight + 10) {
-      return selTop - popoverHeight - 8;
+    const selCenterX = selection.position.x;
+    const safeTop = 48;
+    const safeBottom = 48;
+
+    let x = Math.max(POPOVER_MARGIN, Math.min(selCenterX - popoverWidth / 2, SCREEN_WIDTH - popoverWidth - POPOVER_MARGIN));
+    
+    let y: number;
+    const yAbove = selTop - popoverHeight - GAP;
+    const yBelow = selBottom + GAP;
+    const aboveValid = yAbove >= safeTop;
+    const belowValid = yBelow + popoverHeight + POPOVER_MARGIN <= SCREEN_HEIGHT - safeBottom;
+
+    if (aboveValid) {
+      y = yAbove;
+    } else if (belowValid) {
+      y = yBelow;
+    } else {
+      y = Math.max(safeTop, Math.min(yBelow, SCREEN_HEIGHT - popoverHeight - POPOVER_MARGIN));
     }
-    return selBottom + 8;
-  }, [selection.position]);
+
+    return { x, y };
+  }, [selection.position, popoverWidth, popoverHeight]);
 
   const handleCopy = useCallback(() => {
     Clipboard.setStringAsync(selection.text);
@@ -69,6 +118,36 @@ export function SelectionPopover({
     onDismiss();
   }, [selection.text, onDismiss]);
 
+  const handleNote = useCallback(() => {
+    setShowNoteModal(true);
+  }, []);
+
+  const handleSaveNote = useCallback(() => {
+    if (onNote && noteText.trim()) {
+      onNote(noteText.trim(), selection.cfi);
+    }
+    setShowNoteModal(false);
+    onDismiss();
+  }, [noteText, selection.cfi, onNote, onDismiss]);
+
+  const handleTranslate = useCallback(() => {
+    if (onTranslate) {
+      onTranslate(selection.text);
+    }
+    onDismiss();
+  }, [selection.text, onTranslate, onDismiss]);
+
+  const handleRemove = useCallback(() => {
+    if (onRemoveHighlight) {
+      onRemoveHighlight();
+    }
+    onDismiss();
+  }, [onRemoveHighlight, onDismiss]);
+
+  const toggleColors = useCallback(() => {
+    setShowColors((prev) => !prev);
+  }, []);
+
   return (
     <View style={[s.overlay]} pointerEvents="box-none">
       <TouchableOpacity
@@ -76,42 +155,100 @@ export function SelectionPopover({
         activeOpacity={1}
         onPress={onDismiss}
       />
-      <View style={[s.popover, { top }]}>
-        {/* Color row */}
-        <View style={s.colorRow}>
-          {HIGHLIGHT_COLORS.map((c) => (
-            <TouchableOpacity
-              key={c.key}
-              style={[s.colorDot, { backgroundColor: c.hex }]}
-              onPress={() => onHighlight(c.key)}
-            />
-          ))}
-        </View>
+      <View style={[s.popover, { left: position.x, top: position.y }]}>
+        {showColors && (
+          <View style={s.colorRow}>
+            {HIGHLIGHT_COLORS.map((c) => (
+              <TouchableOpacity
+                key={c.key}
+                style={[
+                  s.colorDot,
+                  { backgroundColor: c.hex },
+                  existingHighlight?.color === c.key && s.colorDotActive,
+                ]}
+                onPress={() => onHighlight(c.key)}
+              />
+            ))}
+          </View>
+        )}
 
-        {/* Action row */}
         <View style={s.actionRow}>
-          <TouchableOpacity style={s.actionBtn} onPress={handleCopy}>
-            <Text style={s.actionText}>
-              {t("reader.copy", "复制")}
-            </Text>
+          <TouchableOpacity style={[s.iconBtn, showColors && s.iconBtnActive]} onPress={toggleColors}>
+            <HighlighterIcon size={18} color={showColors ? colors.primary : colors.foreground} />
           </TouchableOpacity>
-          <View style={s.separator} />
-          <TouchableOpacity style={s.actionBtn} onPress={onAIChat}>
-            <Text style={s.actionText}>
-              {t("reader.aiChat", "AI")}
-            </Text>
+
+          {onNote && (
+            <TouchableOpacity style={s.iconBtn} onPress={handleNote}>
+              <NotebookPenIcon size={18} color={colors.foreground} />
+            </TouchableOpacity>
+          )}
+
+          <TouchableOpacity style={s.iconBtn} onPress={handleCopy}>
+            <CopyIcon size={18} color={colors.foreground} />
           </TouchableOpacity>
-          <View style={s.separator} />
-          <TouchableOpacity style={s.actionBtn} onPress={handleSpeak}>
-            <Text style={s.actionText}>
-              {t("reader.speak", "朗读")}
-            </Text>
+
+          {onTranslate && (
+            <TouchableOpacity style={s.iconBtn} onPress={handleTranslate}>
+              <LanguagesIcon size={18} color={colors.foreground} />
+            </TouchableOpacity>
+          )}
+
+          <TouchableOpacity style={s.iconBtn} onPress={onAIChat}>
+            <SparklesIcon size={18} color={colors.foreground} />
           </TouchableOpacity>
+
+          <TouchableOpacity style={s.iconBtn} onPress={handleSpeak}>
+            <Volume2Icon size={18} color={colors.foreground} />
+          </TouchableOpacity>
+
+          {existingHighlight && onRemoveHighlight && (
+            <TouchableOpacity style={s.iconBtn} onPress={handleRemove}>
+              <Trash2Icon size={18} color={colors.destructive} />
+            </TouchableOpacity>
+          )}
         </View>
       </View>
+
+      <Modal visible={showNoteModal} transparent animationType="slide" onRequestClose={() => setShowNoteModal(false)}>
+        <KeyboardAvoidingView
+          style={s.modalOverlay}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+        >
+          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setShowNoteModal(false)} />
+          <View style={s.noteModal}>
+            <View style={s.noteModalHeader}>
+              <Text style={s.noteModalTitle}>{t("reader.addNote", "添加笔记")}</Text>
+              <TouchableOpacity style={s.noteCloseBtn} onPress={() => setShowNoteModal(false)}>
+                <XIcon size={20} color={colors.mutedForeground} />
+              </TouchableOpacity>
+            </View>
+            <Text style={s.noteModalPreview} numberOfLines={3}>{selection.text}</Text>
+            <TextInput
+              style={s.noteInput}
+              placeholder={t("reader.notePlaceholder", "写下你的想法...")}
+              placeholderTextColor={colors.mutedForeground}
+              value={noteText}
+              onChangeText={setNoteText}
+              multiline
+              autoFocus
+            />
+            <View style={s.noteModalActions}>
+              <TouchableOpacity style={s.noteCancelBtn} onPress={() => setShowNoteModal(false)}>
+                <Text style={s.noteCancelText}>{t("common.cancel", "取消")}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={s.noteSaveBtn} onPress={handleSaveNote}>
+                <Text style={s.noteSaveText}>{t("common.save", "保存")}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
+
+import { Text } from "react-native";
+import { fontSize as fs, fontWeight as fw } from "@/styles/theme";
 
 const makeStyles = (colors: ThemeColors) =>
   StyleSheet.create({
@@ -121,49 +258,121 @@ const makeStyles = (colors: ThemeColors) =>
     },
     popover: {
       position: "absolute",
-      left: POPOVER_MARGIN,
-      width: POPOVER_WIDTH,
       backgroundColor: colors.card,
       borderRadius: radius.xl,
-      paddingVertical: spacing.sm,
-      paddingHorizontal: spacing.md,
+      padding: POPOVER_PADDING,
       shadowColor: "#000",
       shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.3,
-      shadowRadius: 8,
+      shadowOpacity: 0.25,
+      shadowRadius: 12,
       elevation: 8,
+      borderWidth: 1,
+      borderColor: colors.border,
     },
     colorRow: {
       flexDirection: "row",
       justifyContent: "center",
-      gap: spacing.lg,
-      paddingVertical: spacing.sm,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: colors.border,
+      gap: 6,
+      paddingVertical: 6,
+      paddingHorizontal: 8,
+      marginBottom: GAP,
     },
     colorDot: {
       width: 28,
       height: 28,
       borderRadius: 14,
     },
+    colorDotActive: {
+      borderWidth: 2,
+      borderColor: colors.primary,
+    },
     actionRow: {
       flexDirection: "row",
       alignItems: "center",
-      paddingTop: spacing.sm,
+      gap: GAP,
     },
-    actionBtn: {
-      flex: 1,
+    iconBtn: {
+      width: BUTTON_SIZE,
+      height: BUTTON_SIZE,
+      borderRadius: radius.lg,
       alignItems: "center",
-      paddingVertical: spacing.xs,
+      justifyContent: "center",
     },
-    actionText: {
-      fontSize: fs.sm,
-      fontWeight: fw.medium,
+    iconBtnActive: {
+      backgroundColor: colors.muted,
+    },
+    modalOverlay: {
+      flex: 1,
+      justifyContent: "flex-end",
+      backgroundColor: "rgba(0,0,0,0.4)",
+    },
+    noteModal: {
+      backgroundColor: colors.card,
+      borderTopLeftRadius: radius.xxl,
+      borderTopRightRadius: radius.xxl,
+      padding: spacing.lg,
+      paddingBottom: spacing.xl,
+    },
+    noteModalHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: spacing.sm,
+    },
+    noteModalTitle: {
+      fontSize: fs.lg,
+      fontWeight: fw.semibold,
       color: colors.foreground,
     },
-    separator: {
-      width: StyleSheet.hairlineWidth,
-      height: 16,
-      backgroundColor: colors.border,
+    noteCloseBtn: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: colors.muted,
+    },
+    noteModalPreview: {
+      fontSize: fs.sm,
+      color: colors.mutedForeground,
+      marginBottom: spacing.md,
+      fontStyle: "italic",
+      lineHeight: 20,
+    },
+    noteInput: {
+      backgroundColor: colors.muted,
+      borderRadius: radius.lg,
+      padding: spacing.md,
+      fontSize: fs.base,
+      color: colors.foreground,
+      minHeight: 100,
+      textAlignVertical: "top",
+    },
+    noteModalActions: {
+      flexDirection: "row",
+      justifyContent: "flex-end",
+      gap: spacing.md,
+      marginTop: spacing.md,
+    },
+    noteCancelBtn: {
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.sm,
+      borderRadius: radius.lg,
+    },
+    noteCancelText: {
+      fontSize: fs.sm,
+      fontWeight: fw.medium,
+      color: colors.mutedForeground,
+    },
+    noteSaveBtn: {
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.sm,
+      borderRadius: radius.lg,
+      backgroundColor: colors.primary,
+    },
+    noteSaveText: {
+      fontSize: fs.sm,
+      fontWeight: fw.medium,
+      color: colors.primaryForeground,
     },
   });

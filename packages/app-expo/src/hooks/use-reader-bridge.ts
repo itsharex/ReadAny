@@ -29,7 +29,6 @@ export interface SelectionEvent {
 export interface ReaderBridgeCallbacks {
   onRelocate?: (detail: RelocateEvent) => void;
   onTocReady?: (items: TOCItem[]) => void;
-  onLoaded?: () => void;
   onSelection?: (detail: SelectionEvent) => void;
   onSelectionCleared?: () => void;
   onTap?: () => void;
@@ -37,6 +36,8 @@ export interface ReaderBridgeCallbacks {
   onSearchComplete?: (count: number) => void;
   onError?: (message: string) => void;
   onReady?: () => void;
+  onLoaded?: () => void;
+  onShowAnnotation?: (detail: { value: string; range: Range; position: { x: number; y: number; selectionTop: number; selectionBottom: number } }) => void;
 }
 
 export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
@@ -198,6 +199,16 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
           break;
         case "foliate-loaded":
           console.log("[ReaderBridge] foliate-js loaded in WebView");
+          break;
+        case "show-annotation":
+          console.log("[ReaderBridge] Show annotation:", msg.value);
+          if (msg.value && msg.position) {
+            cb.onShowAnnotation?.({
+              value: msg.value,
+              range: msg.range,
+              position: msg.position,
+            });
+          }
           break;
         default:
           console.log("[ReaderBridge] Unknown message type:", msg.type);
