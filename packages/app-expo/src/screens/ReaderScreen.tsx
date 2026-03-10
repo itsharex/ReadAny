@@ -636,17 +636,13 @@ export function ReaderScreen({ route, navigation }: Props) {
       {/* ─── Toolbar ─── */}
       {!showSearch && (
         <Animated.View style={[s.toolbar, { transform: [{ translateY: toolbarAnim }] }]}>
-          <LinearGradient
-            colors={["rgba(0,0,0,0.6)", "rgba(0,0,0,0)"]}
-            locations={[0.6, 1]}
-            style={[s.toolbarGradient, { paddingTop: insets.top + 4 }]}
-          >
+          <View style={[s.toolbarGlass, { marginTop: insets.top + 8 }]}>
             <View style={s.toolbarRow}>
               <TouchableOpacity style={s.toolbarBtn} onPress={() => navigation.goBack()}>
                 <ChevronLeftIcon size={20} color="#fff" />
               </TouchableOpacity>
               <TouchableOpacity style={[s.toolbarBtn, !canGoBack && s.toolbarBtnDisabled]} onPress={goBackToPreviousLocation} disabled={!canGoBack}>
-                <Undo2Icon size={18} color={canGoBack ? "#fff" : "rgba(255,255,255,0.4)"} />
+                <Undo2Icon size={18} color={canGoBack ? "#fff" : "rgba(255,255,255,0.3)"} />
               </TouchableOpacity>
               <View style={s.toolbarCenter}>
                 <Text style={s.toolbarTitle} numberOfLines={1}>{bookTitle}</Text>
@@ -678,18 +674,14 @@ export function ReaderScreen({ route, navigation }: Props) {
                 <SettingsIcon size={18} color="#fff" />
               </TouchableOpacity>
             </View>
-          </LinearGradient>
+          </View>
         </Animated.View>
       )}
 
       {/* ─── Footer ─── */}
       {!showSearch && (
         <Animated.View style={[s.footer, { transform: [{ translateY: footerAnim }] }]}>
-          <LinearGradient
-            colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.6)"]}
-            locations={[0, 0.4]}
-            style={[s.footerGradient, { paddingBottom: insets.bottom + 8 }]}
-          >
+          <View style={[s.footerGlass, { marginBottom: insets.bottom + 8 }]}>
             <View style={s.footerPageRow}>
               <Text style={s.footerPageText}>
                 {currentPage > 0 && totalPages > 0 ? `${currentPage} / ${totalPages}` : ""}
@@ -698,7 +690,7 @@ export function ReaderScreen({ route, navigation }: Props) {
             </View>
             <View style={s.footerSliderRow}>
               <TouchableOpacity style={s.footerNavBtn} onPress={bridge.goPrev}>
-                <ChevronLeftIcon size={20} color="#fff" />
+                <ChevronLeftIcon size={18} color="rgba(255,255,255,0.7)" />
               </TouchableOpacity>
               <View style={s.sliderWrap}>
                 <View style={s.sliderTrack}>
@@ -706,10 +698,10 @@ export function ReaderScreen({ route, navigation }: Props) {
                 </View>
               </View>
               <TouchableOpacity style={s.footerNavBtn} onPress={bridge.goNext}>
-                <ChevronRightIcon size={20} color="#fff" />
+                <ChevronRightIcon size={18} color="rgba(255,255,255,0.7)" />
               </TouchableOpacity>
             </View>
-          </LinearGradient>
+          </View>
         </Animated.View>
       )}
 
@@ -944,28 +936,52 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   backButtonText: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.primaryForeground },
   loadingOverlay: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, alignItems: "center", justifyContent: "center", backgroundColor: colors.background, zIndex: 20 },
 
-  toolbar: { position: "absolute", top: 0, left: 0, right: 0, zIndex: 30 },
-  toolbarGradient: { backgroundColor: "rgba(0,0,0,0.7)", paddingBottom: 6 },
-  toolbarRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: 8, paddingTop: 4 },
-  toolbarBtn: { width: 36, height: 36, borderRadius: radius.full, alignItems: "center", justifyContent: "center" },
-  toolbarBtnActive: { backgroundColor: "rgba(255,255,255,0.2)" },
-  toolbarBtnDisabled: { opacity: 0.5 },
-  toolbarCenter: { flex: 1, paddingHorizontal: 4 },
-  toolbarTitle: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: "#fff" },
-  toolbarChapter: { fontSize: fontSize.xs, color: "rgba(255,255,255,0.7)" },
+  toolbar: { position: "absolute", top: 0, left: 12, right: 12, zIndex: 30 },
+  toolbarGlass: {
+    backgroundColor: "rgba(28, 28, 30, 0.85)",
+    borderRadius: 20,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+  },
+  toolbarRow: { flexDirection: "row", alignItems: "center", gap: 2 },
+  toolbarBtn: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
+  toolbarBtnActive: { backgroundColor: "rgba(99,102,241,0.3)" },
+  toolbarBtnDisabled: { opacity: 0.4 },
+  toolbarCenter: { flex: 1, paddingHorizontal: 8, alignItems: "center" },
+  toolbarTitle: { fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: "#fff", letterSpacing: 0.3 },
+  toolbarChapter: { fontSize: fontSize.xs, color: "rgba(255,255,255,0.5)", marginTop: 1 },
 
-  footer: { position: "absolute", bottom: 0, left: 0, right: 0, zIndex: 30 },
-  footerGradient: { backgroundColor: "rgba(0,0,0,0.7)", paddingTop: 6, paddingHorizontal: 16 },
-  footerPageRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 4 },
-  footerPageText: { fontSize: fontSize.xs, color: "rgba(255,255,255,0.7)" },
-  footerSliderRow: { flexDirection: "row", alignItems: "center", gap: 4 },
-  footerNavBtn: { width: 32, height: 32, borderRadius: radius.full, alignItems: "center", justifyContent: "center" },
-  sliderWrap: { flex: 1, justifyContent: "center", paddingVertical: 8 },
-  sliderTrack: { height: 4, backgroundColor: "rgba(255,255,255,0.3)", borderRadius: 2, overflow: "hidden" },
-  sliderFill: { height: "100%", backgroundColor: "#fff", borderRadius: 2 },
+  footer: { position: "absolute", bottom: 0, left: 12, right: 12, zIndex: 30 },
+  footerGlass: {
+    backgroundColor: "rgba(28, 28, 30, 0.85)",
+    borderRadius: 20,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+  },
+  footerPageRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 6 },
+  footerPageText: { fontSize: fontSize.xs, color: "rgba(255,255,255,0.5)", fontWeight: fontWeight.medium },
+  footerSliderRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  footerNavBtn: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.1)" },
+  sliderWrap: { flex: 1, justifyContent: "center", paddingVertical: 4 },
+  sliderTrack: { height: 3, backgroundColor: "rgba(255,255,255,0.15)", borderRadius: 1.5, overflow: "hidden" },
+  sliderFill: { height: "100%", backgroundColor: colors.indigo, borderRadius: 1.5 },
 
-  thinProgressWrap: { position: "absolute", left: 0, right: 0, height: 2, backgroundColor: "rgba(255,255,255,0.1)", zIndex: 40 },
-  thinProgressFill: { height: "100%", backgroundColor: colors.indigo, opacity: 0.6 },
+  thinProgressWrap: { position: "absolute", left: 0, right: 0, height: 2, backgroundColor: "rgba(255,255,255,0.05)", zIndex: 40 },
+  thinProgressFill: { height: "100%", backgroundColor: colors.indigo, opacity: 0.8 },
 
   searchBarWrap: { position: "absolute", top: 0, left: 0, right: 0, backgroundColor: colors.background, borderBottomWidth: 0.5, borderBottomColor: colors.border, zIndex: 40 },
   searchBarRow: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 12, paddingVertical: 8 },
