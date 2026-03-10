@@ -154,6 +154,13 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
     [inject],
   );
 
+  const setNavigationLocked = useCallback(
+    (locked: boolean) => {
+      inject(`window.setNavigationLocked(${locked})`);
+    },
+    [inject],
+  );
+
   // ─── Handle messages from WebView ───
 
   const handleMessage = useCallback((event: { nativeEvent: { data: string } }) => {
@@ -235,5 +242,6 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
     removeAnnotation,
     applySettings,
     setThemeColors,
+    setNavigationLocked,
   };
 }

@@ -383,6 +383,12 @@ export function ReaderScreen({ route, navigation }: Props) {
     }
   }, [webViewReady, highlights.length]);
 
+  // Lock navigation when selection is active
+  useEffect(() => {
+    if (!webViewReady) return;
+    bridge.setNavigationLocked(!!selection);
+  }, [webViewReady, selection]);
+
   // Controls toggle
   const toggleControls = useCallback(() => {
     const willShow = !showControls;

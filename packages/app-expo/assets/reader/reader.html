@@ -73,6 +73,7 @@
     let searchGenerator = null;
     let searchResults = [];
     let searchIndex = 0;
+    let navigationLocked = false;
 
     // ─── Message handler from React Native ───
     window.addEventListener('message', async (e) => {
@@ -572,8 +573,14 @@
     }
 
     // ─── Expose global functions for injectJavaScript ───
-    window.goNext = function() { if (view) view.next(); };
-    window.goPrev = function() { if (view) view.prev(); };
+    window.goNext = function() { 
+      if (navigationLocked) return;
+      if (view) view.next(); 
+    };
+    window.goPrev = function() { 
+      if (navigationLocked) return;
+      if (view) view.prev(); 
+    };
     window.goToHref = function(href) { if (view) view.goTo(href); };
     window.goToProgress = function(p) { if (view) view.goToFraction(p); };
     window.search = function(q) { handleSearch(q); };
@@ -587,6 +594,7 @@
     window.setViewMode = function(m) { applySettings({ viewMode: m }); };
     window.addAnnotation = function(a) { if (view) view.addAnnotation(a); };
     window.removeAnnotation = function(a) { if (view) view.deleteAnnotation(a); };
+    window.setNavigationLocked = function(locked) { navigationLocked = locked; };
 
     // ─── Polyfills ───
     Object.groupBy ??= function(iterable, fn) {
