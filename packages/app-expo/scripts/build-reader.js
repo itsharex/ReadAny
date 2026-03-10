@@ -10,7 +10,8 @@ const path = require("path");
 
 const FOLIATE_DIR = path.resolve(__dirname, "../../foliate-js");
 const ASSETS_DIR = path.resolve(__dirname, "../assets/reader");
-const TEMPLATE = path.resolve(ASSETS_DIR, "reader.html");
+const TEMPLATE = path.resolve(ASSETS_DIR, "reader.template.html");
+const OUTPUT = path.resolve(ASSETS_DIR, "reader.html");
 
 async function buildReader() {
   // Create a temporary entry point
@@ -46,16 +47,17 @@ async function buildReader() {
 
     const bundledJS = result.outputFiles[0].text;
 
-    // Read the template HTML
-    let html = fs.readFileSync(TEMPLATE, "utf-8");
+    // Read the template HTML (never modified)
+    const template = fs.readFileSync(TEMPLATE, "utf-8");
 
-    // Replace the module script section with the bundled code
-    html = html.replace(
-      /<!-- foliate-js modules loaded as module scripts -->[\s\S]*$/,
-      `<script>\n${bundledJS}\n</script>\n</body>\n</html>`
-    );
+    // Replace the placeholder with the bundled code
+    // Use split/join instead of replace to avoid $ replacement patterns in JS bundle
+    const MARKER = "<!-- __READANY_FOLIATE_BUNDLE_INSERT_POINT_7f3a9b2e__ -->";
+    const parts = template.split(MARKER);
+    const html = parts[0] + "<script>\n" + bundledJS + "\n</script>" + parts.slice(1).join(MARKER);
 
-    fs.writeFileSync(TEMPLATE, html);
+    // Write to output file (separate from template)
+    fs.writeFileSync(OUTPUT, html);
     console.log(`Built reader.html (${Math.round(html.length / 1024)}KB)`);
   } finally {
     if (fs.existsSync(entryFile)) fs.unlinkSync(entryFile);

@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
+  <title>ReadAny Reader</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      -webkit-text-size-adjust: none;
+      -webkit-user-select: text;
+      user-select: text;
+      background: var(--bg, #1c1c1e);
+      color: var(--fg, #e8e8ed);
+    }
+    #reader-container {
+      width: 100%;
+      height: 100%;
+      position: relative;
+    }
+    #loading {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 12px;
+      z-index: 100;
+    }
+    #loading.hidden { display: none; }
+    .spinner {
+      width: 32px; height: 32px;
+      border: 3px solid rgba(99,102,241,0.2);
+      border-top-color: #6366f1;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #loading-text { font-size: 14px; color: var(--muted, #7c7c82); }
+    .error-text { font-size: 14px; color: #e53935; text-align: center; padding: 20px; }
+
+    /* Suppress iOS selection callout */
+    * { -webkit-touch-callout: none !important; }
+    ::selection { background: rgba(250, 204, 21, 0.4) !important; }
+  </style>
+</head>
+<body>
+  <div id="reader-container">
+    <div id="loading">
+      <div class="spinner"></div>
+      <div id="loading-text">Loading...</div>
+    </div>
+  </div>
+
+  <script>
+    // ═══════════════════════════════════════════════════════════════
+    // ReadAny WebView Reader Bridge
+    // Communicates with React Native via postMessage
+    // ═══════════════════════════════════════════════════════════════
+
+    const RN = window.ReactNativeWebView;
+    function postToRN(type, data) {
+      if (RN) RN.postMessage(JSON.stringify({ type, ...data }));
+    }
+
+    // State
+    let view = null;
+    let currentBook = null;
+    let searchGenerator = null;
+    let searchResults = [];
+    let searchIndex = 0;
+
+    // ─── Message handler from React Native ───
+    window.addEventListener('message', async (e) => {
+      try {
+        const msg = JSON.parse(e.data);
+        await handleCommand(msg);
+      } catch (err) {
+        postToRN('error', { message: String(err) });
+      }
+    });
+
+    // Also handle iOS postMessage
+    document.addEventListener('message', async (e) => {
+      try {
+        const msg = JSON.parse(e.data);
+        await handleCommand(msg);
+      } catch (err) {
+        postToRN('error', { message: String(err) });
+      }
+    });
+
+    async function handleCommand(msg) {
+      switch (msg.type) {
+        case 'openBook':
+          await openBook(msg);
+          break;
+        case 'goNext':
+          if (view) await view.next();
+          break;
+        case 'goPrev':
+          if (view) await view.prev();
+          break;
+        case 'goToFraction':
+          if (view && msg.fraction != null) await view.goToFraction(msg.fraction);
+          break;
+        case 'goToHref':
+          if (view && msg.href) await view.goTo(msg.href);
+          break;
+        case 'goToCFI':
+          if (view && msg.cfi) await view.goTo(msg.cfi);
+          break;
+        case 'search':
+          await handleSearch(msg.query);
+          break;
+        case 'clearSearch':
+          if (view) view.clearSearch();
+          searchResults = [];
+          searchIndex = 0;
+          break;
+        case 'navigateSearch':
+          if (msg.index != null) navigateToSearchResult(msg.index);
+          break;
+        case 'addAnnotation':
+          if (view && msg.annotation) await view.addAnnotation(msg.annotation);
+          break;
+        case 'removeAnnotation':
+          if (view && msg.annotation) await view.deleteAnnotation(msg.annotation);
+          break;
+        case 'applySettings':
+          if (view && msg.settings) applySettings(msg.settings);
+          break;
+        case 'setThemeColors':
+          if (msg.colors) setThemeColors(msg.colors);
+          break;
+      }
+    }
+
+    // ─── Book loading ───
+    async function openBook(msg) {
+      const container = document.getElementById('reader-container');
+      const loading = document.getElementById('loading');
+
+      try {
+        // msg.uri = file URI or base64 data URI
+        // msg.fileName = original filename (for format detection)
+        // msg.lastLocation = CFI to restore position
+        let file;
+        if (msg.base64) {
+          // Decode base64 to blob
+          const binary = atob(msg.base64);
+          const bytes = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+          file = new File([bytes], msg.fileName || 'book.epub', {
+            type: msg.mimeType || 'application/epub+zip'
+          });
+        } else if (msg.uri) {
+          // Fetch from file URI
+          const res = await fetch(msg.uri);
+          if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`);
+          const blob = await res.blob();
+          file = new File([blob], msg.fileName || 'book.epub');
+        } else {
+          throw new Error('No book data provided');
+        }
+
+        // Dynamic import of foliate-js view.js to get makeBook
+        // In the WebView, we load foliate-js from the bundled scripts
+        const book = await makeBook(file);
+        currentBook = book;
+
+        // Create foliate-view element
+        const el = document.createElement('foliate-view');
+        el.style.width = '100%';
+        el.style.height = '100%';
+
+        // Listen for events
+        el.addEventListener('load', (e) => {
+          const { doc, index } = e.detail;
+          loading.classList.add('hidden');
+          // Apply document styles
+          applyDocStyles(doc);
+          // Attach tap detection
+          attachTapListener(doc);
+          // Attach selection listener
+          attachSelectionListener(doc);
+          postToRN('loaded', {});
+        });
+
+        el.addEventListener('relocate', (e) => {
+          const detail = e.detail;
+          postToRN('relocate', {
+            fraction: detail.fraction,
+            section: detail.section,
+            location: detail.location,
+            tocItem: detail.tocItem,
+            pageItem: detail.pageItem,
+            cfi: detail.cfi,
+          });
+        });
+
+        el.addEventListener('draw-annotation', (e) => {
+          const { draw, annotation, doc, range } = e.detail;
+          if (!draw || !annotation) return;
+          const color = annotation.color || 'yellow';
+          const colorMap = {
+            red: 'rgba(248, 113, 113, 0.4)',
+            yellow: 'rgba(250, 204, 21, 0.4)',
+            green: 'rgba(74, 222, 128, 0.4)',
+            blue: 'rgba(96, 165, 250, 0.4)',
+            pink: 'rgba(236, 72, 153, 0.4)',
+            violet: 'rgba(167, 139, 250, 0.4)',
+          };
+          if (annotation.note) {
+            draw(Overlayer.squiggly, { color: '#000000', width: 1.5 });
+          } else {
+            draw(Overlayer.highlight, { color: colorMap[color] || colorMap.yellow });
+          }
+        });
+
+        el.addEventListener('delete-annotation', () => { /* no-op */ });
+
+        container.appendChild(el);
+        view = el;
+
+        // Open the book
+        await el.open(book);
+
+        // Send TOC
+        if (book.toc) {
+          postToRN('toc', { items: convertTOC(book.toc) });
+        }
+
+        // Configure renderer
+        const renderer = el.renderer;
+        if (renderer && !el.isFixedLayout) {
+          renderer.setAttribute('max-column-count', '1');
+          renderer.setAttribute('max-block-size', '100%');
+          renderer.setAttribute('max-inline-size', '100%');
+          renderer.setAttribute('animated', '');
+          // Default gap/margin
+          const margin = msg.pageMargin || 16;
+          const gapPercent = Math.max(1, Math.round((margin / 393) * 100));
+          renderer.setAttribute('gap', gapPercent + '%');
+          renderer.setAttribute('margin', margin + 'px');
+        }
+
+        // Navigate to last location
+        if (msg.lastLocation) {
+          try {
+            await el.init({ lastLocation: msg.lastLocation });
+          } catch {
+            await el.goToFraction(0);
+          }
+        } else {
+          await el.goToFraction(0);
+        }
+
+      } catch (err) {
+        loading.innerHTML = '<div class="error-text">' + escapeHtml(String(err)) + '</div>';
+        postToRN('error', { message: String(err) });
+      }
+    }
+
+    // ─── Search ───
+    async function handleSearch(query) {
+      if (!view || !query) return;
+      searchResults = [];
+      searchIndex = 0;
+
+      try {
+        const iter = view.search({ query });
+        let totalResults = 0;
+        for await (const result of iter) {
+          if (result === 'done') break;
+          if (result.subitems) {
+            totalResults += result.subitems.length;
+            for (const sub of result.subitems) {
+              searchResults.push(sub);
+            }
+          } else if (result.cfi) {
+            totalResults++;
+            searchResults.push(result);
+          }
+          if (result.progress != null) {
+            postToRN('searchProgress', { progress: result.progress });
+          }
+        }
+        postToRN('searchComplete', { count: totalResults });
+        // Navigate to first result
+        if (searchResults.length > 0) {
+          await view.goTo(searchResults[0].cfi);
+          postToRN('searchResult', { index: 0, count: totalResults });
+        }
+      } catch (err) {
+        postToRN('error', { message: 'Search failed: ' + String(err) });
+      }
+    }
+
+    async function navigateToSearchResult(index) {
+      if (index < 0 || index >= searchResults.length) return;
+      searchIndex = index;
+      try {
+        await view.goTo(searchResults[index].cfi);
+        postToRN('searchResult', { index, count: searchResults.length });
+      } catch (err) {
+        postToRN('error', { message: 'Navigate search failed: ' + String(err) });
+      }
+    }
+
+    // ─── Settings ───
+    function applySettings(settings) {
+      if (!view || !view.renderer) return;
+      const renderer = view.renderer;
+
+      if (settings.fontSize || settings.lineHeight || settings.fontTheme || settings.paragraphSpacing) {
+        const fontThemes = {
+          default: { cjk: 'system-ui', serif: '-apple-system' },
+          classic: { cjk: 'STSong', serif: 'Georgia' },
+          modern: { cjk: 'PingFang SC', serif: 'Helvetica Neue' },
+          elegant: { cjk: 'STKaiti', serif: 'Palatino' },
+          literary: { cjk: 'STFangsong', serif: 'Baskerville' },
+        };
+
+        const theme = fontThemes[settings.fontTheme] || fontThemes.default;
+        const fontFamily = "'" + theme.cjk + "', '" + theme.serif + "', serif";
+        const fSize = settings.fontSize || 16;
+        const lh = settings.lineHeight || 1.6;
+        const ps = settings.paragraphSpacing || 8;
+
+        renderer.setStyles(`
+          html, body {
+            font-family: ${fontFamily} !important;
+            font-size: ${fSize}px !important;
+            -webkit-text-size-adjust: none;
+          }
+          p, div, blockquote, li, span, h1, h2, h3, h4, h5, h6 {
+            font-family: ${fontFamily} !important;
+            line-height: ${lh} !important;
+          }
+          p { margin-top: ${ps}px !important; margin-bottom: ${ps}px !important; }
+          img, svg { max-width: 100% !important; height: auto !important; }
+          ::selection { background: rgba(59, 130, 246, 0.3) !important; }
+        `);
+      }
+
+      if (settings.pageMargin != null) {
+        const margin = settings.pageMargin;
+        const gapPercent = Math.max(1, Math.round((margin / 393) * 100));
+        renderer.setAttribute('gap', gapPercent + '%');
+        renderer.setAttribute('margin', margin + 'px');
+      }
+
+      if (settings.viewMode) {
+        if (settings.viewMode === 'scroll') {
+          renderer.setAttribute('flow', 'scrolled');
+          renderer.setAttribute('max-inline-size', '9999px');
+        } else {
+          renderer.removeAttribute('flow');
+          renderer.setAttribute('max-inline-size', '100%');
+        }
+      }
+    }
+
+    function setThemeColors(colors) {
+      document.documentElement.style.setProperty('--bg', colors.background || '#1c1c1e');
+      document.documentElement.style.setProperty('--fg', colors.foreground || '#e8e8ed');
+      document.documentElement.style.setProperty('--muted', colors.muted || '#7c7c82');
+      document.body.style.backgroundColor = colors.background || '#1c1c1e';
+      document.body.style.color = colors.foreground || '#e8e8ed';
+    }
+
+    // ─── Document styles ───
+    function applyDocStyles(doc) {
+      for (const img of doc.querySelectorAll('img')) {
+        img.style.maxWidth = '100%';
+        img.style.height = 'auto';
+      }
+      const style = doc.createElement('style');
+      style.textContent = `
+        * { -webkit-touch-callout: none !important; -webkit-user-select: text !important; user-select: text !important; }
+        ::selection { background: rgba(250, 204, 21, 0.4) !important; }
+      `;
+      doc.head.appendChild(style);
+      doc.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); return false; }, true);
+    }
+
+    // ─── Tap detection ───
+    function attachTapListener(doc) {
+      if (doc.__readany_tap) return;
+      doc.__readany_tap = true;
+
+      const LONG_HOLD_MS = 500;
+      let holdTimer = null;
+
+      doc.addEventListener('touchstart', () => {
+        holdTimer = setTimeout(() => { holdTimer = null; }, LONG_HOLD_MS);
+      }, { passive: true });
+
+      doc.addEventListener('click', (e) => {
+        if (!holdTimer) return;
+        clearTimeout(holdTimer);
+        holdTimer = null;
+
+        const target = e.target;
+        if (target && target.closest && target.closest('a[href], audio, video, button, input, select, textarea')) return;
+
+        const sel = doc.getSelection();
+        if (sel && !sel.isCollapsed && sel.toString().trim().length > 0) return;
+
+        let viewW;
+        try { viewW = window.top.innerWidth || window.innerWidth; } catch { viewW = window.innerWidth; }
+        const iframe = doc.defaultView && doc.defaultView.frameElement;
+        const iframeLeft = iframe ? iframe.getBoundingClientRect().left : 0;
+        const viewportX = e.clientX + iframeLeft;
+        const normalizedX = ((viewportX % viewW) + viewW) % viewW;
+
+        if (normalizedX >= viewW * 0.25 && normalizedX <= viewW * 0.75) {
+          postToRN('tap', {});
+        }
+      });
+    }
+
+    // ─── Selection detection ───
+    function attachSelectionListener(doc) {
+      if (doc.__readany_selection) return;
+      doc.__readany_selection = true;
+
+      let selTimer = null;
+      let iosHackPending = false;
+
+      doc.addEventListener('touchend', () => {
+        setTimeout(() => {
+          if (iosHackPending) return;
+          const sel = doc.getSelection();
+          if (!sel || sel.isCollapsed || !sel.toString().trim() || !sel.rangeCount) return;
+          const range = sel.getRangeAt(0);
+          // iOS hack: remove and re-add to dismiss system menu
+          iosHackPending = true;
+          doc.__readany_isJiggling = true;
+          sel.removeAllRanges();
+          setTimeout(() => {
+            sel.addRange(range);
+            doc.__readany_isJiggling = false;
+            iosHackPending = false;
+            emitSelection(doc, sel, range);
+          }, 30);
+        }, 50);
+      }, { passive: true });
+
+      doc.addEventListener('selectionchange', () => {
+        if (doc.__readany_isJiggling) return;
+        if (iosHackPending) return;
+        if (selTimer) clearTimeout(selTimer);
+        selTimer = setTimeout(() => {
+          const sel = doc.getSelection();
+          if (!sel || sel.isCollapsed || !sel.toString().trim()) {
+            postToRN('selectionCleared', {});
+            return;
+          }
+          if (!sel.rangeCount) return;
+          const range = sel.getRangeAt(0);
+          emitSelection(doc, sel, range);
+        }, 300);
+      });
+    }
+
+    function emitSelection(doc, sel, range) {
+      const text = sel.toString().trim();
+      if (!text) return;
+
+      const rect = range.getBoundingClientRect();
+      const iframe = doc.defaultView && doc.defaultView.frameElement;
+      const iframeRect = iframe ? iframe.getBoundingClientRect() : { left: 0, top: 0 };
+
+      let cfi = '';
+      try {
+        if (view && view.getCFI) {
+          const contents = view.renderer && view.renderer.getContents ? view.renderer.getContents() : [];
+          const found = contents.find(c => c.doc === doc);
+          if (found) cfi = view.getCFI(found.index, range) || '';
+        }
+      } catch { /* ignore */ }
+
+      postToRN('selection', {
+        text,
+        cfi,
+        position: {
+          x: iframeRect.left + rect.left + rect.width / 2,
+          y: iframeRect.top + rect.top - 8,
+          selectionTop: iframeRect.top + rect.top,
+          selectionBottom: iframeRect.top + rect.bottom,
+        },
+      });
+    }
+
+    // ─── TOC conversion ───
+    function convertTOC(toc, level) {
+      if (!toc) return [];
+      level = level || 0;
+      return toc.map(function(item, i) {
+        return {
+          id: String(item.id != null ? item.id : 'toc-' + level + '-' + i),
+          title: item.label || 'Chapter ' + (i + 1),
+          level: level,
+          href: item.href,
+          subitems: item.subitems && item.subitems.length > 0
+            ? convertTOC(item.subitems, level + 1)
+            : undefined,
+        };
+      });
+    }
+
+    // ─── Utility ───
+    function escapeHtml(s) {
+      return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    // ─── Expose global functions for injectJavaScript ───
+    window.goNext = function() { if (view) view.next(); };
+    window.goPrev = function() { if (view) view.prev(); };
+    window.goToHref = function(href) { if (view) view.goTo(href); };
+    window.goToProgress = function(p) { if (view) view.goToFraction(p); };
+    window.search = function(q) { handleSearch(q); };
+    window.navigateSearch = function(idx) { navigateToSearchResult(idx); };
+    window.clearSearch = function() { if (view) view.clearSearch(); searchResults = []; };
+    window.setFontSize = function(s) { applySettings({ fontSize: s }); };
+    window.setLineHeight = function(lh) { applySettings({ lineHeight: lh }); };
+    window.setParagraphSpacing = function(s) { applySettings({ paragraphSpacing: s }); };
+    window.setPageMargin = function(m) { applySettings({ pageMargin: m }); };
+    window.setFontTheme = function(t) { applySettings({ fontTheme: t }); };
+    window.setViewMode = function(m) { applySettings({ viewMode: m }); };
+    window.addAnnotation = function(a) { if (view) view.addAnnotation(a); };
+    window.removeAnnotation = function(a) { if (view) view.deleteAnnotation(a); };
+
+    // ─── Polyfills ───
+    Object.groupBy ??= function(iterable, fn) {
+      const obj = Object.create(null);
+      let i = 0;
+      for (const v of iterable) { const k = fn(v, i++); if (k in obj) obj[k].push(v); else obj[k] = [v]; }
+      return obj;
+    };
+    Map.groupBy ??= function(iterable, fn) {
+      const map = new Map();
+      let i = 0;
+      for (const v of iterable) { const k = fn(v, i++); const l = map.get(k); if (l) l.push(v); else map.set(k, [v]); }
+      return map;
+    };
+
+    // Signal ready
+    postToRN('ready', {});
+  </script>
+
+  <!-- __READANY_FOLIATE_BUNDLE_INSERT_POINT_7f3a9b2e__ -->
+</body>
+</html>

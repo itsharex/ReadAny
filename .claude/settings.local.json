@@ -5,7 +5,9 @@
       "Bash(pnpm:*)",
       "Bash(npx:*)",
       "Bash(node:*)",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "Bash(echo:*)",
+      "Bash(sed:*)"
     ]
   }
 }
