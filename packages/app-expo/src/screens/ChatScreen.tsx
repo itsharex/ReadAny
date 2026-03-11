@@ -14,6 +14,7 @@ import {
   Dimensions,
   Pressable,
   Keyboard,
+  Image,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
@@ -380,7 +381,7 @@ function EmptyState({
   return (
     <View style={s.emptyContainer}>
       <View style={s.emptyRow}>
-        <ThinkIllustration width={140} height={140} />
+        <Image source={ThinkIllustration} style={{ width: 140, height: 140 }} />
         <View style={s.emptyContent}>
           <Text style={s.emptyTitle}>
             {t("chat.howCanIHelp", "有什么我可以帮你的？")}

@@ -256,7 +256,7 @@ export function NotesScreen() {
           <Text style={s.headerTitle}>{t("notes.title", "笔记")}</Text>
         </View>
         <View style={s.emptyWrap}>
-          <NoteIllustration width={160} height={160} />
+          <Image source={NoteIllustration} style={{ width: 160, height: 160 }} />
           <Text style={s.emptyTitle}>{t("notes.empty", "暂无笔记")}</Text>
           <Text style={s.emptyHint}>{t("notes.emptyHint", "阅读时长按文字添加高亮和笔记")}</Text>
         </View>

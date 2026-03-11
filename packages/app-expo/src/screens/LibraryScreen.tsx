@@ -17,6 +17,7 @@ import {
   Modal,
   Pressable,
   Alert,
+  Image,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
@@ -450,7 +451,7 @@ export function LibraryScreen() {
         {/* Empty state */}
         {isLoaded && books.length === 0 && (
           <View style={s.emptyWrap}>
-            <BookIllustration width={160} height={160} />
+            <Image source={BookIllustration} style={{ width: 160, height: 160 }} />
             <Text style={s.emptyTitle}>{t("library.empty", "暂无书籍")}</Text>
             <Text style={s.emptyHint}>{t("library.emptyHint", "导入电子书开始阅读之旅")}</Text>
             <TouchableOpacity style={s.emptyImportBtn} onPress={handleImport} activeOpacity={0.8}>
