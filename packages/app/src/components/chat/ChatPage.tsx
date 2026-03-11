@@ -131,26 +131,28 @@ function EmptyState({ onSuggestionClick }: { onSuggestionClick: (text: string) =
   ] as const;
 
   return (
-    <div className="flex h-full w-full select-none flex-col items-center justify-center overflow-y-auto p-6">
-      <div className="mx-auto w-full max-w-2xl space-y-8">
-        <div className="flex flex-col items-center gap-3">
-          <img src="/think.svg" alt="" className="h-40 w-40" />
-          <h1 className="text-2xl font-semibold text-foreground">{t("chat.howCanIHelp")}</h1>
-          <p className="text-sm text-muted-foreground">{t("chat.askAboutBooks")}</p>
-        </div>
-        <div>
-          <h2 className="mb-2 text-sm font-medium text-muted-foreground">{t("chat.getStarted")}</h2>
-          <div className="grid grid-cols-2 gap-3">
-            {SUGGESTIONS.map(({ key, icon: Icon }) => (
-              <div
-                key={key}
-                onClick={() => onSuggestionClick(t(key))}
-                className="flex cursor-pointer flex-col items-start gap-3 rounded-xl bg-muted/70 p-4 transition-colors hover:bg-muted"
-              >
-                <Icon className="size-5 text-muted-foreground" />
-                <span className="text-sm text-foreground">{t(key)}</span>
-              </div>
-            ))}
+    <div className="flex h-full w-full select-none items-center justify-center overflow-y-auto p-6">
+      <div className="flex items-center gap-12">
+        <img src="/think.svg" alt="" className="h-52 w-52 shrink-0" />
+        <div className="flex flex-col gap-6">
+          <div>
+            <h1 className="text-2xl font-semibold text-foreground">{t("chat.howCanIHelp")}</h1>
+            <p className="mt-1 text-sm text-muted-foreground">{t("chat.askAboutBooks")}</p>
+          </div>
+          <div>
+            <h2 className="mb-2 text-sm font-medium text-muted-foreground">{t("chat.getStarted")}</h2>
+            <div className="grid grid-cols-2 gap-3">
+              {SUGGESTIONS.map(({ key, icon: Icon }) => (
+                <div
+                  key={key}
+                  onClick={() => onSuggestionClick(t(key))}
+                  className="flex cursor-pointer flex-col items-start gap-3 rounded-xl bg-muted/70 p-4 transition-colors hover:bg-muted"
+                >
+                  <Icon className="size-5 text-muted-foreground" />
+                  <span className="text-sm text-foreground">{t(key)}</span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </div>
