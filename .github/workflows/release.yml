@@ -62,6 +62,9 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install
 
+      - name: Verify version consistency
+        run: node scripts/bump-version.js --check
+
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
