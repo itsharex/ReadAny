@@ -205,11 +205,11 @@ export function LibraryScreen() {
     if (!hasCapability) {
       Alert.alert(
         t("settings.vectorModel"),
-        t("vectorModel.notConfigured"),
+        t("vectorize.notConfiguredDesc"),
         [
           { text: t("common.cancel"), style: "cancel" },
           {
-            text: t("vectorModel.goSettings"),
+            text: t("vectorize.goSettings"),
             onPress: () => nav.navigate("VectorModelSettings"),
           },
         ],
