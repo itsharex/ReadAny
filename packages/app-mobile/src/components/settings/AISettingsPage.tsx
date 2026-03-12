@@ -42,6 +42,8 @@ export function AISettingsPage() {
   const scrollRef = useRef<HTMLDivElement>(null);
   useKeyboardAwareScroll(scrollRef);
 
+  const activeEndpoint = aiConfig.endpoints.find((ep) => ep.id === aiConfig.activeEndpointId);
+
   const handleAddEndpoint = useCallback(() => {
     addEndpoint({
       id: crypto.randomUUID(),
@@ -58,12 +60,17 @@ export function AISettingsPage() {
     async (ep: AIEndpoint) => {
       updateEndpoint(ep.id, { modelsFetching: true });
       try {
-        await fetchModels(ep.id);
+        const models = await fetchModels(ep.id);
+        // 自动选中第一个模型（如果当前没有选中任何模型）
+        if (models.length > 0 && !aiConfig.activeModel) {
+          setActiveEndpoint(ep.id);
+          setActiveModel(models[0]);
+        }
       } catch (err) {
         console.error("Failed to fetch models:", err);
       }
     },
-    [fetchModels, updateEndpoint],
+    [fetchModels, updateEndpoint, aiConfig.activeModel, setActiveEndpoint, setActiveModel],
   );
 
   const handleAddManualModel = useCallback(
@@ -287,6 +294,47 @@ export function AISettingsPage() {
             </div>
           );
         })}
+
+        {/* Current Model Selection */}
+        <section className="rounded-xl bg-card border border-border p-4 space-y-3">
+          <h2 className="text-sm font-medium">{t("settings.ai_activeModel")}</h2>
+
+          {activeEndpoint && activeEndpoint.models.length > 0 ? (
+            <div className="flex flex-wrap gap-1.5">
+              {activeEndpoint.models.map((m) => {
+                const isSelected = aiConfig.activeModel === m;
+                return (
+                  <button
+                    key={m}
+                    type="button"
+                    className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
+                      isSelected
+                        ? "border-primary bg-primary/10 text-primary font-medium"
+                        : "border-border bg-muted active:bg-accent"
+                    }`}
+                    onClick={() => {
+                      setActiveEndpoint(activeEndpoint.id);
+                      setActiveModel(m);
+                    }}
+                  >
+                    {m}
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <input
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+              placeholder={t("settings.ai_selectModel")}
+              value={aiConfig.activeModel}
+              onChange={(e) => setActiveModel(e.target.value)}
+            />
+          )}
+
+          {activeEndpoint && activeEndpoint.models.length === 0 && (
+            <p className="text-xs text-muted-foreground">{t("settings.ai_noModels")}</p>
+          )}
+        </section>
 
         {/* Global Params */}
         <section className="rounded-xl bg-card border border-border p-4 space-y-4">

@@ -42,6 +42,9 @@ export default function AISettingsScreen() {
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [newModelInput, setNewModelInput] = useState("");
+  const [manualModelInput, setManualModelInput] = useState("");
+
+  const activeEndpoint = aiConfig.endpoints.find((ep) => ep.id === aiConfig.activeEndpointId);
 
   const handleAddEndpoint = useCallback(() => {
     addEndpoint({
@@ -59,12 +62,17 @@ export default function AISettingsScreen() {
     async (ep: AIEndpoint) => {
       updateEndpoint(ep.id, { modelsFetching: true });
       try {
-        await fetchModels(ep.id);
+        const models = await fetchModels(ep.id);
+        // 自动选中第一个模型（如果当前没有选中任何模型）
+        if (models.length > 0 && !aiConfig.activeModel) {
+          setActiveEndpoint(ep.id);
+          setActiveModel(models[0]);
+        }
       } catch (err) {
         console.error("Failed to fetch models:", err);
       }
     },
-    [fetchModels, updateEndpoint],
+    [fetchModels, updateEndpoint, aiConfig.activeModel, setActiveEndpoint, setActiveModel],
   );
 
   const handleAddManualModel = useCallback(
@@ -365,6 +373,65 @@ export default function AISettingsScreen() {
             </View>
           );
         })}
+
+        {/* Current Model Selection */}
+        <View style={styles.globalCard}>
+          <Text style={styles.globalTitle}>
+            {t("settings.ai_activeModel", "模型")}
+          </Text>
+
+          {activeEndpoint && activeEndpoint.models.length > 0 ? (
+            <View style={styles.modelTags}>
+              {activeEndpoint.models.map((m) => {
+                const isSelected = aiConfig.activeModel === m;
+                return (
+                  <TouchableOpacity
+                    key={m}
+                    style={[
+                      styles.modelTag,
+                      isSelected && styles.modelTagActive,
+                    ]}
+                    onPress={() => {
+                      setActiveEndpoint(activeEndpoint.id);
+                      setActiveModel(m);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text
+                      style={[
+                        styles.modelTagText,
+                        isSelected && styles.modelTagTextActive,
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {m}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          ) : (
+            <View style={styles.addModelRow}>
+              <TextInput
+                style={[styles.input, { flex: 1 }]}
+                placeholder={t("settings.ai_selectModel", "选择模型")}
+                placeholderTextColor={colors.mutedForeground}
+                value={manualModelInput || aiConfig.activeModel}
+                onChangeText={(v) => {
+                  setManualModelInput(v);
+                  setActiveModel(v);
+                }}
+                autoCapitalize="none"
+              />
+            </View>
+          )}
+
+          {activeEndpoint && activeEndpoint.models.length === 0 && (
+            <Text style={styles.noModelsHint}>
+              {t("settings.ai_noModels", "暂无模型 — 可从 API 拉取或手动添加")}
+            </Text>
+          )}
+        </View>
 
         {/* Global Params */}
         <View style={styles.globalCard}>
@@ -691,5 +758,10 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     paddingVertical: 8,
     fontSize: fontSize.sm,
     color: colors.foreground,
+  },
+  noModelsHint: {
+    fontSize: fontSize.xs,
+    color: colors.mutedForeground,
+    marginTop: 4,
   },
 });

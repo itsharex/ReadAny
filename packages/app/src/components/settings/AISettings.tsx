@@ -272,12 +272,16 @@ export function AISettings() {
         const models = await fetchModels(endpointId);
         if (models.length === 0) {
           setFetchError("No models returned. Check your API key and URL.");
+        } else if (!aiConfig.activeModel) {
+          // 自动选中第一个模型（如果当前没有选中任何模型）
+          setActiveEndpoint(endpointId);
+          setActiveModel(models[0]);
         }
       } catch (err) {
         setFetchError(err instanceof Error ? err.message : "Failed to fetch models");
       }
     },
-    [fetchModels],
+    [fetchModels, aiConfig.activeModel, setActiveEndpoint, setActiveModel],
   );
 
   return (

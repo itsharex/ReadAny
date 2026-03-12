@@ -2,7 +2,7 @@
  * ModelSelector — compact pill trigger with popover dropdown.
  * Matches app-mobile MobileModelSelector style.
  */
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import {
   View,
   Text,
@@ -40,6 +40,17 @@ export function ModelSelector({ onNavigateToSettings }: ModelSelectorProps) {
     0,
   );
   const canSwitch = totalModels > 1;
+
+  // 如果有模型列表但 activeModel 为空，自动选中第一个
+  useEffect(() => {
+    if (!aiConfig.activeModel) {
+      const firstWithModels = aiConfig.endpoints.find((ep) => ep.models.length > 0);
+      if (firstWithModels) {
+        setActiveEndpoint(firstWithModels.id);
+        setActiveModel(firstWithModels.models[0]);
+      }
+    }
+  }, [aiConfig.activeModel, aiConfig.endpoints, setActiveEndpoint, setActiveModel]);
 
   const displayName = aiConfig.activeModel
     ? aiConfig.activeModel.length > 16
