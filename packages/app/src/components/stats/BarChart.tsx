@@ -62,7 +62,7 @@ export function BarChart({ data, height = 200, emptyMessage }: BarChartProps) {
 
   if (!hasData && emptyMessage) {
     return (
-      <div ref={containerRef} className="flex items-center justify-center text-sm text-neutral-400" style={{ height }}>
+      <div ref={containerRef} className="flex items-center justify-center text-sm text-muted-foreground" style={{ height }}>
         {emptyMessage}
       </div>
     );
@@ -96,7 +96,7 @@ export function BarChart({ data, height = 200, emptyMessage }: BarChartProps) {
                 y1={yScale(tick)}
                 x2={innerWidth}
                 y2={yScale(tick)}
-                stroke="#f0f0f0"
+                stroke="var(--border)"
                 strokeWidth={1}
               />
               <text
@@ -105,7 +105,7 @@ export function BarChart({ data, height = 200, emptyMessage }: BarChartProps) {
                 textAnchor="end"
                 dominantBaseline="middle"
                 fontSize={10}
-                fill="#a3a3a3"
+                fill="var(--muted-foreground)"
               >
                 {formatTime(tick)}
               </text>
@@ -151,13 +151,15 @@ export function BarChart({ data, height = 200, emptyMessage }: BarChartProps) {
                       width={56}
                       height={20}
                       rx={4}
-                      fill="#262626"
+                      fill="var(--popover)"
+                      stroke="var(--border)"
+                      strokeWidth={1}
                     />
                     <text
                       x={getTooltipX(i)}
                       y={Math.max(yScale(d.value) - 28, 0) + 13}
                       textAnchor="middle"
-                      fill="white"
+                      fill="var(--popover-foreground)"
                       fontSize={11}
                       fontWeight={500}
                     >
@@ -177,14 +179,14 @@ export function BarChart({ data, height = 200, emptyMessage }: BarChartProps) {
               y={innerHeight + 18}
               textAnchor="middle"
               fontSize={11}
-              fill="#a3a3a3"
+              fill="var(--muted-foreground)"
             >
               {d.label}
             </text>
           ))}
 
           {/* Baseline */}
-          <line x1={0} y1={innerHeight} x2={innerWidth} y2={innerHeight} stroke="#e5e5e5" strokeWidth={1} />
+          <line x1={0} y1={innerHeight} x2={innerWidth} y2={innerHeight} stroke="var(--border)" strokeWidth={1} />
         </g>
       </svg>
     </div>

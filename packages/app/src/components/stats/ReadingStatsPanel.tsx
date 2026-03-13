@@ -191,7 +191,7 @@ export function ReadingStatsPanel() {
   if (loading) {
     return (
       <div className="flex h-[60vh] items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-neutral-300 border-t-neutral-700" />
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-primary" />
       </div>
     );
   }
@@ -200,8 +200,8 @@ export function ReadingStatsPanel() {
     <div className="h-full space-y-6 overflow-auto p-6">
       {/* Page Header */}
       <div className="space-y-1">
-        <h1 className="text-2xl font-bold text-neutral-900">{t("stats.title")}</h1>
-        <p className="text-sm text-neutral-500">{t("stats.subtitle")}</p>
+        <h1 className="text-2xl font-bold text-foreground">{t("stats.title")}</h1>
+        <p className="text-sm text-muted-foreground">{t("stats.subtitle")}</p>
       </div>
 
       {/* Stat Cards Grid */}
@@ -235,22 +235,22 @@ export function ReadingStatsPanel() {
       )}
 
       {/* Heatmap / Bar Chart Section (switchable) */}
-      <div className="rounded-xl border border-neutral-150 p-5">
+      <div className="rounded-xl border border-border p-5">
         <div className="mb-4 flex items-center justify-between">
           <div className="space-y-1">
-            <h3 className="text-base font-semibold text-neutral-900">{t("stats.heatmapTitle")}</h3>
+            <h3 className="text-base font-semibold text-foreground">{t("stats.heatmapTitle")}</h3>
             {chartView === "heatmap" && (
-              <p className="text-xs text-neutral-500">{t("stats.heatmapDesc")}</p>
+              <p className="text-xs text-muted-foreground">{t("stats.heatmapDesc")}</p>
             )}
           </div>
           <div className="flex items-center gap-2">
             {/* Heatmap / Bar toggle */}
-            <div className="flex rounded-lg border border-neutral-200 bg-neutral-50 p-0.5">
+            <div className="flex rounded-lg border border-border bg-muted p-0.5">
               <button
                 className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
                   chartView === "heatmap"
-                    ? "bg-white text-neutral-900 shadow-sm"
-                    : "text-neutral-500 hover:text-neutral-700"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
                 }`}
                 onClick={() => setChartView("heatmap")}
               >
@@ -259,8 +259,8 @@ export function ReadingStatsPanel() {
               <button
                 className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
                   chartView === "bar"
-                    ? "bg-white text-neutral-900 shadow-sm"
-                    : "text-neutral-500 hover:text-neutral-700"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
                 }`}
                 onClick={() => setChartView("bar")}
               >
@@ -271,12 +271,12 @@ export function ReadingStatsPanel() {
             {/* Week/Month toggle + date navigation (only for bar view) */}
             {chartView === "bar" && (
               <>
-                <div className="flex rounded-lg border border-neutral-200 bg-neutral-50 p-0.5">
+                <div className="flex rounded-lg border border-border bg-muted p-0.5">
                   <button
                     className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
                       chartMode === "week"
-                        ? "bg-white text-neutral-900 shadow-sm"
-                        : "text-neutral-500 hover:text-neutral-700"
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
                     }`}
                     onClick={() => switchChartMode("week")}
                   >
@@ -285,8 +285,8 @@ export function ReadingStatsPanel() {
                   <button
                     className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
                       chartMode === "month"
-                        ? "bg-white text-neutral-900 shadow-sm"
-                        : "text-neutral-500 hover:text-neutral-700"
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
                     }`}
                     onClick={() => switchChartMode("month")}
                   >
@@ -295,17 +295,17 @@ export function ReadingStatsPanel() {
                 </div>
                 <div className="flex items-center gap-1">
                   <button
-                    className="rounded-md p-1 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-600"
+                    className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                     onClick={() => navigatePeriod(-1)}
                     title={t("stats.prevPeriod")}
                   >
                     <ChevronLeft className="h-4 w-4" />
                   </button>
-                  <span className="min-w-[120px] text-center text-xs font-medium text-neutral-600">
+                  <span className="min-w-[120px] text-center text-xs font-medium text-muted-foreground">
                     {periodLabel}
                   </span>
                   <button
-                    className="rounded-md p-1 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-600"
+                    className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                     onClick={() => navigatePeriod(1)}
                     title={t("stats.nextPeriod")}
                   >
@@ -329,33 +329,33 @@ export function ReadingStatsPanel() {
       </div>
 
       {/* Trend Chart Section */}
-      <div className="rounded-xl border border-neutral-150 p-5">
+      <div className="rounded-xl border border-border p-5">
         <div className="mb-4 space-y-1">
-          <h3 className="text-base font-semibold text-neutral-900">{t("stats.trendTitle")}</h3>
-          <p className="text-xs text-neutral-500">{t("stats.trendDesc")}</p>
+          <h3 className="text-base font-semibold text-foreground">{t("stats.trendTitle")}</h3>
+          <p className="text-xs text-muted-foreground">{t("stats.trendDesc")}</p>
         </div>
         <TrendChart data={trendChartData} height={160} emptyMessage={t("stats.noData")} />
       </div>
 
       {/* Period Book List */}
-      <div className="rounded-xl border border-neutral-150 p-5">
+      <div className="rounded-xl border border-border p-5">
         <div className="mb-4 space-y-1">
-          <h3 className="text-base font-semibold text-neutral-900">{t("stats.periodBooks")}</h3>
+          <h3 className="text-base font-semibold text-foreground">{t("stats.periodBooks")}</h3>
         </div>
         <PeriodBookList books={periodBooks} />
       </div>
 
       {/* Longest Streak */}
       {overall && overall.longestStreak > 0 && (
-        <div className="flex items-center gap-3 rounded-xl border border-neutral-150 p-4">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-50">
+        <div className="flex items-center gap-3 rounded-xl border border-border p-4">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-500/10">
             <Flame className="h-5 w-5 text-orange-500" />
           </div>
           <div>
-            <p className="text-sm font-semibold text-neutral-900">
+            <p className="text-sm font-semibold text-foreground">
               {t("stats.longestStreak", { days: overall.longestStreak })}
             </p>
-            <p className="text-xs text-neutral-500">{t("stats.longestStreakDesc")}</p>
+            <p className="text-xs text-muted-foreground">{t("stats.longestStreakDesc")}</p>
           </div>
         </div>
       )}
@@ -459,7 +459,7 @@ function HeatmapChart({ dailyStats, lang }: { dailyStats: DailyStats[]; lang: st
             return (
               <div
                 key={`${m.label}-${m.col}`}
-                className="text-xs text-neutral-400"
+                className="text-xs text-muted-foreground"
                 style={{ width: `${span * unit}px`, minWidth: `${span * unit}px` }}
               >
                 {span >= 2 ? m.label : ""}
@@ -475,7 +475,7 @@ function HeatmapChart({ dailyStats, lang }: { dailyStats: DailyStats[]; lang: st
               const label = dayLabels.find((l) => l.idx === d);
               return (
                 <div key={d} className="flex items-center" style={{ height: `${cellSize}px` }}>
-                  <span className="text-[10px] text-neutral-400">{label?.label || ""}</span>
+                  <span className="text-[10px] text-muted-foreground">{label?.label || ""}</span>
                 </div>
               );
             })}
@@ -497,7 +497,7 @@ function HeatmapChart({ dailyStats, lang }: { dailyStats: DailyStats[]; lang: st
                         style={{ height: `${cellSize}px`, width: `${cellSize}px` }}
                       />
                     </TooltipTrigger>
-                    <TooltipContent side="top" className="bg-neutral-800 text-white">
+                    <TooltipContent side="top" className="bg-popover text-popover-foreground">
                       <p className="text-xs font-medium">
                         {day.time > 0
                           ? t("stats.heatmapTooltip", { time: Math.round(day.time), date: day.date })
@@ -518,24 +518,24 @@ function HeatmapChart({ dailyStats, lang }: { dailyStats: DailyStats[]; lang: st
 function HeatmapLegend() {
   const { t } = useTranslation();
   return (
-    <div className="mt-3 flex items-center justify-end gap-1.5 text-xs text-neutral-400">
+    <div className="mt-3 flex items-center justify-end gap-1.5 text-xs text-muted-foreground">
       <span>{t("stats.less")}</span>
-      <div className="h-[12px] w-[12px] rounded-[2px] bg-neutral-100" />
-      <div className="h-[12px] w-[12px] rounded-[2px] bg-emerald-200" />
-      <div className="h-[12px] w-[12px] rounded-[2px] bg-emerald-400" />
-      <div className="h-[12px] w-[12px] rounded-[2px] bg-emerald-500" />
-      <div className="h-[12px] w-[12px] rounded-[2px] bg-emerald-700" />
+      <div className="h-[12px] w-[12px] rounded-[2px] bg-muted" />
+      <div className="h-[12px] w-[12px] rounded-[2px] bg-emerald-200 dark:bg-emerald-900" />
+      <div className="h-[12px] w-[12px] rounded-[2px] bg-emerald-400 dark:bg-emerald-700" />
+      <div className="h-[12px] w-[12px] rounded-[2px] bg-emerald-500 dark:bg-emerald-600" />
+      <div className="h-[12px] w-[12px] rounded-[2px] bg-emerald-700 dark:bg-emerald-500" />
       <span>{t("stats.more")}</span>
     </div>
   );
 }
 
 function getHeatColor(minutes: number): string {
-  if (minutes <= 0) return "bg-neutral-100";
-  if (minutes < 15) return "bg-emerald-200";
-  if (minutes < 30) return "bg-emerald-400";
-  if (minutes < 60) return "bg-emerald-500";
-  return "bg-emerald-700";
+  if (minutes <= 0) return "bg-muted";
+  if (minutes < 15) return "bg-emerald-200 dark:bg-emerald-900";
+  if (minutes < 30) return "bg-emerald-400 dark:bg-emerald-700";
+  if (minutes < 60) return "bg-emerald-500 dark:bg-emerald-600";
+  return "bg-emerald-700 dark:bg-emerald-500";
 }
 
 /* ── Stat Card ── */
@@ -554,12 +554,12 @@ function StatCard({
   return (
     <div className="rounded-xl bg-muted p-4 shadow-around">
       <div className="flex items-center justify-between pb-2">
-        <h3 className="text-sm font-medium text-neutral-500">{title}</h3>
-        <div className="text-neutral-400">{icon}</div>
+        <h3 className="text-sm font-medium text-muted-foreground">{title}</h3>
+        <div className="text-muted-foreground">{icon}</div>
       </div>
       <div className="space-y-1">
-        <div className="text-2xl font-bold text-neutral-900">{value}</div>
-        {description && <p className="text-xs text-neutral-400">{description}</p>}
+        <div className="text-2xl font-bold text-foreground">{value}</div>
+        {description && <p className="text-xs text-muted-foreground">{description}</p>}
       </div>
     </div>
   );

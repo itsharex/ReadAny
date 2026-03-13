@@ -101,7 +101,7 @@ export function TrendChart({ data, height = 160, emptyMessage }: TrendChartProps
 
   if (!hasData && emptyMessage) {
     return (
-      <div ref={containerRef} className="flex items-center justify-center text-sm text-neutral-400" style={{ height }}>
+      <div ref={containerRef} className="flex items-center justify-center text-sm text-muted-foreground" style={{ height }}>
         {emptyMessage}
       </div>
     );
@@ -135,7 +135,7 @@ export function TrendChart({ data, height = 160, emptyMessage }: TrendChartProps
                 y1={yScale(tick)}
                 x2={innerWidth}
                 y2={yScale(tick)}
-                stroke="#f0f0f0"
+                stroke="var(--border)"
                 strokeWidth={1}
               />
               <text
@@ -144,7 +144,7 @@ export function TrendChart({ data, height = 160, emptyMessage }: TrendChartProps
                 textAnchor="end"
                 dominantBaseline="middle"
                 fontSize={10}
-                fill="#a3a3a3"
+                fill="var(--muted-foreground)"
               >
                 {formatTime(tick)}
               </text>
@@ -164,14 +164,14 @@ export function TrendChart({ data, height = 160, emptyMessage }: TrendChartProps
               y={innerHeight + 18}
               textAnchor="middle"
               fontSize={10}
-              fill="#a3a3a3"
+              fill="var(--muted-foreground)"
             >
               {formatDate(date)}
             </text>
           ))}
 
           {/* Baseline */}
-          <line x1={0} y1={innerHeight} x2={innerWidth} y2={innerHeight} stroke="#e5e5e5" strokeWidth={1} />
+          <line x1={0} y1={innerHeight} x2={innerWidth} y2={innerHeight} stroke="var(--border)" strokeWidth={1} />
 
           {/* Invisible hit areas for hover */}
           {data.map((d, i) => {
@@ -199,7 +199,7 @@ export function TrendChart({ data, height = 160, emptyMessage }: TrendChartProps
                 y1={0}
                 x2={xScale(data[hoveredIndex].date) || 0}
                 y2={innerHeight}
-                stroke="#d4d4d4"
+                stroke="var(--muted-foreground)"
                 strokeWidth={1}
                 strokeDasharray="3,3"
               />
@@ -208,7 +208,7 @@ export function TrendChart({ data, height = 160, emptyMessage }: TrendChartProps
                 cy={yScale(data[hoveredIndex].value)}
                 r={4}
                 fill="rgb(16, 185, 129)"
-                stroke="white"
+                stroke="var(--background)"
                 strokeWidth={2}
               />
               {/* Tooltip */}
@@ -218,13 +218,15 @@ export function TrendChart({ data, height = 160, emptyMessage }: TrendChartProps
                 width={72}
                 height={22}
                 rx={4}
-                fill="#262626"
+                fill="var(--popover)"
+                stroke="var(--border)"
+                strokeWidth={1}
               />
               <text
                 x={getTooltipX(hoveredIndex)}
                 y={Math.max(yScale(data[hoveredIndex].value) - 32, 0) + 14}
                 textAnchor="middle"
-                fill="white"
+                fill="var(--popover-foreground)"
                 fontSize={10}
                 fontWeight={500}
               >
