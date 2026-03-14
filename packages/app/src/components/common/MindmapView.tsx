@@ -20,6 +20,7 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
   const fullscreenMarkmapRef = useRef<Markmap | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [scale, setScale] = useState(1);
+  const [showTooltip, setShowTooltip] = useState(false);
 
   const renderMap = useCallback(() => {
     if (!svgRef.current || !markdown) return;
@@ -107,6 +108,14 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
     setScale((prev) => Math.max(prev - 0.2, 0.3));
   }, []);
 
+  const handleResetZoom = useCallback(() => {
+    setScale(1);
+    markmapRef.current?.fit();
+    fullscreenMarkmapRef.current?.fit();
+  }, []);
+
+  const displayTitle = title && title.length > 20 ? title.slice(0, 20) + "..." : title;
+
   const fullscreenOverlay = expanded
     ? createPortal(
         <div className="fixed inset-0 z-[9999] flex items-center justify-center">
@@ -117,10 +126,38 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
           />
           <div className="relative z-10 m-4 flex h-[90vh] w-[90vw] max-w-6xl flex-col rounded-xl border border-border bg-card shadow-2xl">
             <div className="flex items-center justify-between border-b border-border px-4 py-3">
-              <span className="text-base font-medium text-foreground">
-                {title || t("mindmap.title")}
+              <span
+                className="text-base font-medium text-foreground cursor-default"
+                title={title && title.length > 20 ? title : undefined}
+              >
+                {displayTitle || t("mindmap.title")}
               </span>
               <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleZoomOut}
+                  className="rounded p-1.5 hover:bg-muted transition-colors"
+                  title={t("common.zoomOut", "缩小")}
+                >
+                  <ZoomOut className="h-5 w-5 text-muted-foreground" />
+                </button>
+                <button
+                  type="button"
+                  onClick={handleResetZoom}
+                  className="text-xs text-muted-foreground min-w-[3rem] hover:text-foreground transition-colors"
+                  title={t("common.resetZoom", "重置缩放")}
+                >
+                  {Math.round(scale * 100)}%
+                </button>
+                <button
+                  type="button"
+                  onClick={handleZoomIn}
+                  className="rounded p-1.5 hover:bg-muted transition-colors"
+                  title={t("common.zoomIn", "放大")}
+                >
+                  <ZoomIn className="h-5 w-5 text-muted-foreground" />
+                </button>
+                <div className="w-px h-5 bg-border mx-1" />
                 <button
                   type="button"
                   onClick={handleDownload}
@@ -139,7 +176,16 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
                 </button>
               </div>
             </div>
-            <svg ref={fullscreenSvgRef} className="h-full w-full flex-1" />
+            <div className="flex-1 overflow-auto">
+              <svg
+                ref={fullscreenSvgRef}
+                style={{
+                  transform: `scale(${scale})`,
+                  transformOrigin: "center center",
+                }}
+                className="w-full h-full"
+              />
+            </div>
           </div>
         </div>,
         document.body
@@ -150,8 +196,11 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
     <>
       <div className="relative rounded-lg border border-border bg-card">
         <div className="flex items-center justify-between border-b border-border px-3 py-2">
-          <span className="text-sm font-medium text-foreground">
-            {title || t("mindmap.title")}
+          <span
+            className="text-sm font-medium text-foreground cursor-default"
+            title={title && title.length > 20 ? title : undefined}
+          >
+            {displayTitle || t("mindmap.title")}
           </span>
           <div className="flex items-center gap-1">
             <button
@@ -162,9 +211,14 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
             >
               <ZoomOut className="h-4 w-4 text-muted-foreground" />
             </button>
-            <span className="text-xs text-muted-foreground min-w-[3rem] text-center">
+            <button
+              type="button"
+              onClick={handleResetZoom}
+              className="text-xs text-muted-foreground min-w-[3rem] text-center hover:text-foreground transition-colors"
+              title={t("common.resetZoom", "重置缩放")}
+            >
               {Math.round(scale * 100)}%
-            </span>
+            </button>
             <button
               type="button"
               onClick={handleZoomIn}
@@ -197,11 +251,10 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
           <svg
             ref={svgRef}
             style={{
-              width: `${scale * 100}%`,
-              height: `${scale * 100}%`,
-              minWidth: "100%",
-              minHeight: "100%",
+              transform: `scale(${scale})`,
+              transformOrigin: "center center",
             }}
+            className="w-full h-full"
           />
         </div>
       </div>

@@ -326,12 +326,34 @@ export function useStreamingChat(_options?: StreamingChatOptions) {
           streamingStateRef.current.currentTextPart.updatedAt = Date.now();
         }
 
+        const reasoning = streamingStateRef.current.currentParts
+          .filter((p) => p.type === "reasoning")
+          .map((p) => ({
+            id: p.id,
+            type: (p as ReasoningPart).thinkingType || "thinking",
+            content: (p as ReasoningPart).text,
+            timestamp: p.createdAt,
+          }));
+
+        const partsOrder = streamingStateRef.current.currentParts.map((p) => {
+          const base = {
+            type: p.type as "text" | "reasoning" | "tool_call" | "citation" | "mindmap",
+            id: p.id,
+          };
+          if (p.type === "text") {
+            return { ...base, text: (p as TextPart).text };
+          }
+          return base;
+        });
+
         const assistantMessage = {
           id: messageId,
           threadId: thread.id,
           role: "assistant" as const,
           content: streamingStateRef.current.fullText,
           parts: streamingStateRef.current.currentParts,
+          reasoning: reasoning.length > 0 ? reasoning : undefined,
+          partsOrder: partsOrder.length > 0 ? partsOrder : undefined,
           createdAt: Date.now(),
         };
 

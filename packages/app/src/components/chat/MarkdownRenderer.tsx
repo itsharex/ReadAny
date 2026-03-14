@@ -6,7 +6,7 @@
  */
 import { renderMermaidSVG } from "beautiful-mermaid";
 import { Check, Copy, ArrowUpRight, Download, Maximize2, Minimize2, ZoomIn, ZoomOut } from "lucide-react";
-import React, { useMemo, useState, useRef } from "react";
+import React, { useMemo, useState, useRef, useCallback } from "react";
 import Markdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
@@ -20,6 +20,7 @@ function MermaidBlock({ code }: { code: string }) {
   const [expanded, setExpanded] = useState(false);
   const [scale, setScale] = useState(1);
   const svgRef = useRef<HTMLDivElement>(null);
+  const fullscreenSvgRef = useRef<HTMLDivElement>(null);
   
   const { svg, error } = useMemo(() => {
     try {
@@ -36,8 +37,8 @@ function MermaidBlock({ code }: { code: string }) {
     }
   }, [code]);
 
-  const handleDownload = () => {
-    const svgElement = svgRef.current?.querySelector("svg");
+  const handleDownload = useCallback(() => {
+    const svgElement = (expanded ? fullscreenSvgRef.current : svgRef.current)?.querySelector("svg");
     if (!svgElement) return;
 
     const svgData = new XMLSerializer().serializeToString(svgElement);
@@ -51,15 +52,19 @@ function MermaidBlock({ code }: { code: string }) {
     downloadLink.click();
     document.body.removeChild(downloadLink);
     URL.revokeObjectURL(svgUrl);
-  };
+  }, [expanded]);
 
-  const handleZoomIn = () => {
+  const handleZoomIn = useCallback(() => {
     setScale((prev) => Math.min(prev + 0.2, 3));
-  };
+  }, []);
 
-  const handleZoomOut = () => {
+  const handleZoomOut = useCallback(() => {
     setScale((prev) => Math.max(prev - 0.2, 0.3));
-  };
+  }, []);
+
+  const handleResetZoom = useCallback(() => {
+    setScale(1);
+  }, []);
 
   if (error) {
     return (
@@ -69,6 +74,37 @@ function MermaidBlock({ code }: { code: string }) {
     );
   }
 
+  const renderControls = (showPercentage: boolean = true) => (
+    <>
+      <button
+        type="button"
+        onClick={handleZoomOut}
+        className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        title={t("common.zoomOut", "缩小")}
+      >
+        <ZoomOut className="size-4" />
+      </button>
+      {showPercentage && (
+        <button
+          type="button"
+          onClick={handleResetZoom}
+          className="text-xs text-muted-foreground min-w-[3rem] justify-center hover:text-foreground transition-colors"
+          title={t("common.resetZoom", "重置缩放")}
+        >
+          {Math.round(scale * 100)}%
+        </button>
+      )}
+      <button
+        type="button"
+        onClick={handleZoomIn}
+        className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        title={t("common.zoomIn", "放大")}
+      >
+        <ZoomIn className="size-4" />
+      </button>
+    </>
+  );
+
   const fullscreenOverlay = expanded
     ? createPortal(
         <div className="fixed inset-0 z-[9999] flex items-center justify-center">
@@ -76,27 +112,9 @@ function MermaidBlock({ code }: { code: string }) {
             className="absolute inset-0 bg-black/50 backdrop-blur-sm"
             onClick={() => setExpanded(false)}
           />
-          <div className="relative z-10 m-4 max-h-[90vh] max-w-[90vw] overflow-auto rounded-lg border bg-background p-4 shadow-lg">
-            <div className="absolute right-2 top-2 flex gap-1 bg-background/80 rounded-md p-1">
-              <button
-                type="button"
-                onClick={handleZoomOut}
-                className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                title={t("common.zoomOut", "缩小")}
-              >
-                <ZoomOut className="size-4" />
-              </button>
-              <span className="flex items-center text-xs text-muted-foreground min-w-[3rem] justify-center">
-                {Math.round(scale * 100)}%
-              </span>
-              <button
-                type="button"
-                onClick={handleZoomIn}
-                className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                title={t("common.zoomIn", "放大")}
-              >
-                <ZoomIn className="size-4" />
-              </button>
+          <div className="relative z-10 m-4 flex h-[90vh] w-[90vw] max-w-6xl flex-col rounded-lg border bg-background shadow-lg">
+            <div className="absolute right-2 top-2 z-10 flex gap-1 rounded-md bg-background/90 p-1 shadow-sm">
+              {renderControls()}
               <div className="w-px h-4 bg-border mx-1 self-center" />
               <button
                 type="button"
@@ -115,13 +133,18 @@ function MermaidBlock({ code }: { code: string }) {
                 <Minimize2 className="size-4" />
               </button>
             </div>
-            <div
-              style={{
-                transform: `scale(${scale})`,
-                transformOrigin: "top left",
-              }}
-              dangerouslySetInnerHTML={{ __html: svg! }}
-            />
+            <div className="flex-1 overflow-auto p-4">
+              <div
+                ref={fullscreenSvgRef}
+                style={{
+                  transform: `scale(${scale})`,
+                  transformOrigin: "top left",
+                  width: `${100 / scale}%`,
+                  height: `${100 / scale}%`,
+                }}
+                dangerouslySetInnerHTML={{ __html: svg! }}
+              />
+            </div>
           </div>
         </div>,
         document.body
@@ -133,38 +156,21 @@ function MermaidBlock({ code }: { code: string }) {
       <div className="group relative">
         <div
           ref={svgRef}
-          className="my-3 flex justify-center overflow-auto rounded-lg border bg-muted/30 p-4"
+          className="my-3 overflow-auto rounded-lg border bg-muted/30 p-4"
           style={{ maxHeight: 400 }}
         >
           <div
             style={{
               transform: `scale(${scale})`,
               transformOrigin: "top left",
-              minWidth: scale < 1 ? "100%" : undefined,
+              width: `${100 / scale}%`,
+              height: `${100 / scale}%`,
             }}
             dangerouslySetInnerHTML={{ __html: svg! }}
           />
         </div>
         <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-          <button
-            type="button"
-            onClick={handleZoomOut}
-            className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            title={t("common.zoomOut", "缩小")}
-          >
-            <ZoomOut className="size-4" />
-          </button>
-          <span className="flex items-center text-xs text-muted-foreground min-w-[3rem] justify-center">
-            {Math.round(scale * 100)}%
-          </span>
-          <button
-            type="button"
-            onClick={handleZoomIn}
-            className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            title={t("common.zoomIn", "放大")}
-          >
-            <ZoomIn className="size-4" />
-          </button>
+          {renderControls()}
           <div className="w-px h-4 bg-border mx-1 self-center" />
           <button
             type="button"
