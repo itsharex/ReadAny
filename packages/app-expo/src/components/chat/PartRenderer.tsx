@@ -4,7 +4,6 @@ import { fontSize as fs, fontWeight as fw, radius, useColors, withOpacity } from
 import type { ThemeColors } from "@/styles/theme";
 import type {
   AbortedPart,
-  MindmapPart,
   Part,
   ReasoningPart,
   TextPart,
@@ -14,6 +13,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { MarkdownRenderer } from "./MarkdownRenderer";
+import { MindmapPartView } from "./MindmapPartView";
 
 interface PartProps {
   part: Part;
@@ -66,7 +66,7 @@ function TextPartView({ part }: { part: TextPart }) {
 }
 
 function ReasoningPartView({ part }: { part: ReasoningPart }) {
-  const [isOpen, setIsOpen] = useState(part.status === "running");
+  const [isOpen, setIsOpen] = useState(part.status === "running" || part.status === "completed");
   const throttledText = useThrottledValue(part.text, 100);
   const { t } = useTranslation();
   const colors = useColors();
@@ -211,32 +211,6 @@ function ToolCallPartView({ part }: { part: ToolCallPart }) {
           )}
         </View>
       )}
-    </View>
-  );
-}
-
-function MindmapPartView({ part }: { part: MindmapPart }) {
-  const colors = useColors();
-  return (
-    <View
-      style={{
-        marginVertical: 8,
-        padding: 12,
-        borderRadius: radius.md,
-        backgroundColor: colors.muted,
-      }}
-    >
-      <Text
-        style={{
-          fontSize: fs.sm,
-          fontWeight: fw.semibold,
-          color: colors.foreground,
-          marginBottom: 6,
-        }}
-      >
-        {part.title}
-      </Text>
-      <MarkdownRenderer content={part.markdown} />
     </View>
   );
 }
