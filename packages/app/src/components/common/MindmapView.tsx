@@ -133,64 +133,42 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
     // Clone the SVG to modify it
     const clonedSvg = svgElement.cloneNode(true) as SVGSVGElement;
     
-    // Get all elements to calculate full content bounds
-    const allElements = clonedSvg.querySelectorAll('*');
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    // Try to get the main g element which contains all content
+    const gElement = clonedSvg.querySelector('g');
+    let contentX = 0, contentY = 0, contentWidth = 800, contentHeight = 600;
     
-    allElements.forEach((el) => {
-      if (el instanceof SVGGraphicsElement) {
-        try {
-          const bbox = el.getBBox();
-          if (bbox.width > 0 && bbox.height > 0) {
-            minX = Math.min(minX, bbox.x);
-            minY = Math.min(minY, bbox.y);
-            maxX = Math.max(maxX, bbox.x + bbox.width);
-            maxY = Math.max(maxY, bbox.y + bbox.height);
-          }
-        } catch (e) {
-          // Ignore elements that don't support getBBox
+    if (gElement) {
+      try {
+        // Get bbox of the main content group
+        const bbox = gElement.getBBox();
+        if (bbox.width > 0 && bbox.height > 0) {
+          const padding = 20;
+          contentX = bbox.x - padding;
+          contentY = bbox.y - padding;
+          contentWidth = bbox.width + padding * 2;
+          contentHeight = bbox.height + padding * 2;
         }
-      }
-    });
-    
-    // Fallback to g element transform if no bbox found (for markmap)
-    if (minX === Infinity) {
-      const gElement = clonedSvg.querySelector('g');
-      if (gElement) {
+      } catch (e) {
+        // If getBBox fails, try to parse from transform
         const transform = gElement.getAttribute('transform');
         if (transform) {
           const translateMatch = transform.match(/translate\(([^,]+),\s*([^)]+)\)/);
           const scaleMatch = transform.match(/scale\(([^)]+)\)/);
-          if (translateMatch && scaleMatch) {
+          if (translateMatch) {
             const translateX = parseFloat(translateMatch[1]);
             const translateY = parseFloat(translateMatch[2]);
-            const scale = parseFloat(scaleMatch[1]);
-            // Estimate bounds based on transform
-            minX = -translateX / scale;
-            minY = -translateY / scale;
-            maxX = minX + 1000;
-            maxY = minY + 800;
+            const scale = scaleMatch ? parseFloat(scaleMatch[1]) : 1;
+            // Estimate content bounds
+            contentX = -translateX / scale - 100;
+            contentY = -translateY / scale - 100;
+            contentWidth = 2000;
+            contentHeight = 1500;
           }
         }
       }
     }
     
-    // Fallback to default if still no bounds
-    if (minX === Infinity) {
-      minX = 0;
-      minY = 0;
-      maxX = 800;
-      maxY = 600;
-    }
-    
-    // Tight padding - just enough to not cut off content
-    const padding = 15;
-    const contentX = minX - padding;
-    const contentY = minY - padding;
-    const contentWidth = maxX - minX + padding * 2;
-    const contentHeight = maxY - minY + padding * 2;
-    
-    // Set viewBox to tightly fit all content
+    // Set viewBox to fit content
     clonedSvg.setAttribute('viewBox', `${contentX} ${contentY} ${contentWidth} ${contentHeight}`);
     clonedSvg.setAttribute('width', String(contentWidth));
     clonedSvg.setAttribute('height', String(contentHeight));
