@@ -109,33 +109,27 @@ const categories = [
 </Layout>
 
 <script is:inline>
-  // Search bar logic
+  // Search bar logic - redirect to docs and trigger search modal
   function initSupportSearch() {
     const searchInput = document.getElementById('support-search-input');
     const searchBtn = document.querySelector('.search-btn');
 
-    function openSearch() {
-      const starlightSearchBtn = document.querySelector('site-search button[data-open-modal]');
-      if (starlightSearchBtn) {
-        starlightSearchBtn.click();
-        const query = searchInput?.value;
-        if (query) {
-          setTimeout(() => {
-            const modalInput = document.querySelector('.pagefind-ui__search-input');
-            if (modalInput) {
-              modalInput.value = query;
-              modalInput.dispatchEvent(new Event('input', { bubbles: true }));
-            }
-          }, 100);
-        }
+    function performSearch() {
+      const query = searchInput?.value?.trim();
+      // Store search query in sessionStorage to be picked up by the docs page
+      if (query) {
+        sessionStorage.setItem('pendingSearch', query);
       }
+      // Redirect to getting started page
+      window.location.href = '/ReadAny/zh/support/getting-started/';
     }
 
-    searchInput?.addEventListener('click', openSearch);
     searchInput?.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') openSearch();
+      if (e.key === 'Enter') {
+        performSearch();
+      }
     });
-    searchBtn?.addEventListener('click', openSearch);
+    searchBtn?.addEventListener('click', performSearch);
   }
 
   // Initialize on page load

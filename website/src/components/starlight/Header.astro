@@ -174,4 +174,33 @@ const homeHref = locale ? `/ReadAny/${locale}/` : '/ReadAny/';
 
   document.addEventListener('DOMContentLoaded', initMenuToggle);
   document.addEventListener('astro:page-load', initMenuToggle);
+
+  // Handle pending search from support page
+  function handlePendingSearch() {
+    const pendingQuery = sessionStorage.getItem('pendingSearch');
+    if (pendingQuery) {
+      sessionStorage.removeItem('pendingSearch');
+
+      // Wait for page to fully load
+      setTimeout(() => {
+        const searchBtn = document.querySelector('site-search button[data-open-modal]');
+        if (searchBtn) {
+          searchBtn.click();
+
+          // Wait for modal to open and fill in the search query
+          setTimeout(() => {
+            const searchInput = document.querySelector('.pagefind-ui__search-input');
+            if (searchInput) {
+              searchInput.value = pendingQuery;
+              searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+              searchInput.focus();
+            }
+          }, 200);
+        }
+      }, 500);
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', handlePendingSearch);
+  document.addEventListener('astro:page-load', handlePendingSearch);
 </script>
