@@ -25,25 +25,12 @@ const MermaidBlock = memo(function MermaidBlock({ code }: { code: string }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const [scale, setScale] = useState(1);
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartRef = useRef({ x: 0, y: 0, posX: 0, posY: 0 });
   const svgRef = useRef<HTMLDivElement>(null);
   const fullscreenSvgRef = useRef<HTMLDivElement>(null);
   const instanceId = useRef(Math.random().toString(36).slice(2, 8));
-  
-  // Debug: track mount/unmount and state changes
-  useEffect(() => {
-    console.log(`[MermaidBlock ${instanceId.current}] mounted, code length:`, code?.length);
-    return () => {
-      console.log(`[MermaidBlock ${instanceId.current}] unmounted`);
-    };
-  }, []);
-  
-  useEffect(() => {
-    console.log(`[MermaidBlock ${instanceId.current}] code changed, length:`, code?.length);
-  }, [code]);
-  
-  useEffect(() => {
-    console.log(`[MermaidBlock ${instanceId.current}] scale changed:`, scale);
-  }, [scale]);
   
   // Memoize SVG rendering - only re-render when code changes
   const svg = useMemo(() => {
@@ -98,7 +85,47 @@ const MermaidBlock = memo(function MermaidBlock({ code }: { code: string }) {
 
   const handleResetZoom = useCallback(() => {
     setScale(1);
+    setPosition({ x: 0, y: 0 });
   }, []);
+
+  // Drag handlers
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    setIsDragging(true);
+    dragStartRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      posX: position.x,
+      posY: position.y,
+    };
+  }, [position]);
+
+  const handleMouseMove = useCallback((e: MouseEvent) => {
+    if (!isDragging) return;
+    const dx = e.clientX - dragStartRef.current.x;
+    const dy = e.clientY - dragStartRef.current.y;
+    setPosition({
+      x: dragStartRef.current.posX + dx,
+      y: dragStartRef.current.posY + dy,
+    });
+  }, [isDragging]);
+
+  const handleMouseUp = useCallback(() => {
+    setIsDragging(false);
+  }, []);
+
+  // Add global mouse event listeners when dragging
+  useEffect(() => {
+    if (isDragging) {
+      window.addEventListener("mousemove", handleMouseMove);
+      window.addEventListener("mouseup", handleMouseUp);
+      return () => {
+        window.removeEventListener("mousemove", handleMouseMove);
+        window.removeEventListener("mouseup", handleMouseUp);
+      };
+    }
+  }, [isDragging, handleMouseMove, handleMouseUp]);
 
   if (error) {
     return (
@@ -167,15 +194,15 @@ const MermaidBlock = memo(function MermaidBlock({ code }: { code: string }) {
                 <Minimize2 className="size-4" />
               </button>
             </div>
-            <div className="flex-1 overflow-auto p-4">
+            <div className="flex-1 overflow-hidden p-4">
               <div
                 ref={fullscreenSvgRef}
                 style={{
-                  transform: `scale(${scale})`,
-                  transformOrigin: "top left",
-                  width: `${100 / scale}%`,
-                  height: `${100 / scale}%`,
+                  transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`,
+                  transformOrigin: "center center",
+                  cursor: isDragging ? "grabbing" : "grab",
                 }}
+                onMouseDown={handleMouseDown}
                 dangerouslySetInnerHTML={{ __html: svg || "" }}
               />
             </div>
@@ -190,16 +217,16 @@ const MermaidBlock = memo(function MermaidBlock({ code }: { code: string }) {
       <div className="group relative">
         <div
           ref={svgRef}
-          className="my-3 overflow-auto rounded-lg border bg-muted/30 p-4"
+          className="my-3 overflow-hidden rounded-lg border bg-muted/30 p-4"
           style={{ maxHeight: 400 }}
         >
           <div
             style={{
-              transform: `scale(${scale})`,
-              transformOrigin: "top left",
-              width: `${100 / scale}%`,
-              height: `${100 / scale}%`,
+              transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`,
+              transformOrigin: "center center",
+              cursor: isDragging ? "grabbing" : "grab",
             }}
+            onMouseDown={handleMouseDown}
             dangerouslySetInnerHTML={{ __html: svg || "" }}
           />
         </div>
