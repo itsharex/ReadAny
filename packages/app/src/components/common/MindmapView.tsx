@@ -108,6 +108,37 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
     renderMap();
   }, [renderMap]);
 
+  // Sync scale from markmap's transform
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (markmapRef.current) {
+        const svg = markmapRef.current.svg;
+        const g = svg.select('g');
+        const transform = g.attr('transform') || '';
+        const scaleMatch = transform.match(/scale\(([^)]+)\)/);
+        if (scaleMatch) {
+          const currentScale = parseFloat(scaleMatch[1]);
+          if (Math.abs(currentScale - scale) > 0.01) {
+            setScale(currentScale);
+          }
+        }
+      }
+      if (fullscreenMarkmapRef.current) {
+        const svg = fullscreenMarkmapRef.current.svg;
+        const g = svg.select('g');
+        const transform = g.attr('transform') || '';
+        const scaleMatch = transform.match(/scale\(([^)]+)\)/);
+        if (scaleMatch) {
+          const currentScale = parseFloat(scaleMatch[1]);
+          if (Math.abs(currentScale - scale) > 0.01) {
+            setScale(currentScale);
+          }
+        }
+      }
+    }, 100);
+    return () => clearInterval(interval);
+  }, [scale]);
+
   useEffect(() => {
     if (expanded) {
       setTimeout(renderFullscreenMap, 50);
