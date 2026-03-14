@@ -1,18 +1,13 @@
-/**
- * MindmapView — renders a mindmap from Markdown using markmap
- */
 import { useEffect, useRef, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { Transformer } from "markmap-lib";
 import { Markmap } from "markmap-view";
-import { Maximize2, Minimize2 } from "lucide-react";
+import { Maximize2, Minimize2, Download } from "lucide-react";
 import { useState } from "react";
 import { createPortal } from "react-dom";
 
 interface MindmapViewProps {
-  /** Markdown content to render as mindmap */
   markdown: string;
-  /** Optional title displayed above the mindmap */
   title?: string;
 }
 
@@ -44,7 +39,6 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
     }
   }, [markdown]);
 
-  // Render fullscreen mindmap when expanded
   const renderFullscreenMap = useCallback(() => {
     if (!fullscreenSvgRef.current || !markdown || !expanded) return;
 
@@ -67,18 +61,14 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
     renderMap();
   }, [renderMap]);
 
-  // Render fullscreen map when expanded changes
   useEffect(() => {
     if (expanded) {
-      // Small delay to ensure DOM is ready
       setTimeout(renderFullscreenMap, 50);
     } else {
-      // Cleanup fullscreen markmap when closing
       fullscreenMarkmapRef.current = null;
     }
   }, [expanded, renderFullscreenMap]);
 
-  // Handle escape key to close fullscreen
   useEffect(() => {
     if (!expanded) return;
 
@@ -92,33 +82,55 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [expanded]);
 
-  // Fullscreen overlay rendered via portal
+  const handleDownload = useCallback(() => {
+    const svgElement = expanded ? fullscreenSvgRef.current : svgRef.current;
+    if (!svgElement) return;
+
+    const svgData = new XMLSerializer().serializeToString(svgElement);
+    const svgBlob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
+    const svgUrl = URL.createObjectURL(svgBlob);
+
+    const downloadLink = document.createElement("a");
+    downloadLink.href = svgUrl;
+    downloadLink.download = `${title || t("mindmap.title")}.svg`;
+    document.body.appendChild(downloadLink);
+    downloadLink.click();
+    document.body.removeChild(downloadLink);
+    URL.revokeObjectURL(svgUrl);
+  }, [expanded, title, t]);
+
   const fullscreenOverlay = expanded
     ? createPortal(
         <div className="fixed inset-0 z-[9999] flex items-center justify-center">
-          {/* Backdrop */}
           <div
             className="absolute inset-0 bg-black/50 backdrop-blur-sm"
             onClick={() => setExpanded(false)}
             onKeyDown={() => {}}
           />
-          {/* Fullscreen mindmap container */}
-          <div className="relative z-10 m-4 flex h-[90vh] w-[90vw] max-w-6xl flex-col rounded-xl border border-neutral-200 bg-white shadow-2xl dark:border-neutral-700 dark:bg-neutral-900">
-            {/* Header */}
-            <div className="flex items-center justify-between border-b border-neutral-200 px-4 py-3 dark:border-neutral-700">
-              <span className="text-base font-medium text-neutral-700 dark:text-neutral-300">
+          <div className="relative z-10 m-4 flex h-[90vh] w-[90vw] max-w-6xl flex-col rounded-xl border border-border bg-card shadow-2xl">
+            <div className="flex items-center justify-between border-b border-border px-4 py-3">
+              <span className="text-base font-medium text-foreground">
                 {title || t("mindmap.title")}
               </span>
-              <button
-                type="button"
-                onClick={() => setExpanded(false)}
-                className="rounded p-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800"
-                title={t("mindmap.exitFullscreen")}
-              >
-                <Minimize2 className="h-5 w-5 text-neutral-500" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleDownload}
+                  className="rounded p-1.5 hover:bg-muted transition-colors"
+                  title={t("mindmap.download")}
+                >
+                  <Download className="h-5 w-5 text-muted-foreground" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setExpanded(false)}
+                  className="rounded p-1.5 hover:bg-muted transition-colors"
+                  title={t("mindmap.exitFullscreen")}
+                >
+                  <Minimize2 className="h-5 w-5 text-muted-foreground" />
+                </button>
+              </div>
             </div>
-            {/* SVG container */}
             <svg ref={fullscreenSvgRef} className="h-full w-full flex-1" />
           </div>
         </div>,
@@ -128,23 +140,31 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
 
   return (
     <>
-      <div className="relative rounded-lg border border-neutral-200 bg-white dark:border-neutral-700 dark:bg-neutral-900">
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-neutral-200 px-3 py-2 dark:border-neutral-700">
-          <span className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
+      <div className="relative rounded-lg border border-border bg-card">
+        <div className="flex items-center justify-between border-b border-border px-3 py-2">
+          <span className="text-sm font-medium text-foreground">
             {title || t("mindmap.title")}
           </span>
-          <button
-            type="button"
-            onClick={() => setExpanded(true)}
-            className="rounded p-1 hover:bg-neutral-100 dark:hover:bg-neutral-800"
-            title={t("mindmap.fullscreen")}
-          >
-            <Maximize2 className="h-4 w-4 text-neutral-500" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={handleDownload}
+              className="rounded p-1 hover:bg-muted transition-colors"
+              title={t("mindmap.download")}
+            >
+              <Download className="h-4 w-4 text-muted-foreground" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setExpanded(true)}
+              className="rounded p-1 hover:bg-muted transition-colors"
+              title={t("mindmap.fullscreen")}
+            >
+              <Maximize2 className="h-4 w-4 text-muted-foreground" />
+            </button>
+          </div>
         </div>
 
-        {/* SVG container */}
         <svg ref={svgRef} className="h-[400px] w-full" />
       </div>
 

@@ -667,7 +667,8 @@
     "title": "Mindmap View",
     "description": "Visual book structure for {{bookId}} will render here.",
     "exitFullscreen": "Exit Fullscreen (Esc)",
-    "fullscreen": "Fullscreen"
+    "fullscreen": "Fullscreen",
+    "download": "Download Mindmap"
   },
   "commandPalette": {
     "placeholder": "Type to search commands...",
