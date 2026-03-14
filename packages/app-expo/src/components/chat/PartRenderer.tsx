@@ -83,6 +83,8 @@ function ReasoningPartView({ part }: { part: ReasoningPart }) {
     type: part.type, 
     textLength: part.text?.length, 
     textPreview: part.text?.slice(0, 50),
+    throttledTextLength: throttledText?.length,
+    throttledTextPreview: throttledText?.slice(0, 50),
     status: part.status 
   });
 
