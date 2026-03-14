@@ -4,6 +4,7 @@ import { Transformer } from "markmap-lib";
 import { Markmap } from "markmap-view";
 import { Maximize2, Minimize2, Download, ZoomIn, ZoomOut } from "lucide-react";
 import { createPortal } from "react-dom";
+import { toast } from "sonner";
 
 interface MindmapViewProps {
   markdown: string;
@@ -87,7 +88,31 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
     const svgElement = expanded ? fullscreenSvgRef.current : svgRef.current;
     if (!svgElement) return;
 
-    const svgData = new XMLSerializer().serializeToString(svgElement);
+    // Clone the SVG to modify it
+    const clonedSvg = svgElement.cloneNode(true) as SVGSVGElement;
+    
+    // Get the SVG dimensions
+    const bbox = svgElement.getBBox();
+    const width = bbox.width + bbox.x + 40;
+    const height = bbox.height + bbox.y + 40;
+    
+    // Add white background
+    const bgRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    bgRect.setAttribute("width", "100%");
+    bgRect.setAttribute("height", "100%");
+    bgRect.setAttribute("fill", "white");
+    clonedSvg.insertBefore(bgRect, clonedSvg.firstChild);
+    
+    // Add font styles
+    const style = document.createElementNS("http://www.w3.org/2000/svg", "style");
+    style.textContent = `
+      text {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+      }
+    `;
+    clonedSvg.insertBefore(style, clonedSvg.firstChild);
+
+    const svgData = new XMLSerializer().serializeToString(clonedSvg);
     const svgBlob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
     const svgUrl = URL.createObjectURL(svgBlob);
 
@@ -98,6 +123,9 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
     downloadLink.click();
     document.body.removeChild(downloadLink);
     URL.revokeObjectURL(svgUrl);
+    
+    // Show success message
+    toast.success(t("common.downloadSuccess", "图表已下载"));
   }, [expanded, title, t]);
 
   const handleZoomIn = useCallback(() => {
