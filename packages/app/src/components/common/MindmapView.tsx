@@ -33,11 +33,11 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
       markmapRef.current.fit();
     } else {
       const mm = Markmap.create(svgRef.current, {
-        autoFit: true,
+        autoFit: false,
+        fitRatio: 0.8,
         duration: 300,
         maxWidth: 300,
         paddingX: 16,
-
         style: (id: string) => `
           .${id} {
             --markmap-text-color: #333;
@@ -61,6 +61,9 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
         `,
       }, root);
       markmapRef.current = mm;
+      // Set initial scale to 1
+      mm.svg.select('g').attr('transform', 'translate(400,200) scale(1)');
+      setScale(1);
     }
   }, [markdown]);
 
@@ -71,10 +74,10 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
 
     if (fullscreenMarkmapRef.current) {
       fullscreenMarkmapRef.current.setData(root);
-      setTimeout(() => fullscreenMarkmapRef.current?.fit(), 100);
     } else {
       const mm = Markmap.create(fullscreenSvgRef.current, {
-        autoFit: true,
+        autoFit: false,
+        fitRatio: 0.8,
         duration: 300,
         maxWidth: 400,
         paddingX: 24,
@@ -101,6 +104,9 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
         `,
       }, root);
       fullscreenMarkmapRef.current = mm;
+      // Set initial scale to 1 (center in fullscreen container)
+      mm.svg.select('g').attr('transform', `translate(${window.innerWidth * 0.45},${window.innerHeight * 0.45}) scale(1)`);
+      setScale(1);
     }
   }, [markdown, expanded]);
 
@@ -108,36 +114,43 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
     renderMap();
   }, [renderMap]);
 
-  // Sync scale from markmap's transform
+  // Update scale display on interaction end
   useEffect(() => {
-    const interval = setInterval(() => {
-      if (markmapRef.current) {
-        const svg = markmapRef.current.svg;
-        const g = svg.select('g');
-        const transform = g.attr('transform') || '';
-        const scaleMatch = transform.match(/scale\(([^)]+)\)/);
-        if (scaleMatch) {
-          const currentScale = parseFloat(scaleMatch[1]);
-          if (Math.abs(currentScale - scale) > 0.01) {
-            setScale(currentScale);
+    const handleInteractionEnd = (e: Event) => {
+      const target = e.target as HTMLElement;
+      
+      // Check if click is inside our mindmap containers
+      const isInMindmap = target.closest('[data-mindmap="true"]');
+      const isInFullscreen = target.closest('[data-fullscreen="true"]');
+      
+      if (!isInMindmap && !isInFullscreen) return;
+      
+      setTimeout(() => {
+        const mm = isInFullscreen ? fullscreenMarkmapRef.current : markmapRef.current;
+        
+        if (mm) {
+          const svg = mm.svg;
+          const g = svg.select('g');
+          const transform = g.attr('transform') || '';
+          const scaleMatch = transform.match(/scale\(([^)]+)\)/);
+          if (scaleMatch) {
+            setScale(parseFloat(scaleMatch[1]));
           }
         }
-      }
-      if (fullscreenMarkmapRef.current) {
-        const svg = fullscreenMarkmapRef.current.svg;
-        const g = svg.select('g');
-        const transform = g.attr('transform') || '';
-        const scaleMatch = transform.match(/scale\(([^)]+)\)/);
-        if (scaleMatch) {
-          const currentScale = parseFloat(scaleMatch[1]);
-          if (Math.abs(currentScale - scale) > 0.01) {
-            setScale(currentScale);
-          }
-        }
-      }
-    }, 100);
-    return () => clearInterval(interval);
-  }, [scale]);
+      }, 350);
+    };
+
+    document.addEventListener('dblclick', handleInteractionEnd, true);
+
+    return () => {
+      document.removeEventListener('dblclick', handleInteractionEnd, true);
+    };
+  }, []);
+
+  // Reset scale when expanding/collapsing
+  useEffect(() => {
+    setScale(1);
+  }, [expanded]);
 
   useEffect(() => {
     if (expanded) {
@@ -164,92 +177,31 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
     const svgElement = expanded ? fullscreenSvgRef.current : svgRef.current;
     if (!svgElement) return;
 
-    // Clone the SVG to modify it
-    const clonedSvg = svgElement.cloneNode(true) as SVGSVGElement;
+    // Use original SVG to calculate bounds (more accurate)
+    const gElement = svgElement.querySelector('g');
+    let contentX = -500, contentY = -500, contentWidth = 2000, contentHeight = 1500;
     
-    // Get all markmap-node and markmap-foreign elements to calculate full content bounds
-    const nodeElements = clonedSvg.querySelectorAll('.markmap-node, .markmap-foreign');
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    
-    nodeElements.forEach((el) => {
-      if (el instanceof SVGGraphicsElement) {
-        try {
-          const bbox = el.getBBox();
-          const transform = el.getAttribute('transform');
-          let x = bbox.x, y = bbox.y;
-          
-          // Parse transform to get actual position
-          if (transform) {
-            const translateMatch = transform.match(/translate\(([^,]+),\s*([^)]+)\)/);
-            if (translateMatch) {
-              x += parseFloat(translateMatch[1]);
-              y += parseFloat(translateMatch[2]);
-            }
-          }
-          
-          minX = Math.min(minX, x);
-          minY = Math.min(minY, y);
-          maxX = Math.max(maxX, x + bbox.width);
-          maxY = Math.max(maxY, y + bbox.height);
-        } catch (e) {
-          // Ignore
-        }
-      }
-    });
-    
-    // Also check all path elements (for links between nodes)
-    const pathElements = clonedSvg.querySelectorAll('path');
-    pathElements.forEach((el) => {
-      if (el instanceof SVGGraphicsElement) {
-        try {
-          const bbox = el.getBBox();
-          if (bbox.width > 0 && bbox.height > 0) {
-            minX = Math.min(minX, bbox.x);
-            minY = Math.min(minY, bbox.y);
-            maxX = Math.max(maxX, bbox.x + bbox.width);
-            maxY = Math.max(maxY, bbox.y + bbox.height);
-          }
-        } catch (e) {
-          // Ignore
-        }
-      }
-    });
-    
-    // Fallback to g element bbox if no nodes found
-    if (minX === Infinity) {
-      const gElement = clonedSvg.querySelector('g');
-      if (gElement) {
-        try {
-          const bbox = gElement.getBBox();
-          minX = bbox.x;
-          minY = bbox.y;
-          maxX = bbox.x + bbox.width;
-          maxY = bbox.y + bbox.height;
-        } catch (e) {
-          minX = -500;
-          minY = -500;
-          maxX = 1500;
-          maxY = 1000;
-        }
-      } else {
-        minX = -500;
-        minY = -500;
-        maxX = 1500;
-        maxY = 1000;
+    if (gElement) {
+      try {
+        // Get bbox from original SVG
+        const bbox = gElement.getBBox();
+        const padding = 50;
+        contentX = bbox.x - padding;
+        contentY = bbox.y - padding;
+        contentWidth = bbox.width + padding * 2;
+        contentHeight = bbox.height + padding * 2;
+      } catch (e) {
+        // Use defaults
       }
     }
     
-    // Add padding
-    const padding = 30;
-    const contentX = minX - padding;
-    const contentY = minY - padding;
-    const contentWidth = maxX - minX + padding * 2;
-    const contentHeight = maxY - minY + padding * 2;
+    // Clone the SVG to modify it
+    const clonedSvg = svgElement.cloneNode(true) as SVGSVGElement;
     
     // Reset transform on g element to show all content at original scale
-    const gElement = clonedSvg.querySelector('g');
-    if (gElement) {
-      gElement.setAttribute('transform', 'translate(0,0) scale(1)');
+    const clonedG = clonedSvg.querySelector('g');
+    if (clonedG) {
+      clonedG.setAttribute('transform', 'translate(0,0) scale(1)');
     }
     
     // Set viewBox to fit all content
@@ -367,8 +319,29 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
 
   const handleResetZoom = useCallback(() => {
     setScale(1);
-    markmapRef.current?.fit();
-    fullscreenMarkmapRef.current?.fit();
+    // Reset transform to scale 1 without changing position
+    if (markmapRef.current) {
+      const svg = markmapRef.current.svg;
+      const g = svg.select('g');
+      const currentTransform = g.attr('transform') || '';
+      const translateMatch = currentTransform.match(/translate\(([^,]+),\s*([^)]+)\)/);
+      if (translateMatch) {
+        const x = parseFloat(translateMatch[1]);
+        const y = parseFloat(translateMatch[2]);
+        g.attr('transform', `translate(${x},${y}) scale(1)`);
+      }
+    }
+    if (fullscreenMarkmapRef.current) {
+      const svg = fullscreenMarkmapRef.current.svg;
+      const g = svg.select('g');
+      const currentTransform = g.attr('transform') || '';
+      const translateMatch = currentTransform.match(/translate\(([^,]+),\s*([^)]+)\)/);
+      if (translateMatch) {
+        const x = parseFloat(translateMatch[1]);
+        const y = parseFloat(translateMatch[2]);
+        g.attr('transform', `translate(${x},${y}) scale(1)`);
+      }
+    }
   }, []);
 
   const displayTitle = title && title.length > 20 ? title.slice(0, 20) + "..." : title;
@@ -433,7 +406,7 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
                 </button>
               </div>
             </div>
-            <div className="flex-1 overflow-auto">
+            <div className="flex-1 overflow-auto" data-fullscreen="true">
               <svg
                 ref={fullscreenSvgRef}
                 className="w-full h-full"
@@ -500,7 +473,7 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
           </div>
         </div>
 
-        <div className="overflow-auto" style={{ height: 400 }}>
+        <div className="overflow-auto" style={{ height: 400 }} data-mindmap="true">
           <svg
             ref={svgRef}
             className="w-full h-full"
