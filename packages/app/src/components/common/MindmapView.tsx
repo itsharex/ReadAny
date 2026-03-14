@@ -39,23 +39,23 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
         paddingX: 16,
         style: (id: string) => `
           .${id} {
-            --markmap-text-color: var(--foreground);
-            --markmap-code-bg: var(--muted);
-            --markmap-code-color: var(--foreground);
-            --markmap-circle-open-bg: var(--background);
+            --markmap-text-color: #333;
+            --markmap-code-bg: #f5f5f5;
+            --markmap-code-color: #333;
+            --markmap-circle-open-bg: #fff;
           }
           .${id} .markmap-foreign {
-            color: var(--foreground);
+            color: #333;
           }
           .${id} .markmap-foreign a {
-            color: var(--foreground);
+            color: #0066cc;
           }
           .${id} .markmap-foreign a:hover {
-            color: var(--foreground);
+            color: #0052a3;
           }
           .${id} .markmap-foreign code {
-            color: var(--foreground);
-            background-color: var(--muted);
+            color: #333;
+            background-color: #f5f5f5;
           }
         `,
       }, root);
@@ -78,23 +78,23 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
         paddingX: 24,
         style: (id: string) => `
           .${id} {
-            --markmap-text-color: var(--foreground);
-            --markmap-code-bg: var(--muted);
-            --markmap-code-color: var(--foreground);
-            --markmap-circle-open-bg: var(--background);
+            --markmap-text-color: #333;
+            --markmap-code-bg: #f5f5f5;
+            --markmap-code-color: #333;
+            --markmap-circle-open-bg: #fff;
           }
           .${id} .markmap-foreign {
-            color: var(--foreground);
+            color: #333;
           }
           .${id} .markmap-foreign a {
-            color: var(--foreground);
+            color: #0066cc;
           }
           .${id} .markmap-foreign a:hover {
-            color: var(--foreground);
+            color: #0052a3;
           }
           .${id} .markmap-foreign code {
-            color: var(--foreground);
-            background-color: var(--muted);
+            color: #333;
+            background-color: #f5f5f5;
           }
         `,
       }, root);
@@ -186,16 +186,30 @@ export function MindmapView({ markdown, title }: MindmapViewProps) {
     bgRect.setAttribute("fill", "white");
     clonedSvg.insertBefore(bgRect, clonedSvg.firstChild);
     
-    // Add font styles
+    // Add font styles and color overrides
     const style = document.createElementNS("http://www.w3.org/2000/svg", "style");
     style.textContent = `
+      .markmap {
+        --markmap-text-color: #333 !important;
+        --markmap-code-bg: #f5f5f5 !important;
+        --markmap-code-color: #333 !important;
+        --markmap-circle-open-bg: #fff !important;
+      }
+      .markmap-foreign {
+        color: #333 !important;
+      }
       text {
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+        fill: #333 !important;
       }
     `;
     clonedSvg.insertBefore(style, clonedSvg.firstChild);
 
-    const svgData = new XMLSerializer().serializeToString(clonedSvg);
+    let svgData = new XMLSerializer().serializeToString(clonedSvg);
+    // Replace any remaining CSS variables with actual values
+    svgData = svgData.replace(/var\(--foreground\)/g, '#333');
+    svgData = svgData.replace(/var\(--background\)/g, '#fff');
+    svgData = svgData.replace(/var\(--muted\)/g, '#f5f5f5');
     const svgBlob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
     const svgUrl = URL.createObjectURL(svgBlob);
 
