@@ -170,7 +170,7 @@ const makeStyles = (colors: ThemeColors) =>
       paddingHorizontal: 8,
       paddingVertical: 3,
       borderRadius: radius.md,
-      maxWidth: "70%",
+      flex: 1,
     },
     quoteChipText: {
       fontSize: fs.xs,

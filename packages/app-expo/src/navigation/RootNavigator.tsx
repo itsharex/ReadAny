@@ -18,8 +18,8 @@ import { TabNavigator } from "./TabNavigator";
 
 export type RootStackParamList = {
   Tabs: undefined;
-  Reader: { bookId: string; cfi?: string };
-  BookChat: { bookId: string };
+  Reader: { bookId: string; cfi?: string; highlight?: boolean };
+  BookChat: { bookId: string; selectedText?: string; chapterTitle?: string };
   Stats: undefined;
   Skills: undefined;
   VectorModelSettings: undefined;

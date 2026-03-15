@@ -113,6 +113,9 @@
     let searchResults = [];
     let searchIndex = 0;
 
+    // Store user annotations for re-rendering on page change
+    const userAnnotations = new Map();
+
     // Note tooltip registry: per-doc WeakMap of cfi -> { range, note }
     const docNoteRegistries = new WeakMap();
 
@@ -255,10 +258,22 @@
           if (msg.index != null) navigateToSearchResult(msg.index);
           break;
         case 'addAnnotation':
-          if (view && msg.annotation) await view.addAnnotation(msg.annotation);
+          if (view && msg.annotation) {
+            // Don't store flash highlights in userAnnotations
+            if (!msg.annotation.flash && !(msg.annotation.value && msg.annotation.value.startsWith('flash-'))) {
+              userAnnotations.set(msg.annotation.value, msg.annotation);
+            }
+            await view.addAnnotation(msg.annotation);
+          }
           break;
         case 'removeAnnotation':
-          if (view && msg.annotation) await view.deleteAnnotation(msg.annotation);
+          if (view && msg.annotation) {
+            await view.deleteAnnotation(msg.annotation);
+            // Don't delete from userAnnotations if it's a flash highlight
+            if (!msg.annotation.flash && !(msg.annotation.value && msg.annotation.value.startsWith('flash-'))) {
+              userAnnotations.delete(msg.annotation.value);
+            }
+          }
           break;
         case 'applySettings':
           if (view && msg.settings) applySettings(msg.settings);
@@ -309,6 +324,13 @@
           attachTapListener(doc);
           attachSelectionListener(doc);
           attachNoteLongPress(doc);
+          // Re-add all user annotations for this page
+          // foliate-view will only render those that belong to current section
+          for (const [cfi, annotation] of userAnnotations) {
+            view.addAnnotation(annotation).catch(err => {
+              // Ignore errors for annotations not on current page
+            });
+          }
           postToRN('loaded', {});
         });
 
@@ -334,6 +356,7 @@
         el.addEventListener('draw-annotation', (e) => {
           const { draw, annotation, doc, range } = e.detail;
           if (!draw || !annotation) return;
+          console.log('[draw-annotation] annotation:', JSON.stringify(annotation));
           const color = annotation.color || 'yellow';
           const colorMap = {
             red: 'rgba(248, 113, 113, 0.4)',
@@ -342,12 +365,18 @@
             blue: 'rgba(96, 165, 250, 0.4)',
             pink: 'rgba(236, 72, 153, 0.4)',
             violet: 'rgba(167, 139, 250, 0.4)',
+            orange: 'rgba(251, 146, 60, 0.5)',
           };
+          
           if (annotation.note) {
+            console.log('[draw-annotation] has note:', annotation.note);
+            // Draw both highlight and squiggly underline for notes
+            draw(Overlayer.highlight, { color: colorMap[color] || colorMap.yellow });
             draw(Overlayer.squiggly, { color: '#000000', width: 1.5 });
             // Register for long-press tooltip
             if (doc && range && annotation.value) {
               registerNoteRange(doc, annotation.value, range, annotation.note);
+              console.log('[draw-annotation] registered note range for:', annotation.value);
             }
           } else {
             draw(Overlayer.highlight, { color: colorMap[color] || colorMap.yellow });
@@ -381,6 +410,12 @@
         view = el;
 
         await el.open(book);
+
+        // Set search indicator color (use primary theme color instead of red)
+        if (el.setSearchIndicator) {
+          const primaryColor = getComputedStyle(document.documentElement).getPropertyValue('--primary')?.trim() || '#3b82f6';
+          el.setSearchIndicator('outline', { color: primaryColor });
+        }
 
         if (book.toc) {
           postToRN('toc', { items: convertTOC(book.toc) });
@@ -521,8 +556,13 @@
       document.documentElement.style.setProperty('--bg', colors.background || '#1c1c1e');
       document.documentElement.style.setProperty('--fg', colors.foreground || '#e8e8ed');
       document.documentElement.style.setProperty('--muted', colors.muted || '#7c7c82');
+      document.documentElement.style.setProperty('--primary', colors.primary || '#3b82f6');
       document.body.style.backgroundColor = colors.background || '#1c1c1e';
       document.body.style.color = colors.foreground || '#e8e8ed';
+      // Update search indicator color if view is ready
+      if (view && view.setSearchIndicator) {
+        view.setSearchIndicator('outline', { color: colors.primary || '#3b82f6' });
+      }
     }
 
     // ─── Document styles ───
@@ -732,6 +772,96 @@
       } catch (e) { return ''; }
     }
 
+    // Get all visible text for TTS (no length limit)
+    function getVisibleText() {
+      try {
+        if (!view || !view.renderer) {
+          return { text: '', error: 'no view or renderer' };
+        }
+        var renderer = view.renderer;
+        var contents = renderer.getContents && renderer.getContents();
+        if (!contents || !contents[0] || !contents[0].doc) {
+          return { text: '', error: 'no contents or doc' };
+        }
+        var doc = contents[0].doc;
+        var win = doc.defaultView;
+        if (!win) {
+          return { text: '', error: 'no win' };
+        }
+
+        var texts = [];
+
+        // Check if we're in paginated mode (CSS columns)
+        var isPaginated = !renderer.scrolled;
+        var pSize = renderer.size;   // container visible width (one page)
+        var pStart = renderer.start; // abs(scrollLeft)
+
+        var walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, {
+          acceptNode: function(node) {
+            if (!node.nodeValue || !node.nodeValue.trim()) return NodeFilter.FILTER_SKIP;
+            var tag = node.parentElement && node.parentElement.tagName && node.parentElement.tagName.toLowerCase();
+            if (tag === 'script' || tag === 'style') return NodeFilter.FILTER_REJECT;
+            return NodeFilter.FILTER_ACCEPT;
+          }
+        });
+
+        var textNode = walker.nextNode();
+        var nodeCount = 0;
+        var visibleCount = 0;
+        var firstRectInfo = null;
+        while (textNode) {
+          nodeCount++;
+          var range = doc.createRange();
+          range.selectNodeContents(textNode);
+          var rect = range.getBoundingClientRect();
+          
+          if (nodeCount === 1) {
+            firstRectInfo = { left: rect.left, right: rect.right, width: rect.width };
+          }
+          
+          var isVisible = false;
+          if (isPaginated && pSize > 0) {
+            // In paginated mode, the iframe is expanded to the full content width.
+            // The outer container scrolls to show the current "page".
+            // First page starts at scroll offset = pSize (page 0 is padding).
+            // So visible range in iframe coords is [start - size, end - size].
+            var visibleLeft = pStart - pSize;
+            var visibleRight = pStart;
+            isVisible = rect.right > visibleLeft && rect.left < visibleRight && rect.width > 0;
+          } else {
+            // Scrolled mode: use iframe viewport dimensions
+            var vw = win.innerWidth;
+            var vh = win.innerHeight;
+            isVisible = rect.width > 0 && rect.height > 0 &&
+                rect.right > 0 && rect.left < vw &&
+                rect.bottom > 0 && rect.top < vh;
+          }
+          
+          if (isVisible) {
+            visibleCount++;
+            var t = textNode.nodeValue.trim();
+            if (t) { texts.push(t); }
+          }
+          textNode = walker.nextNode();
+        }
+        
+        var result = texts.join(' ').trim();
+        return { 
+          text: result, 
+          debug: {
+            isPaginated: isPaginated,
+            pSize: pSize,
+            pStart: pStart,
+            nodeCount: nodeCount,
+            visibleCount: visibleCount,
+            firstRect: firstRectInfo
+          }
+        };
+      } catch (e) { 
+        return { text: '', error: String(e) };
+      }
+    }
+
     // ─── Expose global functions for injectJavaScript ───
     window.goNext = function () { if (view) view.next(); };
     window.goPrev = function () { if (view) view.prev(); };
@@ -749,6 +879,58 @@
     window.setViewMode = function (m) { applySettings({ viewMode: m }); };
     window.addAnnotation = function (a) { if (view) view.addAnnotation(a); };
     window.removeAnnotation = function (a) { if (view) view.deleteAnnotation(a); };
+    
+    // Flash highlight for AI citation - temporarily hide existing annotation, show flash, then restore
+    window.flashHighlight = async function(cfi, color, duration) {
+      if (!view) return;
+      const flashColor = color || 'orange';
+      const flashDuration = duration || 500;
+      
+      // Get existing annotation for this CFI
+      const existingAnnotation = userAnnotations.get(cfi);
+      
+      // If there's an existing annotation, temporarily remove it
+      if (existingAnnotation) {
+        try {
+          await view.deleteAnnotation(existingAnnotation);
+        } catch (e) {
+          console.log('[flashHighlight] error removing existing:', e);
+        }
+      }
+      
+      // Add flash highlight
+      try {
+        await view.addAnnotation({ value: cfi, color: flashColor });
+      } catch (e) {
+        console.log('[flashHighlight] error adding flash:', e);
+        // If flash add fails, restore existing annotation and return
+        if (existingAnnotation) {
+          try {
+            await view.addAnnotation(existingAnnotation);
+          } catch (e2) {}
+        }
+        return;
+      }
+      
+      // Remove flash highlight after duration and restore existing annotation
+      setTimeout(async () => {
+        try {
+          await view.deleteAnnotation({ value: cfi });
+        } catch (e) {
+          console.log('[flashHighlight] error removing flash:', e);
+        }
+        
+        // Restore existing annotation if there was one
+        if (existingAnnotation) {
+          try {
+            await view.addAnnotation(existingAnnotation);
+          } catch (e) {
+            console.log('[flashHighlight] error restoring existing:', e);
+          }
+        }
+      }, flashDuration);
+    };
+    
     window.setNavigationLocked = function (locked) {
       if (view && view.renderer && 'navigationLocked' in view.renderer) {
         view.renderer.navigationLocked = locked;
@@ -757,6 +939,10 @@
     window.requestPageSnippet = function () {
       var snippet = getVisibleTextSnippet(80);
       postToRN('bookmarkSnippet', { textSnippet: snippet || '' });
+    };
+    window.getVisibleText = function () {
+      var result = getVisibleText();
+      return JSON.stringify(result);
     };
 
     // ─── Polyfills ───

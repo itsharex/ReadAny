@@ -85,9 +85,10 @@ function PlusIcon({ size = 24, color = "#fff" }: { size?: number; color?: string
 
 interface TTSControlsProps {
   onClose: () => void;
+  onReplay?: () => void;
 }
 
-export function TTSControls({ onClose }: TTSControlsProps) {
+export function TTSControls({ onClose, onReplay }: TTSControlsProps) {
   const { t } = useTranslation();
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -103,9 +104,26 @@ export function TTSControls({ onClose }: TTSControlsProps) {
   const [expanded, setExpanded] = useState(false);
 
   const handleStop = useCallback(() => {
+    console.log("[TTSControls] handleStop called");
     stop();
     onClose();
   }, [stop, onClose]);
+
+  const handlePlayPress = useCallback(() => {
+    console.log("[TTSControls] handlePlayPress called, playState:", playState);
+    if (playState === "playing") {
+      console.log("[TTSControls] pausing");
+      pause();
+    } else if (playState === "paused") {
+      console.log("[TTSControls] resuming");
+      resume();
+    } else if (playState === "stopped" && onReplay) {
+      console.log("[TTSControls] calling onReplay");
+      onReplay();
+    } else {
+      console.log("[TTSControls] no action taken, onReplay:", !!onReplay);
+    }
+  }, [playState, pause, resume, onReplay]);
 
   const adjustRate = useCallback(
     (delta: number) => {
@@ -133,7 +151,7 @@ export function TTSControls({ onClose }: TTSControlsProps) {
           : t("tts.stopped", "已停止");
 
   return (
-    <View style={[s.container, { paddingBottom: insets.bottom || 16 }]}>
+    <View style={[s.container, { paddingBottom: insets.bottom || 16 }]} pointerEvents="box-none">
       {expanded && (
         <View style={s.expandedPanel}>
           <View style={s.settingRow}>
@@ -185,11 +203,8 @@ export function TTSControls({ onClose }: TTSControlsProps) {
 
           <TouchableOpacity
             style={s.playBtn}
-            onPress={() => {
-              if (playState === "playing") pause();
-              else if (playState === "paused") resume();
-            }}
-            disabled={playState === "loading" || playState === "stopped"}
+            onPress={handlePlayPress}
+            disabled={playState === "loading"}
           >
             {playState === "loading" ? (
               <ActivityIndicator size="small" color="#fff" />

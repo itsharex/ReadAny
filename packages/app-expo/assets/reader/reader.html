@@ -113,6 +113,9 @@
     let searchResults = [];
     let searchIndex = 0;
 
+    // Store user annotations for re-rendering on page change
+    const userAnnotations = new Map();
+
     // Note tooltip registry: per-doc WeakMap of cfi -> { range, note }
     const docNoteRegistries = new WeakMap();
 
@@ -255,10 +258,22 @@
           if (msg.index != null) navigateToSearchResult(msg.index);
           break;
         case 'addAnnotation':
-          if (view && msg.annotation) await view.addAnnotation(msg.annotation);
+          if (view && msg.annotation) {
+            // Don't store flash highlights in userAnnotations
+            if (!msg.annotation.flash && !(msg.annotation.value && msg.annotation.value.startsWith('flash-'))) {
+              userAnnotations.set(msg.annotation.value, msg.annotation);
+            }
+            await view.addAnnotation(msg.annotation);
+          }
           break;
         case 'removeAnnotation':
-          if (view && msg.annotation) await view.deleteAnnotation(msg.annotation);
+          if (view && msg.annotation) {
+            await view.deleteAnnotation(msg.annotation);
+            // Don't delete from userAnnotations if it's a flash highlight
+            if (!msg.annotation.flash && !(msg.annotation.value && msg.annotation.value.startsWith('flash-'))) {
+              userAnnotations.delete(msg.annotation.value);
+            }
+          }
           break;
         case 'applySettings':
           if (view && msg.settings) applySettings(msg.settings);
@@ -309,6 +324,13 @@
           attachTapListener(doc);
           attachSelectionListener(doc);
           attachNoteLongPress(doc);
+          // Re-add all user annotations for this page
+          // foliate-view will only render those that belong to current section
+          for (const [cfi, annotation] of userAnnotations) {
+            view.addAnnotation(annotation).catch(err => {
+              // Ignore errors for annotations not on current page
+            });
+          }
           postToRN('loaded', {});
         });
 
@@ -334,6 +356,7 @@
         el.addEventListener('draw-annotation', (e) => {
           const { draw, annotation, doc, range } = e.detail;
           if (!draw || !annotation) return;
+          console.log('[draw-annotation] annotation:', JSON.stringify(annotation));
           const color = annotation.color || 'yellow';
           const colorMap = {
             red: 'rgba(248, 113, 113, 0.4)',
@@ -342,12 +365,18 @@
             blue: 'rgba(96, 165, 250, 0.4)',
             pink: 'rgba(236, 72, 153, 0.4)',
             violet: 'rgba(167, 139, 250, 0.4)',
+            orange: 'rgba(251, 146, 60, 0.5)',
           };
+          
           if (annotation.note) {
+            console.log('[draw-annotation] has note:', annotation.note);
+            // Draw both highlight and squiggly underline for notes
+            draw(Overlayer.highlight, { color: colorMap[color] || colorMap.yellow });
             draw(Overlayer.squiggly, { color: '#000000', width: 1.5 });
             // Register for long-press tooltip
             if (doc && range && annotation.value) {
               registerNoteRange(doc, annotation.value, range, annotation.note);
+              console.log('[draw-annotation] registered note range for:', annotation.value);
             }
           } else {
             draw(Overlayer.highlight, { color: colorMap[color] || colorMap.yellow });
@@ -749,6 +778,58 @@
     window.setViewMode = function (m) { applySettings({ viewMode: m }); };
     window.addAnnotation = function (a) { if (view) view.addAnnotation(a); };
     window.removeAnnotation = function (a) { if (view) view.deleteAnnotation(a); };
+    
+    // Flash highlight for AI citation - temporarily hide existing annotation, show flash, then restore
+    window.flashHighlight = async function(cfi, color, duration) {
+      if (!view) return;
+      const flashColor = color || 'orange';
+      const flashDuration = duration || 500;
+      
+      // Get existing annotation for this CFI
+      const existingAnnotation = userAnnotations.get(cfi);
+      
+      // If there's an existing annotation, temporarily remove it
+      if (existingAnnotation) {
+        try {
+          await view.deleteAnnotation(existingAnnotation);
+        } catch (e) {
+          console.log('[flashHighlight] error removing existing:', e);
+        }
+      }
+      
+      // Add flash highlight
+      try {
+        await view.addAnnotation({ value: cfi, color: flashColor });
+      } catch (e) {
+        console.log('[flashHighlight] error adding flash:', e);
+        // If flash add fails, restore existing annotation and return
+        if (existingAnnotation) {
+          try {
+            await view.addAnnotation(existingAnnotation);
+          } catch (e2) {}
+        }
+        return;
+      }
+      
+      // Remove flash highlight after duration and restore existing annotation
+      setTimeout(async () => {
+        try {
+          await view.deleteAnnotation({ value: cfi });
+        } catch (e) {
+          console.log('[flashHighlight] error removing flash:', e);
+        }
+        
+        // Restore existing annotation if there was one
+        if (existingAnnotation) {
+          try {
+            await view.addAnnotation(existingAnnotation);
+          } catch (e) {
+            console.log('[flashHighlight] error restoring existing:', e);
+          }
+        }
+      }, flashDuration);
+    };
+    
     window.setNavigationLocked = function (locked) {
       if (view && view.renderer && 'navigationLocked' in view.renderer) {
         view.renderer.navigationLocked = locked;

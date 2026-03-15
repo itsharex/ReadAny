@@ -154,7 +154,9 @@ export function MarkdownRenderer({
 }: MarkdownRendererProps) {
   const colors = useColors();
   const baseStyles = makeMarkdownStyles(colors);
-  const styles = styleOverrides ? { ...baseStyles, ...styleOverrides } : baseStyles;
+  // When styleOverrides is provided, use it directly without merging with baseStyles
+  // This ensures custom styles (like tooltip dark background) are not overridden
+  const styles = styleOverrides || baseStyles;
 
   const rules = useMemo<RenderRules>(() => ({
     fence: (node: ASTNode, children: ReactNode[], parentNodes: ASTNode[], style: any) => {

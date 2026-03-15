@@ -52,7 +52,7 @@ const SIDEBAR_WIDTH = Math.min(SCREEN_WIDTH * 0.75, 300);
 type Props = NativeStackScreenProps<RootStackParamList, "BookChat">;
 
 export function BookChatScreen({ route, navigation }: Props) {
-  const { bookId } = route.params;
+  const { bookId, selectedText, chapterTitle } = route.params;
   const { t } = useTranslation();
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -60,6 +60,30 @@ export function BookChatScreen({ route, navigation }: Props) {
 
   const { books } = useLibraryStore();
   const book = useMemo(() => books.find((b) => b.id === bookId), [books, bookId]);
+
+  // Debug: log received params
+  useEffect(() => {
+    console.log("[BookChatScreen] params:", { bookId, selectedText, chapterTitle });
+  }, [bookId, selectedText, chapterTitle]);
+
+  // Initial quote from reader selection
+  const [quotes, setQuotes] = useState<AttachedQuote[]>([]);
+
+  // Initialize quotes when selectedText is available
+  useEffect(() => {
+    if (selectedText && quotes.length === 0) {
+      console.log("[BookChatScreen] Initializing quotes with selectedText:", selectedText);
+      setQuotes([{
+        id: `quote-${Date.now()}`,
+        text: selectedText,
+        source: chapterTitle || undefined,
+      }]);
+    }
+  }, [selectedText, chapterTitle, quotes.length]);
+
+  const handleRemoveQuote = useCallback((id: string) => {
+    setQuotes((prev) => prev.filter((q) => q.id !== id));
+  }, []);
 
   const {
     threads,
@@ -187,9 +211,9 @@ export function BookChatScreen({ route, navigation }: Props) {
   const handleCitationClick = useCallback(
     (citation: CitationPart) => {
       if (citation.bookId === bookId && citation.cfi) {
-        navigation.navigate("Reader", { bookId, cfi: citation.cfi });
+        navigation.navigate("Reader", { bookId, cfi: citation.cfi, highlight: true });
       } else if (citation.bookId) {
-        navigation.navigate("Reader", { bookId: citation.bookId, cfi: citation.cfi });
+        navigation.navigate("Reader", { bookId: citation.bookId, cfi: citation.cfi, highlight: true });
       }
     },
     [bookId, navigation],
@@ -316,6 +340,8 @@ export function BookChatScreen({ route, navigation }: Props) {
           onStop={stopStream}
           isStreaming={isStreaming}
           placeholder={t("chat.askAboutBook", "询问关于这本书的问题...")}
+          quotes={quotes}
+          onRemoveQuote={handleRemoveQuote}
         />
       </KeyboardAvoidingView>
 

@@ -56,6 +56,7 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
   const webViewRef = useRef<WebView>(null);
   const callbacksRef = useRef(callbacks);
   callbacksRef.current = callbacks;
+  const pendingVisibleTextResolveRef = useRef<((text: string) => void) | null>(null);
 
   // ─── Send commands to WebView ───
 
@@ -126,7 +127,7 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
   );
 
   const addAnnotation = useCallback(
-    (annotation: { value: string; color?: string; note?: string }) => {
+    (annotation: { value: string; type?: string; color?: string; note?: string }) => {
       inject(`window.addAnnotation(${JSON.stringify(annotation)})`);
     },
     [inject],
@@ -165,7 +166,7 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
   );
 
   const setThemeColors = useCallback(
-    (colors: { background: string; foreground: string; muted: string }) => {
+    (colors: { background: string; foreground: string; muted: string; primary?: string }) => {
       const msg = JSON.stringify({ type: "setThemeColors", colors });
       inject(`handleCommand(${msg})`);
     },
@@ -182,6 +183,51 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
   const requestPageSnippet = useCallback(() => {
     inject("window.requestPageSnippet()");
   }, [inject]);
+
+  const getVisibleText = useCallback(() => {
+    return new Promise<string>((resolve) => {
+      // Store the resolve function so handleMessage can call it
+      pendingVisibleTextResolveRef.current = resolve;
+      
+      webViewRef.current?.injectJavaScript(`
+        (function() {
+          try {
+            if (!window.getVisibleText) {
+              window.ReactNativeWebView.postMessage(JSON.stringify({type:'visibleText',text:'',error:'getVisibleText not defined'}));
+              return;
+            }
+            var resultStr = window.getVisibleText();
+            var result = JSON.parse(resultStr);
+            window.ReactNativeWebView.postMessage(JSON.stringify({
+              type:'visibleText',
+              text: result.text || '',
+              error: result.error || null,
+              debug: result.debug || null
+            }));
+          } catch(e) {
+            window.ReactNativeWebView.postMessage(JSON.stringify({type:'visibleText',text:'',error:String(e)}));
+          }
+        })();
+        true;
+      `);
+      // Resolve with empty string after timeout
+      setTimeout(() => {
+        if (pendingVisibleTextResolveRef.current === resolve) {
+          pendingVisibleTextResolveRef.current = null;
+          resolve("");
+        }
+      }, 2000);
+    });
+  }, []);
+
+  const flashHighlight = useCallback(
+    (cfi: string, color?: string, duration?: number) => {
+      const colorArg = color ? `'${color}'` : 'null';
+      const durationArg = duration ? duration : 'null';
+      inject(`window.flashHighlight('${cfi}', ${colorArg}, ${durationArg})`);
+    },
+    [inject],
+  );
 
   // ─── Handle messages from WebView ───
 
@@ -248,6 +294,17 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
         case "bookmarkSnippet":
           cb.onBookmarkSnippet?.(msg.textSnippet || "");
           break;
+        case "visibleText":
+          console.log("[ReaderBridge] received visibleText:", JSON.stringify({
+            textLength: msg.text?.length || 0,
+            error: msg.error || "none",
+            debug: msg.debug || null
+          }));
+          if (pendingVisibleTextResolveRef.current) {
+            pendingVisibleTextResolveRef.current(msg.text || "");
+            pendingVisibleTextResolveRef.current = null;
+          }
+          break;
         default:
           break;
       }
@@ -276,6 +333,8 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
     setThemeColors,
     setNavigationLocked,
     requestPageSnippet,
+    getVisibleText,
+    flashHighlight,
   }), [
     handleMessage,
     openBook,
@@ -294,5 +353,6 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
     setThemeColors,
     setNavigationLocked,
     requestPageSnippet,
+    getVisibleText,
   ]);
 }

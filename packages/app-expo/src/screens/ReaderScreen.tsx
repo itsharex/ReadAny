@@ -61,6 +61,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  Alert,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Path } from "react-native-svg";
@@ -209,7 +210,7 @@ export function ReaderScreen({ route, navigation }: Props) {
   const colors = useColors();
   const { mode: themeMode } = useTheme();
   const s = makeStyles(colors);
-  const { bookId, cfi } = route.params;
+  const { bookId, cfi, highlight: shouldHighlight } = route.params;
   const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets();
 
@@ -229,6 +230,7 @@ export function ReaderScreen({ route, navigation }: Props) {
   const [searchResultCount, setSearchResultCount] = useState(0);
   const [searchIndex, setSearchIndex] = useState(0);
   const [isSearching, setIsSearching] = useState(false);
+  const [searchStartCfi, setSearchStartCfi] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
   const [currentChapter, setCurrentChapter] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
@@ -257,7 +259,11 @@ export function ReaderScreen({ route, navigation }: Props) {
   const noteTooltipTimer = useRef<NodeJS.Timeout | null>(null);
   const assetLoadedRef = useRef(false);
   const pendingBookmarkRef = useRef(false);
-  const bridgeRef = useRef<{ requestPageSnippet: () => void } | null>(null);
+  const bridgeRef = useRef<{
+    requestPageSnippet: () => void;
+    goNext: () => void;
+    getVisibleText: () => Promise<string>;
+  } | null>(null);
 
   const readSettings = useSettingsStore((s) => s.readSettings);
   const updateReadSettings = useSettingsStore((s) => s.updateReadSettings);
@@ -270,10 +276,8 @@ export function ReaderScreen({ route, navigation }: Props) {
 
   const controlsTimer = useRef<NodeJS.Timeout | null>(null);
   const searchDebounceRef = useRef<NodeJS.Timeout | null>(null);
-  const TOOLBAR_HIDE_OFFSET = -200;
-  const FOOTER_HIDE_OFFSET = 200;
+  const TOOLBAR_HIDE_OFFSET = 200;
   const toolbarAnim = useRef(new Animated.Value(TOOLBAR_HIDE_OFFSET)).current;
-  const footerAnim = useRef(new Animated.Value(FOOTER_HIDE_OFFSET)).current;
   const lastCfiRef = useRef<string>("");
   const locationHistoryRef = useRef<string[]>([]);
   const lastNavigatedCfiRef = useRef<string | undefined>(undefined);
@@ -542,6 +546,7 @@ export function ReaderScreen({ route, navigation }: Props) {
           background: colors.background,
           foreground: colors.foreground,
           muted: colors.mutedForeground,
+          primary: colors.primary,
         });
       } catch (err: any) {
         console.error("[ReaderScreen] Failed to load book:", err);
@@ -560,6 +565,7 @@ export function ReaderScreen({ route, navigation }: Props) {
       background: colors.background,
       foreground: colors.foreground,
       muted: colors.mutedForeground,
+      primary: colors.primary,
     });
   }, [themeMode, webViewReady]);
 
@@ -567,7 +573,7 @@ export function ReaderScreen({ route, navigation }: Props) {
   useEffect(() => {
     if (!webViewReady || loading || highlights.length === 0) return;
     for (const h of highlights) {
-      bridge.addAnnotation({ value: h.cfi, color: h.color, note: h.note });
+      bridge.addAnnotation({ value: h.cfi, type: "highlight", color: h.color, note: h.note });
     }
   }, [webViewReady, loading, highlights]);
 
@@ -576,34 +582,33 @@ export function ReaderScreen({ route, navigation }: Props) {
     lastNavigatedCfiRef.current = undefined;
   }, [bookId]);
 
-  // Navigate to CFI when book is loaded (from NotesPage navigation)
+  // Navigate to CFI when book is loaded (from NotesPage or AI citation navigation)
   useEffect(() => {
     if (!webViewReady || loading || !cfi || cfi === lastNavigatedCfiRef.current) return;
     bridge.goToCFI(cfi);
     lastNavigatedCfiRef.current = cfi;
 
-    // Flash highlight 3 times like desktop
-    let flashCount = 0;
-    const maxFlashes = 3;
-    const flashInterval = 500;
+    // Only flash highlight for AI citation (shouldHighlight === true)
+    // Notes navigation should NOT highlight
+    if (shouldHighlight) {
+      let flashCount = 0;
+      const maxFlashes = 3;
+      const flashInterval = 500;
 
-    const doFlash = () => {
-      if (flashCount >= maxFlashes) return;
+      const doFlash = () => {
+        if (flashCount >= maxFlashes) return;
 
-      bridge.addAnnotation({ value: cfi, color: "orange" });
+        bridge.flashHighlight(cfi, "orange", flashInterval);
 
-      setTimeout(() => {
-        bridge.removeAnnotation({ value: cfi });
         flashCount++;
-
         if (flashCount < maxFlashes) {
-          setTimeout(doFlash, flashInterval);
+          setTimeout(doFlash, flashInterval + 100);
         }
-      }, flashInterval);
-    };
+      };
 
-    setTimeout(doFlash, 100);
-  }, [webViewReady, loading, cfi, bridge]);
+      setTimeout(doFlash, 100);
+    }
+  }, [webViewReady, loading, cfi, shouldHighlight, bridge]);
 
   // Lock navigation when selection is active
   useEffect(() => {
@@ -615,42 +620,26 @@ export function ReaderScreen({ route, navigation }: Props) {
   const toggleControls = useCallback(() => {
     const willShow = !showControls;
     setShowControls(willShow);
-    Animated.parallel([
-      Animated.spring(toolbarAnim, {
-        toValue: willShow ? 0 : TOOLBAR_HIDE_OFFSET,
-        useNativeDriver: true,
-        friction: 20,
-        tension: 100,
-      }),
-      Animated.spring(footerAnim, {
-        toValue: willShow ? 0 : FOOTER_HIDE_OFFSET,
-        useNativeDriver: true,
-        friction: 20,
-        tension: 100,
-      }),
-    ]).start();
+    Animated.spring(toolbarAnim, {
+      toValue: willShow ? 0 : TOOLBAR_HIDE_OFFSET,
+      useNativeDriver: true,
+      friction: 20,
+      tension: 100,
+    }).start();
 
     if (willShow) {
       if (controlsTimer.current) clearTimeout(controlsTimer.current);
       controlsTimer.current = setTimeout(() => {
         setShowControls(false);
-        Animated.parallel([
-          Animated.spring(toolbarAnim, {
-            toValue: TOOLBAR_HIDE_OFFSET,
-            useNativeDriver: true,
-            friction: 20,
-            tension: 100,
-          }),
-          Animated.spring(footerAnim, {
-            toValue: FOOTER_HIDE_OFFSET,
-            useNativeDriver: true,
-            friction: 20,
-            tension: 100,
-          }),
-        ]).start();
+        Animated.spring(toolbarAnim, {
+          toValue: TOOLBAR_HIDE_OFFSET,
+          useNativeDriver: true,
+          friction: 20,
+          tension: 100,
+        }).start();
       }, CONTROLS_TIMEOUT);
     }
-  }, [showControls, toolbarAnim, footerAnim]);
+  }, [showControls, toolbarAnim]);
 
   const goToTocItem = useCallback(
     (href: string) => {
@@ -680,6 +669,10 @@ export function ReaderScreen({ route, navigation }: Props) {
       searchDebounceRef.current = setTimeout(() => {
         const trimmed = query.trim();
         if (trimmed) {
+          // Record current position before searching
+          if (!searchStartCfi && currentCfi) {
+            setSearchStartCfi(currentCfi);
+          }
           setIsSearching(true);
           bridge.search(trimmed);
         } else {
@@ -689,7 +682,7 @@ export function ReaderScreen({ route, navigation }: Props) {
         }
       }, 300);
     },
-    [bridge],
+    [bridge, searchStartCfi, currentCfi],
   );
 
   const navigateSearch = useCallback(
@@ -730,7 +723,7 @@ export function ReaderScreen({ route, navigation }: Props) {
         updatedAt: Date.now(),
       };
       addHighlight(highlight);
-      bridge.addAnnotation({ value: selection.cfi, color });
+      bridge.addAnnotation({ value: selection.cfi, type: "highlight", color });
       setSelection(null);
     },
     [selection, bookId, currentChapter, addHighlight, bridge],
@@ -747,14 +740,58 @@ export function ReaderScreen({ route, navigation }: Props) {
     setShowTTS(true);
   }, [selection, ttsPlay]);
 
-  const handleToggleTTS = useCallback(() => {
+  // TTS auto page-turn handler
+  const ttsContinuousRef = useRef(false);
+  const handleTTSPageEnd = useCallback(() => {
+    if (!ttsContinuousRef.current) return;
+    // Go to next page and continue reading
+    bridgeRef.current?.goNext();
+    setTimeout(async () => {
+      const text = await bridgeRef.current?.getVisibleText();
+      if (text && ttsContinuousRef.current) {
+        ttsPlay(text);
+      } else {
+        ttsContinuousRef.current = false;
+        ttsSetOnEnd(null);
+        ttsStop();
+        setShowTTS(false);
+      }
+    }, 500);
+  }, [ttsPlay, ttsSetOnEnd, ttsStop]);
+
+  const handleToggleTTS = useCallback(async () => {
+    console.log("[ReaderScreen] handleToggleTTS called, showTTS:", showTTS);
     if (showTTS) {
+      ttsContinuousRef.current = false;
+      ttsSetOnEnd(null);
       ttsStop();
       setShowTTS(false);
     } else {
+      // Show TTS panel first
       setShowTTS(true);
+      // Then get visible text and start playing
+      const text = await bridgeRef.current?.getVisibleText();
+      console.log("[ReaderScreen] getVisibleText result:", text ? `${text.length} chars` : "null");
+      if (text) {
+        ttsContinuousRef.current = true;
+        ttsSetOnEnd(handleTTSPageEnd);
+        ttsPlay(text);
+      }
     }
-  }, [showTTS, ttsStop]);
+  }, [showTTS, ttsPlay, ttsStop, ttsSetOnEnd, handleTTSPageEnd]);
+
+  const handleTTSReplay = useCallback(async () => {
+    console.log("[ReaderScreen] handleTTSReplay called");
+    const text = await bridgeRef.current?.getVisibleText();
+    console.log("[ReaderScreen] getVisibleText result:", text ? `"${text.substring(0, 50)}..." (${text.length} chars)` : "empty");
+    if (text && text.trim()) {
+      ttsContinuousRef.current = true;
+      ttsSetOnEnd(handleTTSPageEnd);
+      ttsPlay(text);
+    } else {
+      console.log("[ReaderScreen] No visible text found for TTS");
+    }
+  }, [ttsPlay, ttsSetOnEnd, handleTTSPageEnd]);
 
   useEffect(() => {
     return () => {
@@ -779,7 +816,7 @@ export function ReaderScreen({ route, navigation }: Props) {
       <SafeAreaView style={[s.container, { backgroundColor: colors.background }]}>
         <View style={s.loadingWrap}>
           <Text style={s.errorText}>{error}</Text>
-          <TouchableOpacity style={s.backButton} onPress={() => navigation.goBack()}>
+          <TouchableOpacity style={s.backButton} onPress={() => navigation.reset({ routes: [{ name: "Tabs" }] })}>
             <Text style={s.backButtonText}>{t("common.back", "返回")}</Text>
           </TouchableOpacity>
         </View>
@@ -801,7 +838,7 @@ export function ReaderScreen({ route, navigation }: Props) {
   const percent = Math.round(progress * 100);
 
   const isPanelOpen =
-    showTOC || showSettings || showSearch || showNotebook || showTranslation || showTTS;
+    showTOC || showSettings || showSearch || showNotebook || showTranslation;
 
   return (
     <View style={[s.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
@@ -809,7 +846,7 @@ export function ReaderScreen({ route, navigation }: Props) {
       <WebView
         ref={bridge.webViewRef}
         source={{ uri: readerHtmlUri }}
-        style={s.webview}
+        style={[s.webview, { marginTop: 24 }]}
         pointerEvents={isPanelOpen ? "none" : "auto"}
         onMessage={bridge.handleMessage}
         onError={(e) => {
@@ -850,8 +887,14 @@ export function ReaderScreen({ route, navigation }: Props) {
             setSelection(null);
           }}
           onAIChat={() => {
+            const selectedText = selection.text;
+            const chapter = currentChapter;
             setSelection(null);
-            navigation.navigate("BookChat", { bookId });
+            navigation.navigate("BookChat", {
+              bookId,
+              selectedText,
+              chapterTitle: chapter,
+            });
           }}
           onNote={(text, cfi) => {
             const highlight = {
@@ -866,7 +909,7 @@ export function ReaderScreen({ route, navigation }: Props) {
               updatedAt: Date.now(),
             };
             addHighlight(highlight);
-            bridge.addAnnotation({ value: cfi, color: "yellow", note: text });
+            bridge.addAnnotation({ value: cfi, type: "highlight", color: "yellow", note: text });
           }}
           onTranslate={(text) => {
             setShowTranslation(true);
@@ -921,7 +964,7 @@ export function ReaderScreen({ route, navigation }: Props) {
           >
             <View style={s.noteTooltipContent}>
               <MarkdownRenderer
-                content={noteTooltip.note}
+                content={noteTooltip.note || ""}
                 styleOverrides={noteTooltipMdStyles}
               />
             </View>
@@ -929,12 +972,24 @@ export function ReaderScreen({ route, navigation }: Props) {
         </TouchableOpacity>
       )}
 
-      {/* ─── Toolbar ─── */}
+      {/* ─── Top Info Bar (always visible) ─── */}
       {!showSearch && (
-        <Animated.View style={[s.toolbar, { transform: [{ translateY: toolbarAnim }] }]}>
-          <View style={[s.toolbarGlass, { marginTop: insets.top + 8 }]}>
+        <View style={[s.topInfoBar, { top: insets.top }]}>
+          <Text style={s.topInfoText} numberOfLines={1}>
+            {currentChapter || bookTitle}
+          </Text>
+          <Text style={s.topInfoPageText}>
+            {currentPage > 0 && totalPages > 0 ? `${currentPage}/${totalPages}` : ""}
+          </Text>
+        </View>
+      )}
+
+      {/* ─── Bottom Toolbar (moved from top) ─── */}
+      {!showSearch && (
+        <Animated.View style={[s.bottomToolbar, { transform: [{ translateY: toolbarAnim }] }]}>
+          <View style={[s.bottomToolbarGlass, { marginBottom: insets.bottom + 4 }]}>
             <View style={s.toolbarRow}>
-              <TouchableOpacity style={s.toolbarBtn} onPress={() => navigation.goBack()}>
+              <TouchableOpacity style={s.toolbarBtn} onPress={() => navigation.reset({ routes: [{ name: "Tabs" }] })}>
                 <ChevronLeftIcon size={20} color="#fff" />
               </TouchableOpacity>
               <TouchableOpacity
@@ -944,16 +999,6 @@ export function ReaderScreen({ route, navigation }: Props) {
               >
                 <Undo2Icon size={18} color={canGoBack ? "#fff" : "rgba(255,255,255,0.3)"} />
               </TouchableOpacity>
-              <View style={s.toolbarCenter}>
-                <Text style={s.toolbarTitle} numberOfLines={1}>
-                  {bookTitle}
-                </Text>
-                {currentChapter ? (
-                  <Text style={s.toolbarChapter} numberOfLines={1}>
-                    {currentChapter}
-                  </Text>
-                ) : null}
-              </View>
               <TouchableOpacity
                 style={s.toolbarBtn}
                 onPress={() => navigation.navigate("FullScreenNotes", { bookId })}
@@ -984,20 +1029,12 @@ export function ReaderScreen({ route, navigation }: Props) {
                 onPress={() => {
                   setShowSearch(true);
                   setShowControls(false);
-                  Animated.parallel([
-                    Animated.spring(toolbarAnim, {
-                      toValue: TOOLBAR_HIDE_OFFSET,
-                      useNativeDriver: true,
-                      friction: 20,
-                      tension: 100,
-                    }),
-                    Animated.spring(footerAnim, {
-                      toValue: FOOTER_HIDE_OFFSET,
-                      useNativeDriver: true,
-                      friction: 20,
-                      tension: 100,
-                    }),
-                  ]).start();
+                  Animated.spring(toolbarAnim, {
+                    toValue: TOOLBAR_HIDE_OFFSET,
+                    useNativeDriver: true,
+                    friction: 20,
+                    tension: 100,
+                  }).start();
                 }}
               >
                 <SearchIcon size={18} color="#fff" />
@@ -1011,20 +1048,6 @@ export function ReaderScreen({ route, navigation }: Props) {
               <TouchableOpacity style={s.toolbarBtn} onPress={() => setShowSettings(true)}>
                 <SettingsIcon size={18} color="#fff" />
               </TouchableOpacity>
-            </View>
-          </View>
-        </Animated.View>
-      )}
-
-      {/* ─── Footer ─── */}
-      {!showSearch && (
-        <Animated.View style={[s.footer, { transform: [{ translateY: footerAnim }] }]}>
-          <View style={[s.footerGlass, { marginBottom: insets.bottom + 8 }]}>
-            <View style={s.footerPageRow}>
-              <Text style={s.footerPageText}>
-                {currentPage > 0 && totalPages > 0 ? `${currentPage} / ${totalPages}` : ""}
-              </Text>
-              <Text style={s.footerPageText}>{percent}%</Text>
             </View>
             <View style={s.footerSliderRow}>
               <TouchableOpacity style={s.footerNavBtn} onPress={bridge.goPrev}>
@@ -1042,11 +1065,6 @@ export function ReaderScreen({ route, navigation }: Props) {
           </View>
         </Animated.View>
       )}
-
-      {/* ─── Always-visible thin progress bar ─── */}
-      <View style={[s.thinProgressWrap, { bottom: insets.bottom || 0 }]}>
-        <View style={[s.thinProgressFill, { width: `${percent}%` }]} />
-      </View>
 
       {/* ─── Search Bar ─── */}
       {showSearch && (
@@ -1098,26 +1116,43 @@ export function ReaderScreen({ route, navigation }: Props) {
             <TouchableOpacity
               style={s.searchNavBtn}
               onPress={() => {
+                // Ask user if they want to return to original position
+                if (searchStartCfi && searchResultCount > 0) {
+                  Alert.alert(
+                    t("reader.searchComplete", "搜索完成"),
+                    t("reader.returnToOriginal", "是否返回搜索前的位置？"),
+                    [
+                      {
+                        text: t("common.cancel", "取消"),
+                        style: "cancel",
+                        onPress: () => {
+                          setSearchStartCfi(null);
+                        },
+                      },
+                      {
+                        text: t("common.confirm", "确定"),
+                        onPress: () => {
+                          bridge.goToCFI(searchStartCfi);
+                          setSearchStartCfi(null);
+                        },
+                      },
+                    ],
+                  );
+                } else {
+                  setSearchStartCfi(null);
+                }
                 setShowSearch(false);
                 setSearchQuery("");
                 setSearchResultCount(0);
                 setSearchIndex(0);
                 bridge.clearSearch();
                 setShowControls(true);
-                Animated.parallel([
-                  Animated.spring(toolbarAnim, {
-                    toValue: 0,
-                    useNativeDriver: true,
-                    friction: 20,
-                    tension: 100,
-                  }),
-                  Animated.spring(footerAnim, {
-                    toValue: 0,
-                    useNativeDriver: true,
-                    friction: 20,
-                    tension: 100,
-                  }),
-                ]).start();
+                Animated.spring(toolbarAnim, {
+                  toValue: 0,
+                  useNativeDriver: true,
+                  friction: 20,
+                  tension: 100,
+                }).start();
               }}
             >
               <XIcon size={16} color={colors.mutedForeground} />
@@ -1559,6 +1594,7 @@ export function ReaderScreen({ route, navigation }: Props) {
                             bridge.removeAnnotation({ value: noteViewHighlight.cfi });
                             bridge.addAnnotation({
                               value: noteViewHighlight.cfi,
+                              type: "highlight",
                               color: noteViewHighlight.color,
                               note: noteViewContent.trim(),
                             });
@@ -1618,6 +1654,7 @@ export function ReaderScreen({ route, navigation }: Props) {
             ttsStop();
             setShowTTS(false);
           }}
+          onReplay={handleTTSReplay}
         />
       )}
     </View>
@@ -1628,6 +1665,7 @@ const TOOLTIP_FG = "#f1f5f9";
 const TOOLTIP_MUTED = "rgba(148, 163, 184, 0.5)";
 const noteTooltipMdStyles = {
   body: { color: TOOLTIP_FG, fontSize: 13, lineHeight: 19 },
+  text: { color: TOOLTIP_FG, fontSize: 13, lineHeight: 19 },
   paragraph: { color: TOOLTIP_FG, fontSize: 13, lineHeight: 19, marginBottom: 4, marginTop: 0 },
   heading1: { color: "#fff", fontSize: 15, fontWeight: "600" as const, marginBottom: 4, marginTop: 4 },
   heading2: { color: "#fff", fontSize: 14, fontWeight: "600" as const, marginBottom: 3, marginTop: 3 },
@@ -1680,25 +1718,25 @@ const makeStyles = (colors: ThemeColors) =>
       zIndex: 20,
     },
 
-    toolbar: { position: "absolute", top: 0, left: 12, right: 12, zIndex: 30 },
-    toolbarGlass: {
+    bottomToolbar: { position: "absolute", bottom: 0, left: 12, right: 12, zIndex: 30 },
+    bottomToolbarGlass: {
       backgroundColor: "rgba(28, 28, 30, 0.85)",
       borderRadius: 20,
       paddingVertical: 8,
       paddingHorizontal: 12,
       shadowColor: "#000",
-      shadowOffset: { width: 0, height: 4 },
+      shadowOffset: { width: 0, height: -4 },
       shadowOpacity: 0.3,
       shadowRadius: 16,
       elevation: 12,
       borderWidth: 1,
       borderColor: "rgba(255,255,255,0.1)",
     },
-    toolbarRow: { flexDirection: "row", alignItems: "center", gap: 2 },
+    toolbarRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
     toolbarBtn: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
+      width: 36,
+      height: 36,
+      borderRadius: 18,
       alignItems: "center",
       justifyContent: "center",
     },
@@ -1713,27 +1751,27 @@ const makeStyles = (colors: ThemeColors) =>
     },
     toolbarChapter: { fontSize: fontSize.xs, color: "rgba(255,255,255,0.5)", marginTop: 1 },
 
-    footer: { position: "absolute", bottom: 0, left: 12, right: 12, zIndex: 30 },
-    footerGlass: {
-      backgroundColor: "rgba(28, 28, 30, 0.85)",
-      borderRadius: 20,
-      paddingVertical: 10,
+    topInfoBar: {
+      position: "absolute",
+      left: 0,
+      right: 0,
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
       paddingHorizontal: 16,
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: -4 },
-      shadowOpacity: 0.3,
-      shadowRadius: 16,
-      elevation: 12,
-      borderWidth: 1,
-      borderColor: "rgba(255,255,255,0.1)",
+      paddingVertical: 4,
     },
-    footerPageRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 6 },
-    footerPageText: {
+    topInfoText: {
+      flex: 1,
       fontSize: fontSize.xs,
-      color: "rgba(255,255,255,0.5)",
-      fontWeight: fontWeight.medium,
+      color: colors.mutedForeground,
+      marginRight: 8,
     },
-    footerSliderRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+    topInfoPageText: {
+      fontSize: fontSize.xs,
+      color: colors.mutedForeground,
+    },
+    footerSliderRow: { flexDirection: "row", alignItems: "center", gap: 6 },
     footerNavBtn: {
       width: 36,
       height: 36,

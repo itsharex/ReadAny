@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -101,7 +102,7 @@ export function TranslationPanel({ text, onClose }: TranslationPanelProps) {
 
   useEffect(() => {
     translate();
-  }, []);
+  }, [targetLang]);
 
   const handleLangChange = useCallback(
     (lang: TranslationTargetLang) => {
@@ -139,7 +140,7 @@ export function TranslationPanel({ text, onClose }: TranslationPanelProps) {
         </View>
 
         {showLangPicker && (
-          <View style={s.langPicker}>
+          <ScrollView style={s.langPicker} nestedScrollEnabled>
             {(Object.entries(TRANSLATOR_LANGS) as [TranslationTargetLang, string][]).map(
               ([lang, label]) => (
                 <TouchableOpacity
@@ -154,7 +155,7 @@ export function TranslationPanel({ text, onClose }: TranslationPanelProps) {
                 </TouchableOpacity>
               ),
             )}
-          </View>
+          </ScrollView>
         )}
 
         <View style={s.content}>
@@ -249,6 +250,7 @@ const makeStyles = (colors: ThemeColors) =>
     },
     langPicker: {
       maxHeight: 200,
+      backgroundColor: colors.card,
       borderBottomWidth: 1,
       borderBottomColor: colors.border,
     },
@@ -257,7 +259,7 @@ const makeStyles = (colors: ThemeColors) =>
       alignItems: "center",
       justifyContent: "space-between",
       paddingHorizontal: 16,
-      paddingVertical: 10,
+      paddingVertical: 12,
     },
     langOptionActive: {
       backgroundColor: colors.muted,

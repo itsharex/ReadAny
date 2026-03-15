@@ -3,7 +3,7 @@ import { ChevronDown, ChevronUp, Search, X } from "lucide-react";
 /**
  * SearchBar — in-book search
  */
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 interface SearchBarProps {
@@ -18,6 +18,21 @@ interface SearchBarProps {
 export function SearchBar({ onSearch, onNext, onPrev, onClose, resultCount, currentIndex }: SearchBarProps) {
   const { t } = useTranslation();
   const [query, setQuery] = useState("");
+  const debounceRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, []);
+
+  const handleChange = useCallback((value: string) => {
+    setQuery(value);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      onSearch(value);
+    }, 300);
+  }, [onSearch]);
 
   return (
     <div className="flex items-center gap-2 border-b border-border bg-background px-4 py-2">
@@ -25,7 +40,7 @@ export function SearchBar({ onSearch, onNext, onPrev, onClose, resultCount, curr
       <Input
         placeholder={t("reader.searchInBook")}
         value={query}
-        onChange={(e) => { setQuery(e.target.value); onSearch(e.target.value); }}
+        onChange={(e) => handleChange(e.target.value)}
         className="h-7 flex-1"
         autoFocus
       />

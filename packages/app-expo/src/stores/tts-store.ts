@@ -1,4 +1,5 @@
-import type { TTSConfig } from "@readany/core/types";
+import type { TTSConfig } from "@readany/core/tts";
+import type { TTSPlayerFactories } from "@readany/core/stores";
 import * as Speech from "expo-speech";
 /**
  * TTS Store for React Native
@@ -27,9 +28,12 @@ export interface TTSState {
 
 const DEFAULT_TTS_CONFIG: TTSConfig = {
   engine: "browser",
-  voice: "",
+  voiceName: "",
   rate: 1.0,
   pitch: 1.0,
+  edgeVoice: "zh-CN-XiaoxiaoNeural",
+  dashscopeApiKey: "",
+  dashscopeVoice: "Cherry",
 };
 
 export const useTTSStore = create<TTSState>()(
@@ -40,44 +44,63 @@ export const useTTSStore = create<TTSState>()(
     onEnd: null,
 
     play: (text: string) => {
+      console.log("[TTSStore] play called with text length:", text?.length);
+      if (!text || !text.trim()) {
+        console.log("[TTSStore] No text to speak");
+        return;
+      }
       set({ playState: "loading", currentText: text });
+
+      // Detect language from text
+      const cjk = text.match(/[\u4e00-\u9fff\u3400-\u4dbf]/g);
+      const language = cjk && cjk.length > text.length * 0.1 ? "zh-CN" : "en-US";
+      console.log("[TTSStore] detected language:", language);
 
       Speech.speak(text, {
         rate: get().config.rate || 1.0,
         pitch: get().config.pitch || 1.0,
+        language: language,
         onDone: () => {
+          console.log("[TTSStore] Speech.onDone");
           set({ playState: "stopped" });
           get().onEnd?.();
         },
         onStopped: () => {
+          console.log("[TTSStore] Speech.onStopped");
           set({ playState: "stopped" });
         },
-        onError: () => {
+        onError: (e) => {
+          console.log("[TTSStore] Speech.onError:", e);
           set({ playState: "stopped" });
           get().onEnd?.();
         },
         onStart: () => {
+          console.log("[TTSStore] Speech.onStart");
           set({ playState: "playing" });
         },
       });
     },
 
     pause: () => {
+      console.log("[TTSStore] pause called");
       Speech.pause();
       set({ playState: "paused" });
     },
 
     resume: () => {
+      console.log("[TTSStore] resume called");
       Speech.resume();
       set({ playState: "playing" });
     },
 
     stop: () => {
+      console.log("[TTSStore] stop called");
       Speech.stop();
       set({ playState: "stopped", currentText: "" });
     },
 
     toggle: (text?: string) => {
+      console.log("[TTSStore] toggle called, playState:", get().playState);
       const { playState, currentText, play } = get();
       if (playState === "playing") {
         Speech.pause();
@@ -103,5 +126,3 @@ export const useTTSStore = create<TTSState>()(
 export function setTTSPlayerFactories(): void {
   console.log("TTS using expo-speech");
 }
-
-export type { TTSPlayerFactories } from "@readany/core/types";

@@ -833,6 +833,12 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
           await view.open(bookDoc);
           viewRef.current = view;
 
+          // Set search indicator color (use primary theme color instead of red)
+          const primaryColor = getComputedStyle(document.documentElement).getPropertyValue("--primary")?.trim() || "#3b82f6";
+          if ((view as any).setSearchIndicator) {
+            (view as any).setSearchIndicator("outline", { color: primaryColor });
+          }
+
           console.log("[FoliateViewer] Book opened:", {
             format,
             isFixedLayout,
