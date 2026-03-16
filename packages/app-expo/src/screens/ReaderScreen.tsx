@@ -993,13 +993,6 @@ export function ReaderScreen({ route, navigation }: Props) {
                 <ChevronLeftIcon size={20} color="#fff" />
               </TouchableOpacity>
               <TouchableOpacity
-                style={[s.toolbarBtn, !canGoBack && s.toolbarBtnDisabled]}
-                onPress={goBackToPreviousLocation}
-                disabled={!canGoBack}
-              >
-                <Undo2Icon size={18} color={canGoBack ? "#fff" : "rgba(255,255,255,0.3)"} />
-              </TouchableOpacity>
-              <TouchableOpacity
                 style={s.toolbarBtn}
                 onPress={() => navigation.navigate("FullScreenNotes", { bookId })}
               >

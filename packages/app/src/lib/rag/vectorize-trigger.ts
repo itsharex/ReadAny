@@ -24,6 +24,15 @@ export async function triggerVectorizeBook(
   filePath: string,
   onProgress?: VectorizeStatusCallback,
 ): Promise<void> {
+  // Resolve relative paths (e.g., "books/{id}.epub") to absolute paths
+  let resolvedPath = filePath;
+  if (!filePath.startsWith("/") && !filePath.startsWith("file://") &&
+      !filePath.startsWith("asset://") && !filePath.startsWith("http")) {
+    const { appDataDir, join } = await import("@tauri-apps/api/path");
+    const appData = await appDataDir();
+    resolvedPath = await join(appData, filePath);
+  }
+
   const vmState = useVectorModelStore.getState();
 
   // Build platform-agnostic config from Zustand store
@@ -48,7 +57,7 @@ export async function triggerVectorizeBook(
   };
 
   // Extract chapters from the book file (platform-specific: Tauri + foliate-js)
-  const chapters = await extractBookChapters(filePath);
+  const chapters = await extractBookChapters(resolvedPath);
 
   // Delegate to core
   await coreTriggerVectorizeBook(

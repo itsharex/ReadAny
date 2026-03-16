@@ -1,6 +1,18 @@
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import {
+  ActivityIndicator,
+  Alert,
+  Linking,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { getPlatformService } from "@readany/core/services";
+import { checkForUpdate, type UpdateCheckResult } from "@readany/core/update";
 import {
   type ThemeColors,
   fontSize,
@@ -29,7 +41,59 @@ export default function AboutScreen() {
   const colors = useColors();
   const styles = makeStyles(colors);
   const { t } = useTranslation();
-  const version = "1.0.0";
+  const [version, setVersion] = useState("1.0.0");
+  const [checking, setChecking] = useState(false);
+  const [updateResult, setUpdateResult] = useState<UpdateCheckResult | null>(null);
+
+  // Load version + auto-check for updates on mount
+  useEffect(() => {
+    const platform = getPlatformService();
+    platform.getAppVersion().then(setVersion);
+
+    // Auto-check (throttled to once per day by the checker)
+    platform.getAppVersion().then((v) => {
+      checkForUpdate(v, platform).then(setUpdateResult).catch(() => {});
+    });
+  }, []);
+
+  const handleCheckUpdate = useCallback(async () => {
+    setChecking(true);
+    try {
+      const platform = getPlatformService();
+      const v = await platform.getAppVersion();
+      const result = await checkForUpdate(v, platform, true);
+      setUpdateResult(result);
+      if (!result.hasUpdate) {
+        Alert.alert(
+          t("settings.upToDate"),
+          t("settings.upToDate"),
+        );
+      } else if (result.release) {
+        Alert.alert(
+          t("settings.updateAvailable"),
+          t("settings.newVersionAvailable", { version: result.latestVersion }),
+          [
+            { text: t("settings.later"), style: "cancel" },
+            {
+              text: "GitHub",
+              onPress: () => {
+                if (result.release?.htmlUrl) {
+                  Linking.openURL(result.release.htmlUrl);
+                }
+              },
+            },
+          ],
+        );
+      }
+    } catch {
+      Alert.alert(
+        t("settings.updateError"),
+        t("settings.updaterCheckFailed"),
+      );
+    } finally {
+      setChecking(false);
+    }
+  }, [t]);
 
   return (
     <SafeAreaView
@@ -49,6 +113,35 @@ export default function AboutScreen() {
           <Text style={styles.desc}>
             {t("about.desc", "一个跨平台的智能电子书阅读器，支持 AI 对话、TTS 朗读、多语言翻译")}
           </Text>
+        </View>
+
+        {/* Check for Updates */}
+        <View style={styles.section}>
+          <TouchableOpacity
+            style={styles.updateBtn}
+            onPress={handleCheckUpdate}
+            disabled={checking}
+            activeOpacity={0.7}
+          >
+            {checking && <ActivityIndicator size="small" color={colors.primaryForeground} />}
+            <Text style={styles.updateBtnText}>
+              {checking
+                ? t("settings.updateChecking")
+                : t("settings.checkUpdate")}
+            </Text>
+          </TouchableOpacity>
+          {updateResult?.hasUpdate && updateResult.release && (
+            <TouchableOpacity
+              style={styles.updateBanner}
+              onPress={() => Linking.openURL(updateResult.release!.htmlUrl)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.updateBannerText}>
+                {t("settings.newVersionAvailable", { version: updateResult.latestVersion })}
+              </Text>
+              <Text style={styles.linkArrow}>→</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Tech Stack */}
@@ -75,7 +168,7 @@ export default function AboutScreen() {
                 onPress={() => Linking.openURL(link.url)}
                 activeOpacity={0.7}
               >
-                <Text style={styles.linkText}>{link.labelKey ? t(link.labelKey, link.label) : link.label}</Text>
+                <Text style={styles.linkText}>{link.label}</Text>
                 <Text style={styles.linkArrow}>→</Text>
               </TouchableOpacity>
             ))}
@@ -90,7 +183,7 @@ export default function AboutScreen() {
           </View>
         </View>
 
-        <Text style={styles.madeBy}>{t("about.madeBy", "Made with ❤️ by nicepkg")}</Text>
+        <Text style={styles.madeBy}>{t("about.madeBy", "Made with love by nicepkg")}</Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -151,6 +244,36 @@ const makeStyles = (colors: ThemeColors) =>
       color: colors.mutedForeground,
       textTransform: "uppercase",
       letterSpacing: 1,
+    },
+    updateBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 8,
+      borderRadius: radius.xl,
+      backgroundColor: colors.primary,
+      paddingVertical: 12,
+    },
+    updateBtnText: {
+      fontSize: fontSize.sm,
+      fontWeight: fontWeight.medium,
+      color: colors.primaryForeground,
+    },
+    updateBanner: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      borderRadius: radius.xl,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.primary,
+      paddingHorizontal: spacing.lg,
+      paddingVertical: 12,
+    },
+    updateBannerText: {
+      fontSize: fontSize.sm,
+      fontWeight: fontWeight.medium,
+      color: colors.primary,
     },
     techGrid: {
       flexDirection: "row",

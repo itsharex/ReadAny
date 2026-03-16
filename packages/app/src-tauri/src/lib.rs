@@ -13,14 +13,9 @@ pub fn run() {
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_websocket::init())
         .invoke_handler(tauri::generate_handler![
-            sync::commands::sync_test_connection,
-            sync::commands::sync_configure,
-            sync::commands::sync_get_config,
-            sync::commands::sync_now,
-            sync::commands::sync_get_status,
+            sync::commands::sync_vacuum_into,
+            sync::commands::sync_integrity_check,
             sync::commands::sync_hash_file,
-            sync::commands::sync_set_auto_sync,
-            sync::commands::sync_reset,
         ])
         .setup(|app| {
             let app_handle = app.handle().clone();

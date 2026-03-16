@@ -1,20 +1,25 @@
 /**
- * SyncSettings — WebDAV sync configuration and status panel
+ * SyncSettings — WebDAV sync configuration and status panel.
+ * Uses the shared core sync store with whole-database overwrite sync.
  */
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSyncStore } from "@/stores/sync-store";
 import { Switch } from "@/components/ui/switch";
 import { PasswordInput } from "@/components/ui/password-input";
+import { getPlatformService } from "@readany/core/services";
 
 export function SyncSettings() {
   const { t } = useTranslation();
   const {
     config,
+    isConfigured,
     status,
-    isSyncing,
+    lastSyncAt,
+    lastResult,
+    error,
+    pendingDirection,
     loadConfig,
-    loadStatus,
     testConnection,
     saveConfig,
     syncNow,
@@ -33,16 +38,23 @@ export function SyncSettings() {
 
   useEffect(() => {
     loadConfig();
-    loadStatus();
-  }, [loadConfig, loadStatus]);
+  }, [loadConfig]);
 
+  // Load saved password from KV when config changes
   useEffect(() => {
     if (config) {
       setUrl(config.url);
       setUsername(config.username);
-      setPassword(config.password);
+      // Load password from secure KV
+      getPlatformService()
+        .kvGetItem("sync_password")
+        .then((pw) => {
+          if (pw) setPassword(pw);
+        });
     }
   }, [config]);
+
+  const isBusy = status !== "idle" && status !== "error";
 
   const handleTest = useCallback(async () => {
     setTesting(true);
@@ -71,6 +83,13 @@ export function SyncSettings() {
     await syncNow();
   }, [syncNow]);
 
+  const handleConflict = useCallback(
+    async (direction: "upload" | "download") => {
+      await syncNow(direction);
+    },
+    [syncNow],
+  );
+
   const handleReset = useCallback(async () => {
     if (window.confirm(t("settings.syncResetConfirm"))) {
       await resetSync();
@@ -79,8 +98,24 @@ export function SyncSettings() {
 
   const formatLastSync = (ts: number | null) => {
     if (!ts) return t("settings.syncNever");
-    const date = new Date(ts);
-    return date.toLocaleString();
+    return new Date(ts).toLocaleString();
+  };
+
+  const statusLabel = () => {
+    switch (status) {
+      case "checking":
+        return t("settings.syncChecking");
+      case "uploading":
+        return t("settings.syncUploading");
+      case "downloading":
+        return t("settings.syncDownloading");
+      case "syncing-files":
+        return t("settings.syncSyncingFiles");
+      case "error":
+        return t("settings.syncError");
+      default:
+        return null;
+    }
   };
 
   return (
@@ -153,8 +188,34 @@ export function SyncSettings() {
         </div>
       </section>
 
+      {/* Conflict Resolution Dialog */}
+      {pendingDirection === "conflict" && (
+        <section className="rounded-lg border-2 border-orange-400/60 bg-orange-50/40 p-4 dark:bg-orange-950/20">
+          <h2 className="mb-2 text-sm font-medium text-foreground">
+            {t("settings.syncConflictTitle")}
+          </h2>
+          <p className="mb-3 text-xs text-muted-foreground">
+            {t("settings.syncConflictDesc")}
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => handleConflict("upload")}
+              className="rounded-md bg-blue-600 px-3 py-1.5 text-sm text-white transition-colors hover:bg-blue-700"
+            >
+              {t("settings.syncConflictUpload")}
+            </button>
+            <button
+              onClick={() => handleConflict("download")}
+              className="rounded-md bg-green-600 px-3 py-1.5 text-sm text-white transition-colors hover:bg-green-700"
+            >
+              {t("settings.syncConflictDownload")}
+            </button>
+          </div>
+        </section>
+      )}
+
       {/* Sync Status Section */}
-      {status.is_configured && (
+      {isConfigured && (
         <section className="rounded-lg bg-muted/60 p-4">
           <h2 className="mb-4 text-sm font-medium text-foreground">
             {t("settings.syncStatus")}
@@ -164,37 +225,49 @@ export function SyncSettings() {
               <div>
                 <span className="text-sm text-foreground">{t("settings.syncLastSync")}</span>
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  {formatLastSync(status.last_sync_at)}
+                  {formatLastSync(lastSyncAt)}
                 </p>
+                {statusLabel() && (
+                  <p className="mt-0.5 text-xs text-primary">{statusLabel()}</p>
+                )}
               </div>
               <button
                 onClick={handleSync}
-                disabled={isSyncing}
+                disabled={isBusy}
                 className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
               >
-                {isSyncing ? t("settings.syncSyncing") : t("settings.syncNow")}
+                {isBusy ? t("settings.syncSyncing") : t("settings.syncNow")}
               </button>
             </div>
 
             {/* Last sync result */}
-            {status.last_result && (
+            {lastResult && (
               <div className="rounded-md bg-background/60 p-3 text-xs text-muted-foreground">
-                {status.last_result.success ? (
+                {lastResult.success ? (
                   <div className="space-y-0.5">
-                    <p>{t("settings.syncRecordsUp", { count: status.last_result.records_uploaded })}</p>
-                    <p>{t("settings.syncRecordsDown", { count: status.last_result.records_downloaded })}</p>
-                    {status.last_result.files_uploaded > 0 && (
-                      <p>{t("settings.syncFilesUp", { count: status.last_result.files_uploaded })}</p>
+                    <p>{t("settings.syncDirection", { direction: lastResult.direction })}</p>
+                    {lastResult.filesUploaded > 0 && (
+                      <p>{t("settings.syncFilesUp", { count: lastResult.filesUploaded })}</p>
                     )}
-                    {status.last_result.files_downloaded > 0 && (
-                      <p>{t("settings.syncFilesDown", { count: status.last_result.files_downloaded })}</p>
+                    {lastResult.filesDownloaded > 0 && (
+                      <p>{t("settings.syncFilesDown", { count: lastResult.filesDownloaded })}</p>
                     )}
+                    <p className="text-muted-foreground/60">
+                      {t("settings.syncDuration", { ms: lastResult.durationMs })}
+                    </p>
                   </div>
                 ) : (
                   <p className="text-red-500">
-                    {t("settings.syncFailed", { error: status.last_result.error })}
+                    {t("settings.syncFailed", { error: lastResult.error })}
                   </p>
                 )}
+              </div>
+            )}
+
+            {/* Error display */}
+            {error && !lastResult && (
+              <div className="rounded-md bg-red-50/60 p-3 text-xs text-red-500 dark:bg-red-950/20">
+                {error}
               </div>
             )}
 
@@ -205,7 +278,7 @@ export function SyncSettings() {
                 <p className="mt-0.5 text-xs text-muted-foreground">{t("settings.syncAutoSyncDesc")}</p>
               </div>
               <Switch
-                checked={config?.auto_sync ?? false}
+                checked={config?.autoSync ?? false}
                 onCheckedChange={(checked) => setAutoSync(checked)}
               />
             </div>
@@ -214,7 +287,7 @@ export function SyncSettings() {
       )}
 
       {/* Advanced Section */}
-      {status.is_configured && (
+      {isConfigured && (
         <section className="rounded-lg bg-muted/60 p-4">
           <button
             onClick={() => setShowAdvanced(!showAdvanced)}
@@ -225,14 +298,6 @@ export function SyncSettings() {
 
           {showAdvanced && (
             <div className="space-y-3">
-              {status.device_id && (
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">{t("settings.syncDeviceId")}</span>
-                  <span className="font-mono text-xs text-muted-foreground">
-                    {status.device_id.slice(0, 8)}...
-                  </span>
-                </div>
-              )}
               <div className="pt-2">
                 <button
                   onClick={handleReset}

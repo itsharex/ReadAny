@@ -4,13 +4,58 @@
 import { useAppStore } from "@/stores/app-store";
 import type { Book } from "@readany/core/types";
 import { useTranslation } from "react-i18next";
+import { useResolvedSrc } from "@/hooks/use-resolved-src";
 
 interface BookListProps {
   books: Book[];
 }
 
-export function BookList({ books }: BookListProps) {
+interface BookListItemProps {
+  book: Book;
+  onOpen: (book: Book) => void;
+}
+
+function BookListItem({ book, onOpen }: BookListItemProps) {
   const { t } = useTranslation();
+  const coverSrc = useResolvedSrc(book.meta.coverUrl);
+  const pct = Math.round(book.progress * 100);
+
+  return (
+    <div
+      className="flex cursor-pointer items-center gap-3 rounded-xl border bg-background p-3 shadow-sm transition-colors hover:bg-muted/50"
+      onClick={() => onOpen(book)}
+    >
+      <div className="flex h-12 w-9 shrink-0 items-center justify-center overflow-hidden rounded-md bg-gradient-to-br from-muted to-muted/50">
+        {coverSrc ? (
+          <img src={coverSrc} alt="" className="h-full w-full object-cover" />
+        ) : (
+          <span className="text-sm font-bold text-muted-foreground">{book.meta.title.charAt(0)}</span>
+        )}
+      </div>
+      <div className="min-w-0 flex-1">
+        <h4 className="truncate text-sm font-medium">{book.meta.title}</h4>
+        {book.meta.author && (
+          <p className="truncate text-xs text-muted-foreground">{book.meta.author}</p>
+        )}
+      </div>
+      <div>
+        {pct === 0 ? (
+          <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+            {t("home.new")}
+          </span>
+        ) : pct >= 100 ? (
+          <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-600">
+            {t("home.complete")}
+          </span>
+        ) : (
+          <span className="text-xs text-muted-foreground">{pct}%</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export function BookList({ books }: BookListProps) {
   const addTab = useAppStore((s) => s.addTab);
 
   const handleOpen = (book: Book) => {
@@ -19,43 +64,9 @@ export function BookList({ books }: BookListProps) {
 
   return (
     <div className="flex flex-col gap-1.5">
-      {books.map((book) => {
-        const pct = Math.round(book.progress * 100);
-        return (
-          <div
-            key={book.id}
-            className="flex cursor-pointer items-center gap-3 rounded-xl border bg-background p-3 shadow-sm transition-colors hover:bg-muted/50"
-            onClick={() => handleOpen(book)}
-          >
-            <div className="flex h-12 w-9 shrink-0 items-center justify-center overflow-hidden rounded-md bg-gradient-to-br from-muted to-muted/50">
-              {book.meta.coverUrl ? (
-                <img src={book.meta.coverUrl} alt="" className="h-full w-full object-cover" />
-              ) : (
-                <span className="text-sm font-bold text-muted-foreground">{book.meta.title.charAt(0)}</span>
-              )}
-            </div>
-            <div className="min-w-0 flex-1">
-              <h4 className="truncate text-sm font-medium">{book.meta.title}</h4>
-              {book.meta.author && (
-                <p className="truncate text-xs text-muted-foreground">{book.meta.author}</p>
-              )}
-            </div>
-            <div>
-              {pct === 0 ? (
-                <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
-                  {t("home.new")}
-                </span>
-              ) : pct >= 100 ? (
-                <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-600">
-                  {t("home.complete")}
-                </span>
-              ) : (
-                <span className="text-xs text-muted-foreground">{pct}%</span>
-              )}
-            </div>
-          </div>
-        );
-      })}
+      {books.map((book) => (
+        <BookListItem key={book.id} book={book} onOpen={handleOpen} />
+      ))}
     </div>
   );
 }

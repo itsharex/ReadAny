@@ -31,8 +31,25 @@ import type { Highlight, Note } from "@readany/core/types";
 import { HIGHLIGHT_COLOR_HEX } from "@readany/core/types";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { useResolvedSrc } from "@/hooks/use-resolved-src";
 
 type DetailTab = "notes" | "highlights";
+
+// Helper component to resolve and display cover images
+interface CoverImageProps extends React.ImgHTMLAttributes<HTMLImageElement> {
+  url: string | undefined | null;
+  fallback?: React.ReactNode;
+}
+
+function CoverImage({ url, fallback, ...imgProps }: CoverImageProps) {
+  const resolvedSrc = useResolvedSrc(url);
+
+  if (!resolvedSrc) {
+    return <>{fallback}</>;
+  }
+
+  return <img src={resolvedSrc} {...imgProps} />;
+}
 
 export function NotesPage() {
   const { t } = useTranslation();
@@ -299,13 +316,16 @@ export function NotesPage() {
                     setEditingId(null);
                   }}
                 >
-                  {book.coverUrl ? (
-                    <img src={book.coverUrl} alt="" className="h-9 w-6 shrink-0 rounded object-cover" />
-                  ) : (
-                    <div className="flex h-9 w-6 shrink-0 items-center justify-center rounded bg-muted">
-                      <BookOpen className="h-3 w-3 text-muted-foreground" />
-                    </div>
-                  )}
+                  <CoverImage
+                    url={book.coverUrl}
+                    alt=""
+                    className="h-9 w-6 shrink-0 rounded object-cover"
+                    fallback={
+                      <div className="flex h-9 w-6 shrink-0 items-center justify-center rounded bg-muted">
+                        <BookOpen className="h-3 w-3 text-muted-foreground" />
+                      </div>
+                    }
+                  />
                   <div className="min-w-0 flex-1">
                     <p className="text-xs font-medium truncate">{book.title}</p>
                     <p className="text-[10px] text-muted-foreground">
@@ -349,13 +369,16 @@ export function NotesPage() {
                 <ChevronLeft className="h-4 w-4" />
               </button>
 
-              {selectedBook.coverUrl ? (
-                <img src={selectedBook.coverUrl} alt="" className="h-10 w-7 shrink-0 rounded object-cover shadow-sm" />
-              ) : (
-                <div className="flex h-10 w-7 shrink-0 items-center justify-center rounded bg-muted">
-                  <BookOpen className="h-4 w-4 text-muted-foreground" />
-                </div>
-              )}
+              <CoverImage
+                url={selectedBook.coverUrl}
+                alt=""
+                className="h-10 w-7 shrink-0 rounded object-cover shadow-sm"
+                fallback={
+                  <div className="flex h-10 w-7 shrink-0 items-center justify-center rounded bg-muted">
+                    <BookOpen className="h-4 w-4 text-muted-foreground" />
+                  </div>
+                }
+              />
 
               <div className="min-w-0 flex-1">
                 <h2 className="text-sm font-semibold truncate">{selectedBook.title}</h2>
@@ -499,30 +522,29 @@ function NotebookCard({ book, onClick }: NotebookCardProps) {
     >
       {/* Cover — same aspect ratio and shadow as BookCard */}
       <div className="book-cover-shadow relative flex aspect-[28/41] w-full items-end justify-center overflow-hidden rounded transition-all duration-200">
-        {book.coverUrl ? (
-          <img
-            src={book.coverUrl}
-            alt=""
-            className="absolute inset-0 h-full w-full rounded object-cover"
-            loading="lazy"
-          />
-        ) : (
-          <div className="absolute inset-0 flex flex-col items-center rounded bg-gradient-to-b from-stone-100 to-stone-200 p-3">
-            <div className="flex flex-1 items-center justify-center">
-              <span className="line-clamp-3 text-center font-serif text-base font-medium leading-snug text-stone-500">
-                {book.title}
-              </span>
-            </div>
-            <div className="h-px w-8 bg-stone-300/60" />
-            {book.author && (
-              <div className="flex h-1/4 items-center justify-center">
-                <span className="line-clamp-1 text-center font-serif text-xs text-stone-400">
-                  {book.author}
+        <CoverImage
+          url={book.coverUrl}
+          alt=""
+          className="absolute inset-0 h-full w-full rounded object-cover"
+          loading="lazy"
+          fallback={
+            <div className="absolute inset-0 flex flex-col items-center rounded bg-gradient-to-b from-stone-100 to-stone-200 p-3">
+              <div className="flex flex-1 items-center justify-center">
+                <span className="line-clamp-3 text-center font-serif text-base font-medium leading-snug text-stone-500">
+                  {book.title}
                 </span>
               </div>
-            )}
-          </div>
-        )}
+              <div className="h-px w-8 bg-stone-300/60" />
+              {book.author && (
+                <div className="flex h-1/4 items-center justify-center">
+                  <span className="line-clamp-1 text-center font-serif text-xs text-stone-400">
+                    {book.author}
+                  </span>
+                </div>
+              )}
+            </div>
+          }
+        />
 
         {/* Spine overlay */}
         {book.coverUrl && <div className="book-spine absolute inset-0 rounded" />}

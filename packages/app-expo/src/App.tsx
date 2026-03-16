@@ -27,8 +27,10 @@ import { setStreamingFetch } from "@readany/core/ai/llm-provider";
 import { initDatabase } from "@readany/core/db/database";
 import { initI18nLanguage } from "@readany/core/i18n";
 import { setPlatformService } from "@readany/core/services";
+import { setSyncAdapter } from "@readany/core/sync";
 
 import { ExpoPlatformService } from "@/lib/platform/expo-platform-service";
+import { MobileSyncAdapter } from "@/lib/sync/sync-adapter-mobile";
 import { RootNavigator } from "@/navigation/RootNavigator";
 import { ThemeProvider, useTheme } from "@/styles/ThemeContext";
 
@@ -41,16 +43,19 @@ export default function App() {
       const platform = new ExpoPlatformService();
       setPlatformService(platform);
 
-      // 2. Initialize database (create tables)
+      // 2. Register sync adapter
+      setSyncAdapter(new MobileSyncAdapter());
+
+      // 3. Initialize database (create tables)
       await initDatabase();
 
-      // 3. Register RN-specific adapters
+      // 4. Register RN-specific adapters
       setSessionEventSource(rnSessionEventSource);
 
-      // 4. Restore persisted language
+      // 5. Restore persisted language
       await initI18nLanguage();
 
-      // 5. Inject streaming-compatible fetch for AI calls
+      // 6. Inject streaming-compatible fetch for AI calls
       const { fetch: expoFetch } = await import("expo/fetch");
       setStreamingFetch(expoFetch as typeof globalThis.fetch);
 

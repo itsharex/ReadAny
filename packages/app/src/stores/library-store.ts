@@ -186,11 +186,54 @@ async function generatePdfCover(fileBytes: Uint8Array): Promise<Blob | null> {
   }
 }
 
-/** Save cover image to appData and return a URL usable by <img> */
+/** Resolve a relative path (e.g. "books/xxx.epub") to an absolute path in appDataDir */
+async function resolveAppPath(relativePath: string): Promise<string> {
+  const { appDataDir, join } = await import("@tauri-apps/api/path");
+  const appData = await appDataDir();
+  return join(appData, relativePath);
+}
+
+/** Check if a path is relative (not absolute or a protocol URL) */
+function isRelativePath(p: string): boolean {
+  return !p.startsWith("/") && !p.startsWith("file://") && !p.startsWith("asset://") && !p.startsWith("http");
+}
+
+/**
+ * Resolve a book or cover path to a displayable asset:// URL.
+ * Handles both legacy absolute/asset:// paths and new relative paths.
+ */
+export async function resolveFileSrc(path: string): Promise<string> {
+  if (!path) return "";
+  // Already a displayable URL
+  if (path.startsWith("asset://") || path.startsWith("http")) return path;
+  const { convertFileSrc } = await import("@tauri-apps/api/core");
+  if (isRelativePath(path)) {
+    const abs = await resolveAppPath(path);
+    return convertFileSrc(abs);
+  }
+  return convertFileSrc(path);
+}
+
+/** Copy book file into appDataDir/books/{id}.{ext} and return relative path */
+async function copyBookToAppData(bookId: string, ext: string, srcPath: string): Promise<{ relativePath: string; fileBytes: Uint8Array }> {
+  const { readFile, writeFile, mkdir } = await import("@tauri-apps/plugin-fs");
+  const { appDataDir, join } = await import("@tauri-apps/api/path");
+
+  const appData = await appDataDir();
+  const booksDir = await join(appData, "books");
+  try { await mkdir(booksDir, { recursive: true }); } catch { /* exists */ }
+
+  const relativePath = `books/${bookId}.${ext}`;
+  const destPath = await join(appData, relativePath);
+  const fileBytes = await readFile(srcPath);
+  await writeFile(destPath, fileBytes);
+  return { relativePath, fileBytes };
+}
+
+/** Save cover image to appData and return a relative path (covers/{id}.{ext}) */
 async function saveCoverToAppData(bookId: string, coverBlob: Blob): Promise<string> {
   const { writeFile, mkdir } = await import("@tauri-apps/plugin-fs");
   const { appDataDir, join } = await import("@tauri-apps/api/path");
-  const { convertFileSrc } = await import("@tauri-apps/api/core");
 
   const appData = await appDataDir();
   const coversDir = await join(appData, "covers");
@@ -203,12 +246,12 @@ async function saveCoverToAppData(bookId: string, coverBlob: Blob): Promise<stri
   }
 
   const ext = coverBlob.type.includes("png") ? "png" : "jpg";
-  const coverPath = await join(coversDir, `${bookId}.${ext}`);
+  const relativePath = `covers/${bookId}.${ext}`;
+  const coverPath = await join(appData, relativePath);
   const arrayBuffer = await coverBlob.arrayBuffer();
   await writeFile(coverPath, new Uint8Array(arrayBuffer));
 
-  // Convert to a file:// URL that webview can display
-  return convertFileSrc(coverPath);
+  return relativePath;
 }
 
 async function unzipBlob(blob: Blob): Promise<{ entries: Map<string, Blob> }> {
@@ -388,13 +431,47 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     debouncedSave("library-books", get().books);
   },
 
-  removeBook: (bookId) => {
+  removeBook: async (bookId) => {
+    // Find the book before removing to get file paths
+    const book = get().books.find((b) => b.id === bookId);
+
     set((state) => ({ books: state.books.filter((b) => b.id !== bookId) }));
     db.deleteBook(bookId).catch((err) =>
       console.error("Failed to delete book from database:", err),
     );
     // Update FS cache
     debouncedSave("library-books", get().books);
+
+    // Clean up files from app data dir (only for relative paths)
+    if (book) {
+      try {
+        const { remove } = await import("@tauri-apps/plugin-fs");
+
+        // Delete book file if it's a relative path (in app data dir)
+        if (book.filePath && isRelativePath(book.filePath)) {
+          try {
+            const bookAbsPath = await resolveAppPath(book.filePath);
+            await remove(bookAbsPath);
+            console.log("[removeBook] Deleted book file:", book.filePath);
+          } catch (err) {
+            console.warn("[removeBook] Failed to delete book file:", err);
+          }
+        }
+
+        // Delete cover file if it's a relative path
+        if (book.meta.coverUrl && isRelativePath(book.meta.coverUrl)) {
+          try {
+            const coverAbsPath = await resolveAppPath(book.meta.coverUrl);
+            await remove(coverAbsPath);
+            console.log("[removeBook] Deleted cover file:", book.meta.coverUrl);
+          } catch (err) {
+            console.warn("[removeBook] Failed to delete cover file:", err);
+          }
+        }
+      } catch (err) {
+        console.error("[removeBook] File cleanup error:", err);
+      }
+    }
   },
 
   updateBook: (bookId, updates) => {
@@ -419,25 +496,34 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   importBooks: async (filePaths) => {
     set({ isImporting: true });
     try {
-      const { readFile } = await import("@tauri-apps/plugin-fs");
       const { DocumentLoader } = await import("@/lib/reader/document-loader");
 
       for (const filePath of filePaths) {
         try {
-          const ext = filePath.split(".").pop()?.toLowerCase();
+          const ext = filePath.split(".").pop()?.toLowerCase() || "epub";
           const formatMap: Record<string, Book["format"]> = {
             epub: "epub", pdf: "pdf", mobi: "mobi", azw: "azw", azw3: "azw3",
             cbz: "cbz", cbr: "cbz", fb2: "fb2", fbz: "fbz",
           };
-          const format: Book["format"] = formatMap[ext || ""] || "epub";
+          const format: Book["format"] = formatMap[ext] || "epub";
           let title = filePath.split("/").pop()?.replace(/\.\w+$/i, "") || "Untitled";
           let author = "";
           let coverUrl: string | undefined;
           const bookId = crypto.randomUUID();
 
-          // Use DocumentLoader to open the book (same as Readest approach)
-          // This delegates to foliate-js parsers which handle all formats properly
-          const fileBytes = await readFile(filePath);
+          // Copy book file into app data dir (books/{id}.{ext})
+          const { relativePath, fileBytes } = await copyBookToAppData(bookId, ext, filePath);
+
+          // Compute file hash for sync file matching
+          let fileHash: string | undefined;
+          try {
+            const { invoke } = await import("@tauri-apps/api/core");
+            const absPath = await resolveAppPath(relativePath);
+            fileHash = await invoke<string>("sync_hash_file", { path: absPath });
+          } catch {
+            // Hash calculation not critical — sync_hash_file command may not exist yet
+          }
+
           const fileName = filePath.split("/").pop() || "book";
           const blob = new Blob([fileBytes]);
           const file = new File([blob], fileName, { type: blob.type || "application/octet-stream" });
@@ -487,13 +573,14 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
 
           const book: Book = {
             id: bookId,
-            filePath,
+            filePath: relativePath,
             format,
             meta: { title, author, coverUrl },
             progress: 0,
             isVectorized: false,
             vectorizeProgress: 0,
             tags: [],
+            fileHash,
             addedAt: Date.now(),
             updatedAt: Date.now(),
             lastOpenedAt: Date.now(),

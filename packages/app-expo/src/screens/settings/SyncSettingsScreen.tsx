@@ -1,3 +1,7 @@
+/**
+ * SyncSettingsScreen — WebDAV sync configuration and status panel (mobile).
+ * Uses the shared core sync store with whole-database overwrite sync.
+ */
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -13,6 +17,8 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useSyncStore } from "@readany/core/stores";
+import { getPlatformService } from "@readany/core/services";
 import { PasswordInput } from "../../components/ui/PasswordInput";
 import {
   type ThemeColors,
@@ -30,6 +36,22 @@ export default function SyncSettingsScreen() {
   const styles = makeStyles(colors);
   const { t } = useTranslation();
 
+  const {
+    config,
+    isConfigured,
+    status,
+    lastSyncAt,
+    lastResult,
+    error,
+    pendingDirection,
+    loadConfig,
+    testConnection,
+    saveConfig,
+    syncNow,
+    setAutoSync,
+    resetSync,
+  } = useSyncStore();
+
   const [url, setUrl] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -37,41 +59,33 @@ export default function SyncSettingsScreen() {
   const [testResult, setTestResult] = useState<"success" | "error" | null>(null);
   const [testError, setTestError] = useState("");
   const [saving, setSaving] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [isConfigured, setIsConfigured] = useState(false);
-  const [autoSync, setAutoSync] = useState(false);
-  const [lastSyncAt, setLastSyncAt] = useState<number | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [deviceId, setDeviceId] = useState("");
 
-  // Try to load sync store if available
+  const isBusy = status !== "idle" && status !== "error";
+
+  // Load config on mount
   useEffect(() => {
-    (async () => {
-      try {
-        const mod = await import("@readany/core/stores");
-        const store = (mod as Record<string, unknown>)["useSyncStore"];
-        if (typeof store === "function") {
-          const state = (store as () => Record<string, unknown>)();
-          if (state.config) {
-            const cfg = state.config as Record<string, string>;
-            setUrl(cfg.url || "");
-            setUsername(cfg.username || "");
-            setPassword(cfg.password || "");
-            setIsConfigured(true);
-          }
-        }
-      } catch {
-        // sync store not available
-      }
-    })();
-  }, []);
+    loadConfig();
+  }, [loadConfig]);
+
+  // Load saved password from KV when config changes
+  useEffect(() => {
+    if (config) {
+      setUrl(config.url);
+      setUsername(config.username);
+      getPlatformService()
+        .kvGetItem("sync_password")
+        .then((pw) => {
+          if (pw) setPassword(pw);
+        });
+    }
+  }, [config]);
 
   const handleTest = useCallback(async () => {
     setTesting(true);
     setTestResult(null);
     try {
-      // Placeholder: real implementation would call sync service
-      await new Promise((r) => setTimeout(r, 1500));
+      await testConnection(url, username, password);
       setTestResult("success");
     } catch (e) {
       setTestResult("error");
@@ -79,51 +93,63 @@ export default function SyncSettingsScreen() {
     } finally {
       setTesting(false);
     }
-  }, [url, username, password]);
+  }, [url, username, password, testConnection]);
 
   const handleSave = useCallback(async () => {
     setSaving(true);
     try {
-      await new Promise((r) => setTimeout(r, 500));
-      setIsConfigured(true);
+      await saveConfig(url, username, password);
     } finally {
       setSaving(false);
     }
-  }, [url, username, password]);
+  }, [url, username, password, saveConfig]);
 
   const handleSync = useCallback(async () => {
-    setIsSyncing(true);
-    try {
-      await new Promise((r) => setTimeout(r, 2000));
-      setLastSyncAt(Date.now());
-    } finally {
-      setIsSyncing(false);
-    }
-  }, []);
+    await syncNow();
+  }, [syncNow]);
+
+  const handleConflict = useCallback(
+    (direction: "upload" | "download") => {
+      syncNow(direction);
+    },
+    [syncNow],
+  );
 
   const handleReset = useCallback(() => {
     Alert.alert(
-      t("settings.syncReset", "重置同步"),
-      t("settings.syncResetConfirm", "确定要重置同步数据吗？"),
+      t("settings.syncReset"),
+      t("settings.syncResetConfirm"),
       [
-        { text: t("common.cancel", "取消"), style: "cancel" },
+        { text: t("common.cancel"), style: "cancel" },
         {
-          text: t("common.confirm", "确定"),
+          text: t("common.confirm"),
           style: "destructive",
-          onPress: () => {
-            setIsConfigured(false);
-            setUrl("");
-            setUsername("");
-            setPassword("");
-          },
+          onPress: () => resetSync(),
         },
       ],
     );
-  }, [t]);
+  }, [t, resetSync]);
 
   const formatLastSync = (ts: number | null) => {
-    if (!ts) return t("settings.syncNever", "从未同步");
+    if (!ts) return t("settings.syncNever");
     return new Date(ts).toLocaleString();
+  };
+
+  const statusLabel = () => {
+    switch (status) {
+      case "checking":
+        return t("settings.syncChecking");
+      case "uploading":
+        return t("settings.syncUploading");
+      case "downloading":
+        return t("settings.syncDownloading");
+      case "syncing-files":
+        return t("settings.syncSyncingFiles");
+      case "error":
+        return t("settings.syncError");
+      default:
+        return null;
+    }
   };
 
   return (
@@ -131,7 +157,7 @@ export default function SyncSettingsScreen() {
       style={[styles.container, { backgroundColor: colors.background }]}
       edges={["top"]}
     >
-      <SettingsHeader title={t("settings.syncTitle", "同步设置")} />
+      <SettingsHeader title={t("settings.syncTitle")} />
 
       <KeyboardAvoidingView
         style={styles.keyboardView}
@@ -145,48 +171,44 @@ export default function SyncSettingsScreen() {
         >
           {/* Connection */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>{t("settings.syncConnection", "连接配置")}</Text>
+            <Text style={styles.sectionTitle}>{t("settings.syncConnection")}</Text>
             <View style={styles.card}>
-              {/* URL */}
               <View style={styles.fieldGroup}>
-                <Text style={styles.fieldLabel}>{t("settings.syncUrl", "WebDAV URL")}</Text>
+                <Text style={styles.fieldLabel}>{t("settings.syncUrl")}</Text>
                 <TextInput
                   style={styles.input}
                   value={url}
                   onChangeText={setUrl}
-                  placeholder={t("settings.syncUrlPlaceholder", "https://dav.example.com/readany")}
+                  placeholder={t("settings.syncUrlPlaceholder")}
                   placeholderTextColor={colors.mutedForeground}
                   autoCapitalize="none"
                   keyboardType="url"
                 />
               </View>
 
-              {/* Username */}
               <View style={styles.fieldGroup}>
-                <Text style={styles.fieldLabel}>{t("settings.syncUsername", "用户名")}</Text>
+                <Text style={styles.fieldLabel}>{t("settings.syncUsername")}</Text>
                 <TextInput
                   style={styles.input}
                   value={username}
                   onChangeText={setUsername}
-                  placeholder={t("settings.syncUsername", "用户名")}
+                  placeholder={t("settings.syncUsername")}
                   placeholderTextColor={colors.mutedForeground}
                   autoCapitalize="none"
                 />
               </View>
 
-              {/* Password */}
               <View style={styles.fieldGroup}>
-                <Text style={styles.fieldLabel}>{t("settings.syncPassword", "密码")}</Text>
+                <Text style={styles.fieldLabel}>{t("settings.syncPassword")}</Text>
                 <PasswordInput
                   style={styles.input}
                   value={password}
                   onChangeText={setPassword}
-                  placeholder={t("settings.syncPassword", "密码")}
+                  placeholder={t("settings.syncPassword")}
                   placeholderTextColor={colors.mutedForeground}
                 />
               </View>
 
-              {/* Buttons */}
               <View style={styles.btnRow}>
                 <TouchableOpacity
                   style={[styles.outlineBtn, (!url || testing) && styles.btnDisabled]}
@@ -195,9 +217,7 @@ export default function SyncSettingsScreen() {
                   activeOpacity={0.7}
                 >
                   <Text style={styles.outlineBtnText}>
-                    {testing
-                      ? t("settings.syncTesting", "测试中...")
-                      : t("settings.syncTestConnection", "测试连接")}
+                    {testing ? t("settings.syncTesting") : t("settings.syncTestConnection")}
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -206,68 +226,120 @@ export default function SyncSettingsScreen() {
                   disabled={saving || !url || !username}
                   activeOpacity={0.7}
                 >
-                  <Text style={styles.primaryBtnText}>{t("settings.syncSave", "保存")}</Text>
+                  <Text style={styles.primaryBtnText}>{t("settings.syncSave")}</Text>
                 </TouchableOpacity>
               </View>
 
-              {/* Test result */}
               {testResult === "success" && (
-                <Text style={styles.successText}>{t("settings.syncTestSuccess", "连接成功")}</Text>
+                <Text style={styles.successText}>{t("settings.syncTestSuccess")}</Text>
               )}
               {testResult === "error" && (
                 <Text style={styles.errorText}>
-                  {t("settings.syncTestFailed", {
-                    error: testError,
-                    defaultValue: `连接失败: ${testError}`,
-                  })}
+                  {t("settings.syncTestFailed", { error: testError })}
                 </Text>
               )}
             </View>
           </View>
 
+          {/* Conflict Resolution */}
+          {pendingDirection === "conflict" && (
+            <View style={styles.section}>
+              <View style={styles.conflictCard}>
+                <Text style={styles.conflictTitle}>{t("settings.syncConflictTitle")}</Text>
+                <Text style={styles.conflictDesc}>{t("settings.syncConflictDesc")}</Text>
+                <View style={styles.btnRow}>
+                  <TouchableOpacity
+                    style={styles.uploadBtn}
+                    onPress={() => handleConflict("upload")}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.conflictBtnText}>{t("settings.syncConflictUpload")}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.downloadBtn}
+                    onPress={() => handleConflict("download")}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.conflictBtnText}>{t("settings.syncConflictDownload")}</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          )}
+
           {/* Sync Status */}
           {isConfigured && (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>{t("settings.syncStatus", "同步状态")}</Text>
+              <Text style={styles.sectionTitle}>{t("settings.syncStatus")}</Text>
               <View style={styles.card}>
-                {/* Last sync + Sync Now */}
                 <View style={styles.syncRow}>
                   <View>
-                    <Text style={styles.syncLabel}>{t("settings.syncLastSync", "上次同步")}</Text>
+                    <Text style={styles.syncLabel}>{t("settings.syncLastSync")}</Text>
                     <Text style={styles.syncValue}>{formatLastSync(lastSyncAt)}</Text>
+                    {statusLabel() && (
+                      <Text style={styles.statusText}>{statusLabel()}</Text>
+                    )}
                   </View>
                   <TouchableOpacity
-                    style={[styles.syncBtn, isSyncing && styles.btnDisabled]}
+                    style={[styles.syncBtn, isBusy && styles.btnDisabled]}
                     onPress={handleSync}
-                    disabled={isSyncing}
+                    disabled={isBusy}
                     activeOpacity={0.7}
                   >
-                    {isSyncing && (
+                    {isBusy && (
                       <ActivityIndicator size="small" color={colors.primaryForeground} />
                     )}
                     <Text style={styles.syncBtnText}>
-                      {isSyncing
-                        ? t("settings.syncSyncing", "同步中...")
-                        : t("settings.syncNow", "立即同步")}
+                      {isBusy ? t("settings.syncSyncing") : t("settings.syncNow")}
                     </Text>
                   </TouchableOpacity>
                 </View>
 
+                {/* Last result */}
+                {lastResult && (
+                  <View style={styles.resultCard}>
+                    {lastResult.success ? (
+                      <>
+                        <Text style={styles.resultText}>
+                          {t("settings.syncDirection", { direction: lastResult.direction })}
+                        </Text>
+                        {lastResult.filesUploaded > 0 && (
+                          <Text style={styles.resultText}>
+                            {t("settings.syncFilesUp", { count: lastResult.filesUploaded })}
+                          </Text>
+                        )}
+                        {lastResult.filesDownloaded > 0 && (
+                          <Text style={styles.resultText}>
+                            {t("settings.syncFilesDown", { count: lastResult.filesDownloaded })}
+                          </Text>
+                        )}
+                      </>
+                    ) : (
+                      <Text style={styles.errorText}>
+                        {t("settings.syncFailed", { error: lastResult.error })}
+                      </Text>
+                    )}
+                  </View>
+                )}
+
+                {/* Error */}
+                {error && !lastResult && (
+                  <Text style={styles.errorText}>{error}</Text>
+                )}
+
                 {/* Auto sync toggle */}
                 <View style={styles.autoSyncRow}>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.autoSyncLabel}>
-                      {t("settings.syncAutoSync", "自动同步")}
-                    </Text>
-                    <Text style={styles.autoSyncDesc}>
-                      {t("settings.syncAutoSyncDesc", "应用启动时自动同步数据")}
-                    </Text>
+                    <Text style={styles.autoSyncLabel}>{t("settings.syncAutoSync")}</Text>
+                    <Text style={styles.autoSyncDesc}>{t("settings.syncAutoSyncDesc")}</Text>
                   </View>
                   <TouchableOpacity
-                    style={[styles.toggle, autoSync && styles.toggleActive]}
-                    onPress={() => setAutoSync(!autoSync)}
+                    style={[styles.toggle, config?.autoSync && styles.toggleActive]}
+                    onPress={() => setAutoSync(!config?.autoSync)}
                   >
-                    <View style={[styles.toggleThumb, autoSync && styles.toggleThumbActive]} />
+                    <View
+                      style={[styles.toggleThumb, config?.autoSync && styles.toggleThumbActive]}
+                    />
                   </TouchableOpacity>
                 </View>
               </View>
@@ -281,30 +353,19 @@ export default function SyncSettingsScreen() {
                 style={styles.advancedHeader}
                 onPress={() => setShowAdvanced(!showAdvanced)}
               >
-                <Text style={styles.sectionTitle}>{t("settings.syncAdvanced", "高级选项")}</Text>
+                <Text style={styles.sectionTitle}>{t("settings.syncAdvanced")}</Text>
                 <Text style={styles.chevron}>{showAdvanced ? "▲" : "▼"}</Text>
               </TouchableOpacity>
               {showAdvanced && (
                 <View style={styles.card}>
-                  {deviceId ? (
-                    <View style={styles.fieldGroup}>
-                      <Text style={styles.fieldLabel}>{t("settings.syncDeviceId", "设备 ID")}</Text>
-                      <Text style={styles.deviceIdText}>{deviceId.slice(0, 8)}...</Text>
-                    </View>
-                  ) : null}
                   <TouchableOpacity
                     style={styles.resetBtn}
                     onPress={handleReset}
                     activeOpacity={0.7}
                   >
-                    <Text style={styles.resetBtnText}>{t("settings.syncReset", "重置同步")}</Text>
+                    <Text style={styles.resetBtnText}>{t("settings.syncReset")}</Text>
                   </TouchableOpacity>
-                  <Text style={styles.resetDesc}>
-                    {t(
-                      "settings.syncResetDesc",
-                      "重置后将清除本地同步记录，下次同步时将重新同步所有数据",
-                    )}
-                  </Text>
+                  <Text style={styles.resetDesc}>{t("settings.syncResetDesc")}</Text>
                 </View>
               )}
             </View>
@@ -337,11 +398,44 @@ const makeStyles = (colors: ThemeColors) =>
       padding: spacing.lg,
       gap: 12,
     },
-    fieldGroup: { gap: 4 },
-    fieldLabel: {
+    conflictCard: {
+      borderRadius: radius.xl,
+      backgroundColor: colors.card,
+      borderWidth: 2,
+      borderColor: withOpacity("#f59e0b", 0.5),
+      padding: spacing.lg,
+      gap: 12,
+    },
+    conflictTitle: {
       fontSize: fontSize.sm,
+      fontWeight: fontWeight.medium,
+      color: colors.foreground,
+    },
+    conflictDesc: {
+      fontSize: fontSize.xs,
       color: colors.mutedForeground,
     },
+    uploadBtn: {
+      flex: 1,
+      borderRadius: radius.lg,
+      backgroundColor: "#2563eb",
+      paddingVertical: 8,
+      alignItems: "center",
+    },
+    downloadBtn: {
+      flex: 1,
+      borderRadius: radius.lg,
+      backgroundColor: "#16a34a",
+      paddingVertical: 8,
+      alignItems: "center",
+    },
+    conflictBtnText: {
+      fontSize: fontSize.sm,
+      fontWeight: fontWeight.medium,
+      color: "#ffffff",
+    },
+    fieldGroup: { gap: 4 },
+    fieldLabel: { fontSize: fontSize.sm, color: colors.mutedForeground },
     input: {
       borderRadius: radius.lg,
       borderWidth: 1,
@@ -352,11 +446,7 @@ const makeStyles = (colors: ThemeColors) =>
       fontSize: fontSize.sm,
       color: colors.foreground,
     },
-    btnRow: {
-      flexDirection: "row",
-      gap: 12,
-      paddingTop: 4,
-    },
+    btnRow: { flexDirection: "row", gap: 12, paddingTop: 4 },
     outlineBtn: {
       flex: 1,
       borderRadius: radius.lg,
@@ -390,14 +480,16 @@ const makeStyles = (colors: ThemeColors) =>
       alignItems: "center",
       justifyContent: "space-between",
     },
-    syncLabel: {
-      fontSize: fontSize.sm,
-      color: colors.mutedForeground,
-    },
+    syncLabel: { fontSize: fontSize.sm, color: colors.mutedForeground },
     syncValue: {
       fontSize: fontSize.sm,
       fontWeight: fontWeight.medium,
       color: colors.foreground,
+      marginTop: 2,
+    },
+    statusText: {
+      fontSize: fontSize.xs,
+      color: colors.primary,
       marginTop: 2,
     },
     syncBtn: {
@@ -413,6 +505,16 @@ const makeStyles = (colors: ThemeColors) =>
       fontSize: fontSize.sm,
       fontWeight: fontWeight.medium,
       color: colors.primaryForeground,
+    },
+    resultCard: {
+      borderRadius: radius.lg,
+      backgroundColor: colors.background,
+      padding: 12,
+      gap: 2,
+    },
+    resultText: {
+      fontSize: fontSize.xs,
+      color: colors.mutedForeground,
     },
     autoSyncRow: {
       flexDirection: "row",
@@ -453,15 +555,7 @@ const makeStyles = (colors: ThemeColors) =>
       alignItems: "center",
       justifyContent: "space-between",
     },
-    chevron: {
-      fontSize: 12,
-      color: colors.mutedForeground,
-    },
-    deviceIdText: {
-      fontSize: fontSize.sm,
-      color: colors.foreground,
-      fontVariant: ["tabular-nums"],
-    },
+    chevron: { fontSize: 12, color: colors.mutedForeground },
     resetBtn: {
       borderRadius: radius.lg,
       borderWidth: 1,

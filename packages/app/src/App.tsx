@@ -3,11 +3,15 @@
  * All opened tabs stay mounted; visibility controlled by CSS display.
  */
 import { AppLayout } from "@/components/layout/AppLayout";
-import { useSyncEvents, useAutoSync } from "@/hooks/use-sync";
+import { useAutoSync } from "@/hooks/use-sync";
+import { setSyncAdapter } from "@readany/core/sync";
+import { DesktopSyncAdapter } from "@/lib/sync/sync-adapter-desktop";
 import { Toaster } from "sonner";
 
+// Register the desktop sync adapter once at module load
+setSyncAdapter(new DesktopSyncAdapter());
+
 export default function App() {
-  useSyncEvents();
   useAutoSync();
 
   return (

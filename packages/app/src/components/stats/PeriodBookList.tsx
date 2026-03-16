@@ -3,9 +3,52 @@
  */
 import { useTranslation } from "react-i18next";
 import type { PeriodBookStats } from "@readany/core/stats";
+import { useResolvedSrc } from "@/hooks/use-resolved-src";
 
 interface PeriodBookListProps {
   books: PeriodBookStats[];
+}
+
+interface PeriodBookListItemProps {
+  book: PeriodBookStats;
+}
+
+function PeriodBookListItem({ book }: PeriodBookListItemProps) {
+  const coverSrc = useResolvedSrc(book.coverUrl);
+
+  return (
+    <div className="flex items-center gap-3 rounded-lg p-2 transition-colors hover:bg-muted/40">
+      {/* Cover */}
+      <div className="h-12 w-9 flex-shrink-0 overflow-hidden rounded bg-muted">
+        {coverSrc ? (
+          <img src={coverSrc} alt="" className="h-full w-full object-cover" />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center text-[10px] text-muted-foreground/50">
+            {book.title.charAt(0)}
+          </div>
+        )}
+      </div>
+
+      {/* Info */}
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center justify-between gap-2">
+          <p className="truncate text-sm font-medium text-foreground">{book.title}</p>
+          <span className="flex-shrink-0 text-xs text-muted-foreground">{formatTime(book.totalTime)}</span>
+        </div>
+        <p className="truncate text-xs text-muted-foreground">{book.author}</p>
+        {/* Progress bar */}
+        <div className="mt-1.5 flex items-center gap-2">
+          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+            <div
+              className="h-full rounded-full bg-emerald-500 transition-all"
+              style={{ width: `${Math.min(book.progress * 100, 100)}%` }}
+            />
+          </div>
+          <span className="text-[10px] text-muted-foreground">{Math.round(book.progress * 100)}%</span>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export function PeriodBookList({ books }: PeriodBookListProps) {
@@ -22,37 +65,7 @@ export function PeriodBookList({ books }: PeriodBookListProps) {
   return (
     <div className="space-y-2">
       {books.map((book) => (
-        <div key={book.bookId} className="flex items-center gap-3 rounded-lg p-2 transition-colors hover:bg-muted/40">
-          {/* Cover */}
-          <div className="h-12 w-9 flex-shrink-0 overflow-hidden rounded bg-muted">
-            {book.coverUrl ? (
-              <img src={book.coverUrl} alt="" className="h-full w-full object-cover" />
-            ) : (
-              <div className="flex h-full w-full items-center justify-center text-[10px] text-muted-foreground/50">
-                {book.title.charAt(0)}
-              </div>
-            )}
-          </div>
-
-          {/* Info */}
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center justify-between gap-2">
-              <p className="truncate text-sm font-medium text-foreground">{book.title}</p>
-              <span className="flex-shrink-0 text-xs text-muted-foreground">{formatTime(book.totalTime)}</span>
-            </div>
-            <p className="truncate text-xs text-muted-foreground">{book.author}</p>
-            {/* Progress bar */}
-            <div className="mt-1.5 flex items-center gap-2">
-              <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
-                <div
-                  className="h-full rounded-full bg-emerald-500 transition-all"
-                  style={{ width: `${Math.min(book.progress * 100, 100)}%` }}
-                />
-              </div>
-              <span className="text-[10px] text-muted-foreground">{Math.round(book.progress * 100)}%</span>
-            </div>
-          </div>
-        </div>
+        <PeriodBookListItem key={book.bookId} book={book} />
       ))}
     </div>
   );

@@ -42,15 +42,24 @@ import { useTTSStore } from "@/stores/tts-store";
 
 // --- Tauri file loading ---
 async function loadFileAsBlob(filePath: string): Promise<Blob> {
+  // Resolve relative paths (e.g., "books/{id}.epub") to absolute paths
+  let resolvedPath = filePath;
+  if (!filePath.startsWith("/") && !filePath.startsWith("file://") &&
+      !filePath.startsWith("asset://") && !filePath.startsWith("http")) {
+    const { appDataDir, join } = await import("@tauri-apps/api/path");
+    const appData = await appDataDir();
+    resolvedPath = await join(appData, filePath);
+  }
+
   try {
     const { convertFileSrc } = await import("@tauri-apps/api/core");
-    const assetUrl = convertFileSrc(filePath);
+    const assetUrl = convertFileSrc(resolvedPath);
     const response = await fetch(assetUrl);
     if (!response.ok) throw new Error(`fetch failed: ${response.status}`);
     return await response.blob();
   } catch {
     const { readFile } = await import("@tauri-apps/plugin-fs");
-    const fileBytes = await readFile(filePath);
+    const fileBytes = await readFile(resolvedPath);
     return new Blob([fileBytes]);
   }
 }

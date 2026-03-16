@@ -37,3 +37,7 @@ export type { ChatState } from "./chat-store";
 
 export { useReadingSessionStore } from "./reading-session-store";
 export type { ReadingSessionState } from "./reading-session-store";
+
+// Sync store
+export { useSyncStore } from "./sync-store";
+export type { SyncState } from "./sync-store";

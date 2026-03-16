@@ -1,5 +1,8 @@
 export {
   initDatabase,
+  getDB,
+  closeDB,
+  resetDBCache,
   getBooks,
   getBook,
   insertBook,

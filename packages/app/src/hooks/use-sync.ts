@@ -1,40 +1,22 @@
 /**
- * Hook for listening to sync events from the Rust backend
- * and managing auto-sync lifecycle
+ * Hook for managing auto-sync lifecycle.
+ * Uses the shared core sync store instead of Rust backend events.
  */
 import { useEffect, useRef } from "react";
-import { listen } from "@tauri-apps/api/event";
-import { useSyncStore, type SyncResult } from "@/stores/sync-store";
+import { useSyncStore } from "@/stores/sync-store";
 import { useLibraryStore } from "@/stores/library-store";
 
-/** Listen for sync:complete events and refresh status */
-export function useSyncEvents() {
-  const loadStatus = useSyncStore((s) => s.loadStatus);
-  const loadBooks = useLibraryStore((s) => s.loadBooks);
-
-  useEffect(() => {
-    const unlisten = listen<SyncResult>("sync:complete", (event) => {
-      loadStatus();
-      // Refresh books if any records were downloaded
-      if (event.payload.records_downloaded > 0 || event.payload.files_downloaded > 0) {
-        loadBooks();
-      }
-    });
-
-    return () => {
-      unlisten.then((fn) => fn());
-    };
-  }, [loadStatus, loadBooks]);
-}
-
-/** Auto-sync: trigger on startup (delayed) and periodically */
+/** Auto-sync: load config, trigger on startup (delayed), and periodically */
 export function useAutoSync() {
   const config = useSyncStore((s) => s.config);
+  const isConfigured = useSyncStore((s) => s.isConfigured);
   const syncNow = useSyncStore((s) => s.syncNow);
   const loadConfig = useSyncStore((s) => s.loadConfig);
-  const isSyncing = useSyncStore((s) => s.isSyncing);
-  const isSyncingRef = useRef(isSyncing);
-  isSyncingRef.current = isSyncing;
+  const status = useSyncStore((s) => s.status);
+  const lastResult = useSyncStore((s) => s.lastResult);
+  const loadBooks = useLibraryStore((s) => s.loadBooks);
+  const statusRef = useRef(status);
+  statusRef.current = status;
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Load config on mount
@@ -42,9 +24,19 @@ export function useAutoSync() {
     loadConfig();
   }, [loadConfig]);
 
+  // Refresh library after a successful download sync
+  useEffect(() => {
+    if (
+      lastResult?.success &&
+      (lastResult.direction === "download" || lastResult.filesDownloaded > 0)
+    ) {
+      loadBooks();
+    }
+  }, [lastResult, loadBooks]);
+
   // Delayed startup sync + periodic sync
   useEffect(() => {
-    if (!config?.auto_sync) {
+    if (!isConfigured || !config?.autoSync) {
       if (timerRef.current) {
         clearInterval(timerRef.current);
         timerRef.current = null;
@@ -54,15 +46,15 @@ export function useAutoSync() {
 
     // Delayed startup sync (10 seconds after mount)
     const startupTimer = setTimeout(() => {
-      if (!isSyncingRef.current) {
+      if (statusRef.current === "idle") {
         syncNow();
       }
     }, 10_000);
 
     // Periodic sync
-    const intervalMs = (config.sync_interval_mins || 30) * 60 * 1000;
+    const intervalMs = (config.syncIntervalMins || 30) * 60 * 1000;
     timerRef.current = setInterval(() => {
-      if (!isSyncingRef.current) {
+      if (statusRef.current === "idle") {
         syncNow();
       }
     }, intervalMs);
@@ -74,5 +66,5 @@ export function useAutoSync() {
         timerRef.current = null;
       }
     };
-  }, [config?.auto_sync, config?.sync_interval_mins, syncNow]);
+  }, [isConfigured, config?.autoSync, config?.syncIntervalMins, syncNow]);
 }

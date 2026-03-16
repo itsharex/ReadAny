@@ -18,12 +18,33 @@ const DB_NAME = "sqlite:readany.db";
 // Cached device ID for sync tracking
 let cachedDeviceId: string | null = null;
 
-async function getDB(): Promise<IDatabase> {
+export async function getDB(): Promise<IDatabase> {
   if (!db) {
     const platform = getPlatformService();
     db = await platform.loadDatabase(DB_NAME);
   }
   return db;
+}
+
+/** Close the active database connection and clear cache */
+export async function closeDB(): Promise<void> {
+  if (db) {
+    try {
+      await db.close();
+    } catch {
+      // Ignore close errors
+    }
+    db = null;
+    dbInitialized = false;
+    cachedDeviceId = null;
+  }
+}
+
+/** Reset the DB cache without closing (for use after external file replacement) */
+export function resetDBCache(): void {
+  db = null;
+  dbInitialized = false;
+  cachedDeviceId = null;
 }
 
 /** Get or create device ID for sync tracking */

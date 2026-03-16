@@ -10,6 +10,7 @@ import { Check, ChevronRight, Database, Hash, Loader2, MoreVertical, Plus, Trash
 import { memo, useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ConfigGuideDialog, type ConfigGuideType } from "@/components/shared/ConfigGuideDialog";
+import { useResolvedSrc } from "@/hooks/use-resolved-src";
 
 interface BookCardProps {
   book: Book;
@@ -36,6 +37,7 @@ export const BookCard = memo(function BookCard({ book }: BookCardProps) {
   const menuBtnRef = useRef<HTMLButtonElement>(null);
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
   const progressPct = Math.round(book.progress * 100);
+  const coverSrc = useResolvedSrc(book.meta.coverUrl);
 
   const handleOpen = () => {
     addTab({ id: `reader-${book.id}`, type: "reader", title: book.meta.title, bookId: book.id });
@@ -88,7 +90,7 @@ export const BookCard = memo(function BookCard({ book }: BookCardProps) {
     setImageError(true);
   };
 
-  const hasCover = book.meta.coverUrl && !imageError;
+  const hasCover = coverSrc && !imageError;
 
   // Vectorize progress percentage for display
   const vecPct = vectorProgress
@@ -108,9 +110,9 @@ export const BookCard = memo(function BookCard({ book }: BookCardProps) {
         className="book-cover-shadow relative flex aspect-[28/41] w-full items-end justify-center overflow-hidden rounded transition-all duration-200 group-hover:book-cover-shadow"
       >
         {/* Actual cover image */}
-        {book.meta.coverUrl && (
+        {coverSrc && (
           <img
-            src={book.meta.coverUrl}
+            src={coverSrc}
             alt={book.meta.title}
             className={`absolute inset-0 h-full w-full rounded object-cover transition-opacity duration-300 ${
               imageLoaded && !imageError ? "opacity-100" : "opacity-0"
