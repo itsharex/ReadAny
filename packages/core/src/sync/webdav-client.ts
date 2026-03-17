@@ -108,19 +108,8 @@ export class WebDavClient {
     let current = "";
     for (const segment of segments) {
       current += `/${segment}`;
-      console.log(`[WebDAV] Ensuring directory: ${current}`);
-
-      // Check if directory exists first
-      const exists = await this.exists(current);
-      if (exists) {
-        console.log(`[WebDAV] ✓ Directory ${current} already exists`);
-        continue;
-      }
-
-      console.log(`[WebDAV] Creating directory: ${current}`);
-      const start = Date.now();
+      // MKCOL already handles 405 (Already Exists), no need for a separate HEAD check
       await this.mkcol(current);
-      console.log(`[WebDAV] ✓ Directory ${current} created in ${Date.now() - start}ms`);
     }
   }
 

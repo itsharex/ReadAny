@@ -1,6 +1,5 @@
 /**
  * Sync engine — whole-database overwrite sync via WebDAV.
- * Modeled on anx-reader's syncData approach.
  */
 
 import { getDB } from "../db/database";
@@ -12,7 +11,6 @@ import {
   REMOTE_DB_FILE,
   REMOTE_FILES,
   REMOTE_MANIFEST,
-  REMOTE_ROOT,
   SYNC_META_KEYS,
   SYNC_SCHEMA_VERSION,
   type RemoteSyncManifest,
@@ -30,19 +28,28 @@ async function getSyncMeta(key: string): Promise<string | null> {
   return rows[0]?.value ?? null;
 }
 
-/** Set a sync metadata value in the database */
-async function setSyncMeta(key: string, value: string): Promise<void> {
+/** Set multiple sync metadata values in a single transaction */
+async function batchSetSyncMeta(entries: [string, string][]): Promise<void> {
   const db = await getDB();
-  await db.execute(
-    "INSERT OR REPLACE INTO sync_metadata (key, value) VALUES (?, ?)",
-    [key, value],
-  );
+  await db.execute("BEGIN TRANSACTION", []);
+  try {
+    for (const [key, value] of entries) {
+      await db.execute(
+        "INSERT OR REPLACE INTO sync_metadata (key, value) VALUES (?, ?)",
+        [key, value],
+      );
+    }
+    await db.execute("COMMIT", []);
+  } catch (e) {
+    await db.execute("ROLLBACK", []);
+    throw e;
+  }
 }
 
 /**
  * Determine sync direction by comparing local and remote state.
  *
- * Logic (following anx-reader):
+ * Logic:
  * - No remote manifest → "upload" (first sync)
  * - No local hash → "download" (first sync on this device, or after reset)
  * - Remote manifest.lastModifiedAt matches stored → "none" (no changes)
@@ -162,18 +169,14 @@ async function executeUpload(
     };
     await client.putJSON(REMOTE_MANIFEST, manifest);
 
-    // 5. Update local sync metadata
+    // 5. Update local sync metadata (batch write in single transaction)
     const dbPath = await adapter.getDatabasePath();
     const dbHash = await adapter.hashFile(dbPath);
-    await setSyncMeta(SYNC_META_KEYS.LAST_SYNC_DB_HASH, dbHash);
-    await setSyncMeta(
-      SYNC_META_KEYS.LAST_REMOTE_MODIFIED_AT,
-      String(manifest.lastModifiedAt),
-    );
-    await setSyncMeta(
-      SYNC_META_KEYS.LAST_SYNC_AT,
-      String(Date.now()),
-    );
+    await batchSetSyncMeta([
+      [SYNC_META_KEYS.LAST_SYNC_DB_HASH, dbHash],
+      [SYNC_META_KEYS.LAST_REMOTE_MODIFIED_AT, String(manifest.lastModifiedAt)],
+      [SYNC_META_KEYS.LAST_SYNC_AT, String(Date.now())],
+    ]);
 
     console.log(`[Sync] ✅ Database upload completed in ${Date.now() - startTime}ms`);
   } finally {
@@ -193,6 +196,7 @@ async function executeUpload(
  */
 async function executeDownload(
   client: WebDavClient,
+  remoteManifest: RemoteSyncManifest | null,
   onProgress?: (progress: import("./sync-types").SyncProgress) => void,
 ): Promise<void> {
   const startTime = Date.now();
@@ -260,21 +264,19 @@ async function executeDownload(
     const db = await getDB();
     await db.select<unknown[]>("SELECT COUNT(*) as c FROM books", []);
 
-    // 8. Update sync metadata
-    const remoteManifest =
-      await client.getJSON<RemoteSyncManifest>(REMOTE_MANIFEST);
+    // 8. Update sync metadata (reuse manifest from caller, batch write)
     const dbHash = await adapter.hashFile(dbPath);
-    await setSyncMeta(SYNC_META_KEYS.LAST_SYNC_DB_HASH, dbHash);
+    const metaEntries: [string, string][] = [
+      [SYNC_META_KEYS.LAST_SYNC_DB_HASH, dbHash],
+      [SYNC_META_KEYS.LAST_SYNC_AT, String(Date.now())],
+    ];
     if (remoteManifest) {
-      await setSyncMeta(
+      metaEntries.push([
         SYNC_META_KEYS.LAST_REMOTE_MODIFIED_AT,
         String(remoteManifest.lastModifiedAt),
-      );
+      ]);
     }
-    await setSyncMeta(
-      SYNC_META_KEYS.LAST_SYNC_AT,
-      String(Date.now()),
-    );
+    await batchSetSyncMeta(metaEntries);
 
     console.log(`[Sync] ✅ Database download completed in ${Date.now() - startTime}ms`);
   } catch (e) {
@@ -358,20 +360,22 @@ async function syncFiles(
 
   const appDataDir = await adapter.getAppDataDir();
 
-  // --- Sync book files ---
-  const remoteFiles = await client.safeReadDir(REMOTE_FILES);
-  const remoteFileNames = new Set(
-    remoteFiles.filter((f) => !f.isCollection).map((f) => f.name),
-  );
+  // --- Pre-compute all local paths and remote names ---
+  type BookFileInfo = {
+    book: { id: string; file_path: string; file_hash: string; cover_url: string };
+    localPath: string;
+    remoteName: string;
+    ext: string;
+  };
+  type CoverFileInfo = {
+    book: { id: string; cover_url: string };
+    coverLocalPath: string;
+    coverRemoteName: string;
+  };
 
-  // Collect upload and download tasks
-  const uploadTasks: (() => Promise<boolean>)[] = [];
-  const downloadTasks: (() => Promise<boolean>)[] = [];
-
+  const bookFileInfos: BookFileInfo[] = [];
   for (const book of books) {
     if (!book.file_path) continue;
-
-    // Determine the remote file name (use file_hash if available, otherwise use filename)
     const localPath = book.file_path.startsWith("/") || book.file_path.startsWith("file://")
       ? book.file_path
       : adapter.joinPath(appDataDir, book.file_path);
@@ -379,9 +383,53 @@ async function syncFiles(
     const remoteName = book.file_hash
       ? `${book.file_hash}.${ext}`
       : book.file_path.split("/").pop() || `${book.id}.${ext}`;
+    bookFileInfos.push({ book, localPath, remoteName, ext });
+  }
+
+  const coverFileInfos: CoverFileInfo[] = [];
+  for (const book of books) {
+    if (!book.cover_url) continue;
+    const coverLocalPath = book.cover_url.startsWith("/") || book.cover_url.startsWith("file://")
+      ? book.cover_url
+      : adapter.joinPath(appDataDir, book.cover_url);
+    const coverExt = book.cover_url.split(".").pop() || "jpg";
+    const coverRemoteName = `${book.id}.${coverExt}`;
+    coverFileInfos.push({ book, coverLocalPath, coverRemoteName });
+  }
+
+  // --- Batch check all local file existence in parallel ---
+  const allLocalPaths = [
+    ...bookFileInfos.map((info) => info.localPath),
+    ...coverFileInfos.map((info) => info.coverLocalPath),
+  ];
+  const existsResults = await Promise.all(
+    allLocalPaths.map((p) => adapter.fileExists(p)),
+  );
+  const localExistsMap = new Map<string, boolean>();
+  allLocalPaths.forEach((p, i) => localExistsMap.set(p, existsResults[i]));
+
+  // --- Fetch remote file/cover listings in parallel ---
+  const [remoteFiles, remoteCovers] = await Promise.all([
+    client.safeReadDir(REMOTE_FILES),
+    client.safeReadDir(REMOTE_COVERS),
+  ]);
+  const remoteFileNames = new Set(
+    remoteFiles.filter((f) => !f.isCollection).map((f) => f.name),
+  );
+  const remoteCoverNames = new Set(
+    remoteCovers.filter((f) => !f.isCollection).map((f) => f.name),
+  );
+
+  // Collect upload and download tasks
+  const uploadTasks: (() => Promise<boolean>)[] = [];
+  const downloadTasks: (() => Promise<boolean>)[] = [];
+
+  // --- Build book file tasks ---
+  for (const { localPath, remoteName } of bookFileInfos) {
+    const localExists = localExistsMap.get(localPath) ?? false;
 
     // Upload if not on remote and exists locally
-    if (!remoteFileNames.has(remoteName) && await adapter.fileExists(localPath)) {
+    if (!remoteFileNames.has(remoteName) && localExists) {
       uploadTasks.push(async () => {
         const taskStart = Date.now();
         try {
@@ -399,7 +447,7 @@ async function syncFiles(
     }
 
     // Download if not local but exists on remote
-    if (!await adapter.fileExists(localPath) && remoteFileNames.has(remoteName)) {
+    if (!localExists && remoteFileNames.has(remoteName)) {
       downloadTasks.push(async () => {
         const taskStart = Date.now();
         try {
@@ -420,26 +468,12 @@ async function syncFiles(
     }
   }
 
-  // --- Sync cover images ---
-  const remoteCovers = await client.safeReadDir(REMOTE_COVERS);
-  const remoteCoverNames = new Set(
-    remoteCovers.filter((f) => !f.isCollection).map((f) => f.name),
-  );
-
-  for (const book of books) {
-    if (!book.cover_url) continue;
-
-    const coverLocalPath = book.cover_url.startsWith("/") || book.cover_url.startsWith("file://")
-      ? book.cover_url
-      : adapter.joinPath(appDataDir, book.cover_url);
-    const coverExt = book.cover_url.split(".").pop() || "jpg";
-    const coverRemoteName = `${book.id}.${coverExt}`;
+  // --- Build cover tasks ---
+  for (const { coverLocalPath, coverRemoteName } of coverFileInfos) {
+    const localExists = localExistsMap.get(coverLocalPath) ?? false;
 
     // Upload cover if not on remote
-    if (
-      !remoteCoverNames.has(coverRemoteName) &&
-      await adapter.fileExists(coverLocalPath)
-    ) {
+    if (!remoteCoverNames.has(coverRemoteName) && localExists) {
       uploadTasks.push(async () => {
         const taskStart = Date.now();
         try {
@@ -457,10 +491,7 @@ async function syncFiles(
     }
 
     // Download cover if not local
-    if (
-      !await adapter.fileExists(coverLocalPath) &&
-      remoteCoverNames.has(coverRemoteName)
-    ) {
+    if (!localExists && remoteCoverNames.has(coverRemoteName)) {
       downloadTasks.push(async () => {
         const taskStart = Date.now();
         try {
@@ -551,6 +582,7 @@ export async function runSync(
   client: WebDavClient,
   direction: "upload" | "download",
   onProgress?: (progress: import("./sync-types").SyncProgress) => void,
+  remoteManifest?: RemoteSyncManifest | null,
 ): Promise<SyncResult> {
   const startTime = Date.now();
   console.log(`[Sync] 🚀 Starting sync: direction=${direction}`);
@@ -560,10 +592,13 @@ export async function runSync(
     console.log('[Sync] Creating remote directory structure...');
     const dirStart = Date.now();
     try {
-      await client.ensureDirectory(REMOTE_ROOT);
+      // Create parent dirs sequentially (they depend on each other)
       await client.ensureDirectory(REMOTE_DATA);
-      await client.ensureDirectory(REMOTE_FILES);
-      await client.ensureDirectory(REMOTE_COVERS);
+      // Create sibling dirs in parallel (FILES and COVERS are independent)
+      await Promise.all([
+        client.mkcol(REMOTE_FILES),
+        client.mkcol(REMOTE_COVERS),
+      ]);
       console.log(`[Sync] ✓ Directories ready in ${Date.now() - dirStart}ms`);
     } catch (error) {
       console.warn('[Sync] ⚠️ Failed to create directories (they might already exist):', error);
@@ -574,7 +609,7 @@ export async function runSync(
     if (direction === "upload") {
       await executeUpload(client, onProgress);
     } else {
-      await executeDownload(client, onProgress);
+      await executeDownload(client, remoteManifest ?? null, onProgress);
     }
 
     // 3. Sync files

@@ -579,6 +579,8 @@
     "syncConflictDesc": "本地和远程数据都有变更，请选择保留哪个版本。",
     "syncConflictUpload": "上传本地",
     "syncConflictDownload": "下载远程",
+    "syncProgressDatabase": "正在{{operation}}...",
+    "syncProgressFiles": "{{operation}}文件 {{completed}}/{{total}}",
     "translationProvider": "翻译引擎",
     "selectModel": "选择模型",
     "noModelsFetched": "请先在 AI 设置中获取模型列表",

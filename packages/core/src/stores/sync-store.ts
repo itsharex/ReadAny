@@ -135,6 +135,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
       await client.ping();
 
       let direction: "upload" | "download";
+      let remoteManifest: import("../sync/sync-types").RemoteSyncManifest | null = null;
 
       if (resolvedDirection) {
         // User already resolved the conflict
@@ -142,6 +143,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
       } else {
         // Determine direction automatically
         const result = await determineSyncDirection(client);
+        remoteManifest = result.remoteManifest;
 
         if (result.direction === "none") {
           set({ status: "idle", lastSyncAt: Date.now() });
@@ -174,7 +176,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
         set({ progress });
       };
 
-      const syncResult = await runSync(client, direction, onProgress);
+      const syncResult = await runSync(client, direction, onProgress, remoteManifest);
 
       set({
         status: "idle",

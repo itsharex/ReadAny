@@ -18,6 +18,7 @@ export function SyncSettings() {
     lastSyncAt,
     lastResult,
     error,
+    progress,
     pendingDirection,
     loadConfig,
     testConnection,
@@ -229,6 +230,32 @@ export function SyncSettings() {
                 </p>
                 {statusLabel() && (
                   <p className="mt-0.5 text-xs text-primary">{statusLabel()}</p>
+                )}
+                {/* Sync progress bar */}
+                {isBusy && progress && (
+                  <div className="mt-2 w-48">
+                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                      {progress.phase === "database" ? (
+                        <div className="h-full w-full animate-pulse rounded-full bg-primary" />
+                      ) : (
+                        <div
+                          className="h-full rounded-full bg-primary transition-all duration-300 ease-out"
+                          style={{
+                            width: `${progress.totalFiles > 0 ? Math.round((progress.completedFiles / progress.totalFiles) * 100) : 0}%`,
+                          }}
+                        />
+                      )}
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {progress.phase === "database"
+                        ? t("settings.syncProgressDatabase", { operation: progress.operation === "upload" ? t("settings.syncUploading") : t("settings.syncDownloading") })
+                        : t("settings.syncProgressFiles", {
+                            operation: progress.operation === "upload" ? t("settings.syncUploading") : t("settings.syncDownloading"),
+                            completed: progress.completedFiles,
+                            total: progress.totalFiles,
+                          })}
+                    </p>
+                  </div>
                 )}
               </div>
               <button

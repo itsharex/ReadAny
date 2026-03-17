@@ -2,11 +2,12 @@
  * SyncSettingsScreen — WebDAV sync configuration and status panel (mobile).
  * Uses the shared core sync store with whole-database overwrite sync.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ActivityIndicator,
   Alert,
+  Animated,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -63,6 +64,22 @@ export default function SyncSettingsScreen() {
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   const isBusy = status !== "idle" && status !== "error";
+
+  // Pulse animation for indeterminate progress (database phase)
+  const pulseAnim = useRef(new Animated.Value(0.4)).current;
+  useEffect(() => {
+    if (isBusy && progress?.phase === "database") {
+      const animation = Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 0.4, duration: 800, useNativeDriver: true }),
+        ]),
+      );
+      animation.start();
+      return () => animation.stop();
+    }
+    pulseAnim.setValue(0.4);
+  }, [isBusy, progress?.phase, pulseAnim]);
 
   // Load config on mount
   useEffect(() => {
@@ -279,6 +296,34 @@ export default function SyncSettingsScreen() {
                     <Text style={styles.syncValue}>{formatLastSync(lastSyncAt)}</Text>
                     {statusLabel() && (
                       <Text style={styles.statusText}>{statusLabel()}</Text>
+                    )}
+                    {/* Sync progress bar */}
+                    {isBusy && progress && (
+                      <View style={styles.progressContainer}>
+                        <View style={styles.progressTrack}>
+                          {progress.phase === "database" ? (
+                            <Animated.View style={[styles.progressFill, { width: "100%", opacity: pulseAnim }]} />
+                          ) : (
+                            <View
+                              style={[
+                                styles.progressFill,
+                                {
+                                  width: `${progress.totalFiles > 0 ? Math.round((progress.completedFiles / progress.totalFiles) * 100) : 0}%`,
+                                },
+                              ]}
+                            />
+                          )}
+                        </View>
+                        <Text style={styles.progressText}>
+                          {progress.phase === "database"
+                            ? t("settings.syncProgressDatabase", { operation: progress.operation === "upload" ? t("settings.syncUploading") : t("settings.syncDownloading") })
+                            : t("settings.syncProgressFiles", {
+                                operation: progress.operation === "upload" ? t("settings.syncUploading") : t("settings.syncDownloading"),
+                                completed: progress.completedFiles,
+                                total: progress.totalFiles,
+                              })}
+                        </Text>
+                      </View>
                     )}
                   </View>
                   <TouchableOpacity
@@ -577,6 +622,25 @@ const makeStyles = (colors: ThemeColors) =>
       color: colors.destructive,
     },
     resetDesc: {
+      fontSize: fontSize.xs,
+      color: colors.mutedForeground,
+    },
+    progressContainer: {
+      marginTop: 8,
+      gap: 4,
+    },
+    progressTrack: {
+      height: 6,
+      borderRadius: 3,
+      backgroundColor: colors.muted,
+      overflow: "hidden",
+    },
+    progressFill: {
+      height: "100%",
+      borderRadius: 3,
+      backgroundColor: colors.primary,
+    },
+    progressText: {
       fontSize: fontSize.xs,
       color: colors.mutedForeground,
     },
