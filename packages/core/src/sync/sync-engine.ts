@@ -23,11 +23,11 @@ import {
 /** Get a sync metadata value from the database */
 async function getSyncMeta(key: string): Promise<string | null> {
   const db = await getDB();
-  const rows = await db.select<{ value: string }[]>(
+  const rows = await db.select<{ value: string }>(
     "SELECT value FROM sync_metadata WHERE key = ?",
     [key],
   );
-  return (rows as { value: string }[])[0]?.value ?? null;
+  return rows[0]?.value ?? null;
 }
 
 /** Set a sync metadata value in the database */
@@ -350,7 +350,7 @@ async function syncFiles(
 
   // Get all books from DB
   const books = await db.select<
-    { id: string; file_path: string; file_hash: string; cover_url: string }[]
+    { id: string; file_path: string; file_hash: string; cover_url: string }
   >(
     "SELECT id, file_path, file_hash, cover_url FROM books",
     [],

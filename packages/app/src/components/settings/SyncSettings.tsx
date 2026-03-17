@@ -18,7 +18,6 @@ export function SyncSettings() {
     lastSyncAt,
     lastResult,
     error,
-    progress,
     pendingDirection,
     loadConfig,
     testConnection,
