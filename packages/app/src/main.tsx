@@ -14,15 +14,49 @@ import { TauriPlatformService } from "./lib/platform/tauri-platform-service";
 import { onLibraryChanged } from "@readany/core/events/library-events";
 import { setVectorDB } from "@readany/core/rag";
 import { TauriVectorDB } from "./lib/tauri-vector-db";
+import { useVectorModelStore } from "./stores/vector-model-store";
+import { BUILTIN_EMBEDDING_MODELS } from "@readany/core/ai/builtin-embedding-models";
+import { setEmbeddingWorkerFactory } from "@readany/core/ai";
+import EmbeddingWorker from "@readany/core/ai/embedding-worker?worker";
 
 // Register platform service before any database/core operations
 const tauriPlatform = new TauriPlatformService();
 tauriPlatform.initSync().catch(console.error);
 setPlatformService(tauriPlatform);
 
+// Register embedding worker factory for Vite/Tauri (import.meta.url works here)
+setEmbeddingWorkerFactory(() => new EmbeddingWorker());
+
 // Set vector database reference (initialized in Rust setup)
-setVectorDB(new TauriVectorDB());
+const tauriVectorDB = new TauriVectorDB();
+setVectorDB(tauriVectorDB);
 console.log("[VectorDB] TauriVectorDB reference set");
+
+// Align vector DB dimension with the currently selected model
+(async () => {
+  try {
+    const { vectorModelMode, selectedBuiltinModelId, getSelectedVectorModel } =
+      useVectorModelStore.getState();
+    let dimension: number | undefined;
+
+    if (vectorModelMode === "builtin" && selectedBuiltinModelId) {
+      const model = BUILTIN_EMBEDDING_MODELS.find(
+        (m) => m.id === selectedBuiltinModelId,
+      );
+      dimension = model?.dimension;
+    } else if (vectorModelMode === "remote") {
+      const remoteModel = getSelectedVectorModel();
+      dimension = remoteModel?.dimension;
+    }
+
+    if (dimension && dimension !== 384) {
+      await tauriVectorDB.reinit(dimension);
+      console.log(`[VectorDB] Aligned dimension to ${dimension}`);
+    }
+  } catch (err) {
+    console.warn("[VectorDB] Failed to align dimension on startup:", err);
+  }
+})();
 
 // Ensure i18n is fully initialized before rendering
 i18nReady.then(() => {

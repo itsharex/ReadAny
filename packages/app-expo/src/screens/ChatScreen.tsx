@@ -130,7 +130,7 @@ export function ChatScreen() {
 
   // Handlers
   const handleSend = useCallback(
-    async (text: string, deepThinking: boolean, quotes?: AttachedQuote[]) => {
+    async (text: string, deepThinking: boolean, spoilerFree: boolean, quotes?: AttachedQuote[]) => {
       // Validate AI config before sending
       const state = useSettingsStore.getState();
       const { aiConfig, getActiveEndpoint, getEndpointById } = state;
@@ -167,7 +167,7 @@ export function ChatScreen() {
         return;
       }
 
-      await sendMessage(text, undefined, deepThinking, quotes);
+      await sendMessage(text, undefined, deepThinking, spoilerFree, quotes);
     },
     [sendMessage, navigation, t],
   );
@@ -346,7 +346,7 @@ function EmptyState({
   onSuggestionPress,
 }: {
   colors: ThemeColors;
-  onSuggestionPress: (text: string, deepThinking: boolean) => void;
+  onSuggestionPress: (text: string, deepThinking: boolean, spoilerFree: boolean) => void;
 }) {
   const { t } = useTranslation();
   const { isDark } = useTheme();
@@ -391,7 +391,7 @@ function EmptyState({
           <TouchableOpacity
             key={text}
             style={s.suggestionCard}
-            onPress={() => onSuggestionPress(text, false)}
+            onPress={() => onSuggestionPress(text, false, false)}
             activeOpacity={0.7}
           >
             {icon}

@@ -187,6 +187,12 @@ export async function triggerVectorizeBook(
             }));
 
           if (vectorRecords.length > 0) {
+            // Detect actual embedding dimension and reinit vector DB if needed
+            const detectedDimension = vectorRecords[0].embedding.length;
+            if (detectedDimension > 0 && vectorDB.reinit) {
+              await vectorDB.reinit(detectedDimension);
+            }
+
             await vectorDB.insert(vectorRecords);
           }
 

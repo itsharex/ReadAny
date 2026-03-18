@@ -18,6 +18,7 @@ export interface IVectorDB {
   search(query: number[], bookId: string, topK: number): Promise<VectorSearchResult[]>;
   getStats(): Promise<{ totalVectors: number; dimension: number }>;
   rebuild?(): Promise<number>;
+  reinit?(dimension: number): Promise<void>;
   close(): Promise<void>;
 }
 

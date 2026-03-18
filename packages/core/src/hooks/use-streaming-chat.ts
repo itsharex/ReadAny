@@ -86,7 +86,7 @@ export function useStreamingChat(options?: StreamingChatOptions) {
   );
 
   const sendMessage = useCallback(
-    async (content: string, overrideBookId?: string, deepThinking: boolean = false, quotes?: AttachedQuote[]) => {
+    async (content: string, overrideBookId?: string, deepThinking: boolean = false, spoilerFree: boolean = false, quotes?: AttachedQuote[]) => {
       if ((!content.trim() && (!quotes || quotes.length === 0)) || state.isStreaming) return;
 
       const messageId = createMessageId();
@@ -177,6 +177,7 @@ export function useStreamingChat(options?: StreamingChatOptions) {
           isVectorized: options?.book?.isVectorized || false,
           aiConfig,
           deepThinking,
+          spoilerFree,
           getAvailableTools,
           onToken: (token) => {
             if (!currentTextPart) {

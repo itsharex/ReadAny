@@ -14,7 +14,6 @@ interface TauriVectorSearchResult {
 }
 
 export class TauriVectorDB implements IVectorDB {
-  private dimension: number = 4096;
   private readyPromise: Promise<void> | null = null;
   private isInitialized: boolean = false;
 
@@ -102,6 +101,12 @@ export class TauriVectorDB implements IVectorDB {
     const count: number = await invoke("vector_rebuild");
     console.log(`[TauriVectorDB] Rebuilt ${count} vectors`);
     return count;
+  }
+
+  async reinit(dimension: number): Promise<void> {
+    await this.ensureReady();
+    await invoke("vector_reinit", { dimension });
+    console.log(`[TauriVectorDB] Reinitialized with dimension ${dimension}`);
   }
 
   async close(): Promise<void> {}

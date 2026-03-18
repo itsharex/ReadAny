@@ -121,6 +121,7 @@ export function useStreamingChat(_options?: StreamingChatOptions) {
       content: string,
       overrideBookId?: string,
       _deepThinking?: boolean,
+      _spoilerFree?: boolean,
       quotes?: AttachedQuote[],
     ) => {
       if ((!content.trim() && (!quotes || quotes.length === 0)) || state.isStreaming) return;

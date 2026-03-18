@@ -1,4 +1,4 @@
-import { BrainIcon, SendIcon, StopCircleIcon, XIcon } from "@/components/ui/Icon";
+import { BrainIcon, EyeOffIcon, SendIcon, StopCircleIcon, XIcon } from "@/components/ui/Icon";
 import { fontSize as fs, radius, useColors, withOpacity } from "@/styles/theme";
 import type { ThemeColors } from "@/styles/theme";
 import type { AttachedQuote } from "@readany/core/types";
@@ -11,7 +11,7 @@ import { useTranslation } from "react-i18next";
 import { StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 
 interface ChatInputProps {
-  onSend: (text: string, deepThinking: boolean, quotes?: AttachedQuote[]) => void;
+  onSend: (text: string, deepThinking: boolean, spoilerFree: boolean, quotes?: AttachedQuote[]) => void;
   onStop?: () => void;
   isStreaming?: boolean;
   quotes?: AttachedQuote[];
@@ -32,6 +32,7 @@ export function ChatInput({
 }: ChatInputProps) {
   const [text, setText] = useState("");
   const [deepThinking, setDeepThinking] = useState(false);
+  const [spoilerFree, setSpoilerFree] = useState(false);
   const [inputHeight, setInputHeight] = useState(36);
   const { t } = useTranslation();
   const colors = useColors();
@@ -42,11 +43,12 @@ export function ChatInput({
     const trimmed = text.trim();
     if (!trimmed && quotes.length === 0) return;
     inputRef.current?.blur();
-    onSend(trimmed, deepThinking, quotes.length > 0 ? quotes : undefined);
+    onSend(trimmed, deepThinking, spoilerFree, quotes.length > 0 ? quotes : undefined);
     setText("");
     setDeepThinking(false);
+    setSpoilerFree(false);
     setInputHeight(36);
-  }, [text, deepThinking, quotes, onSend]);
+  }, [text, deepThinking, spoilerFree, quotes, onSend]);
 
   const handleContentSizeChange = useCallback((e: any) => {
     const contentHeight = e.nativeEvent.contentSize.height;
@@ -98,18 +100,31 @@ export function ChatInput({
           editable={!isStreaming}
         />
 
-        {/* Action bar: deep thinking toggle + send */}
+        {/* Action bar: deep thinking toggle + spoiler-free toggle + send */}
         <View style={s.actionBar}>
-          <TouchableOpacity
-            style={[s.deepThinkBtn, deepThinking && s.deepThinkBtnActive]}
-            onPress={() => setDeepThinking(!deepThinking)}
-            activeOpacity={0.7}
-          >
-            <BrainIcon size={13} color={deepThinking ? colors.primary : colors.mutedForeground} />
-            <Text style={[s.deepThinkText, deepThinking && s.deepThinkTextActive]}>
-              {t("chat.deepThinking", "深度思考")}
-            </Text>
-          </TouchableOpacity>
+          <View style={s.toggleRow}>
+            <TouchableOpacity
+              style={[s.deepThinkBtn, deepThinking && s.deepThinkBtnActive]}
+              onPress={() => setDeepThinking(!deepThinking)}
+              activeOpacity={0.7}
+            >
+              <BrainIcon size={13} color={deepThinking ? colors.primary : colors.mutedForeground} />
+              <Text style={[s.deepThinkText, deepThinking && s.deepThinkTextActive]}>
+                {t("chat.deepThinking", "深度思考")}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[s.deepThinkBtn, spoilerFree && s.deepThinkBtnActive]}
+              onPress={() => setSpoilerFree(!spoilerFree)}
+              activeOpacity={0.7}
+            >
+              <EyeOffIcon size={13} color={spoilerFree ? colors.primary : colors.mutedForeground} />
+              <Text style={[s.deepThinkText, spoilerFree && s.deepThinkTextActive]}>
+                {t("chat.spoilerFree", "防剧透")}
+              </Text>
+            </TouchableOpacity>
+          </View>
 
           {isStreaming ? (
             <TouchableOpacity style={s.sendBtn} onPress={onStop} activeOpacity={0.7}>
@@ -133,6 +148,11 @@ export function ChatInput({
       {deepThinking && (
         <Text style={s.deepThinkHint}>
           {t("chat.deepThinkingHint", "深度思考模式会使用更多 tokens")}
+        </Text>
+      )}
+      {spoilerFree && (
+        <Text style={s.deepThinkHint}>
+          {t("chat.spoilerFreeHint", "AI 将避免透露当前阅读进度之后的内容")}
         </Text>
       )}
     </View>
@@ -192,6 +212,11 @@ const makeStyles = (colors: ThemeColors) =>
       justifyContent: "space-between",
       paddingHorizontal: 12,
       paddingBottom: 8,
+    },
+    toggleRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
     },
     deepThinkBtn: {
       flexDirection: "row",

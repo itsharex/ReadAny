@@ -163,7 +163,7 @@ export function BookChatScreen({ route, navigation }: Props) {
 
   // Handlers
   const handleSend = useCallback(
-    async (text: string, deepThinking: boolean, quotes?: AttachedQuote[]) => {
+    async (text: string, deepThinking: boolean, spoilerFree: boolean, quotes?: AttachedQuote[]) => {
       const state = useSettingsStore.getState();
       const { aiConfig, getActiveEndpoint, getEndpointById } = state;
       let endpoint = await getActiveEndpoint();
@@ -198,7 +198,7 @@ export function BookChatScreen({ route, navigation }: Props) {
         );
         return;
       }
-      await sendMessage(text, bookId, deepThinking, quotes);
+      await sendMessage(text, bookId, deepThinking, spoilerFree, quotes);
     },
     [sendMessage, bookId, navigation, t],
   );
@@ -324,7 +324,7 @@ export function BookChatScreen({ route, navigation }: Props) {
                     <TouchableOpacity
                       key={text}
                       style={s.suggestionCard}
-                      onPress={() => handleSend(text, false)}
+                      onPress={() => handleSend(text, false, false)}
                       activeOpacity={0.7}
                     >
                       <Text style={s.suggestionText}>{text}</Text>

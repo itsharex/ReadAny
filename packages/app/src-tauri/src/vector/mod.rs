@@ -5,8 +5,6 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::{AppHandle, Manager};
 
-const DEFAULT_DIMENSION: usize = 4096;
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VectorRecord {
     pub id: String,
@@ -44,7 +42,22 @@ fn parse_embedding_blob(blob: &[u8]) -> Vec<f32> {
 
 impl VectorDB {
     pub fn new(db_path: &PathBuf, dimension: usize) -> Result<Self> {
+        // Register sqlite-vec as auto-extension before opening the connection.
+        // This ensures vec0 virtual table is available regardless of global state.
+        unsafe {
+            rusqlite::ffi::sqlite3_auto_extension(Some(std::mem::transmute(
+                sqlite_vec::sqlite3_vec_init as *const (),
+            )));
+        }
+
         let conn = Connection::open(db_path)?;
+
+        // Immediately cancel the auto-extension so it doesn't affect other connections
+        unsafe {
+            rusqlite::ffi::sqlite3_cancel_auto_extension(Some(std::mem::transmute(
+                sqlite_vec::sqlite3_vec_init as *const (),
+            )));
+        }
 
         conn.execute("PRAGMA busy_timeout=5000", [])?;
         let _: String = conn.query_row("PRAGMA journal_mode=WAL", [], |row| row.get(0))?;
@@ -57,6 +70,38 @@ impl VectorDB {
             )",
             [],
         )?;
+
+        // Check if vec_embeddings already exists with a different dimension.
+        // If so, drop and recreate to avoid dimension mismatch.
+        let table_exists: bool = conn.query_row(
+            "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name='vec_embeddings'",
+            [],
+            |row| row.get(0),
+        )?;
+
+        if table_exists {
+            // Probe actual dimension by checking the schema via sqlite_master
+            // sqlite-vec stores the dimension in the table's SQL definition
+            let existing_sql: Option<String> = conn.query_row(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name='vec_embeddings'",
+                [],
+                |row| row.get(0),
+            ).ok();
+
+            let needs_recreate = if let Some(sql) = existing_sql {
+                // sql looks like: CREATE VIRTUAL TABLE vec_embeddings USING vec0(embedding float[4096])
+                let dim_str = format!("float[{}]", dimension);
+                !sql.contains(&dim_str)
+            } else {
+                true
+            };
+
+            if needs_recreate {
+                println!("[VectorDB] Existing vec_embeddings has wrong dimension, recreating for {}", dimension);
+                conn.execute("DROP TABLE IF EXISTS vec_embeddings", [])?;
+                conn.execute("DELETE FROM id_mapping", [])?;
+            }
+        }
 
         conn.execute(
             &format!(
@@ -211,6 +256,31 @@ impl VectorDB {
         Ok(results)
     }
 
+    pub fn reinit(&mut self, dimension: usize) -> Result<()> {
+        if dimension == self.dimension {
+            println!("[VectorDB] reinit skipped — dimension already {}", dimension);
+            return Ok(());
+        }
+        println!("[VectorDB] reinit: {} → {}", self.dimension, dimension);
+
+        self.conn.execute("DROP TABLE IF EXISTS vec_embeddings", [])?;
+        self.conn.execute("DELETE FROM id_mapping", [])?;
+
+        self.conn.execute(
+            &format!(
+                "CREATE VIRTUAL TABLE IF NOT EXISTS vec_embeddings USING vec0(
+                    embedding float[{}]
+                )",
+                dimension
+            ),
+            [],
+        )?;
+
+        self.dimension = dimension;
+        println!("[VectorDB] reinit complete — new dimension: {}", dimension);
+        Ok(())
+    }
+
     pub fn get_stats(&self) -> Result<(usize, usize)> {
         let count: i64 = self.conn.query_row(
             "SELECT COUNT(*) FROM id_mapping",
@@ -226,7 +296,7 @@ pub struct VectorDBState {
     pub db: Mutex<Option<VectorDB>>,
 }
 
-pub fn init_vector_db(app: &AppHandle) -> Result<()> {
+pub fn init_vector_db(app: &AppHandle, dimension: usize) -> Result<()> {
     let state = app.state::<VectorDBState>();
 
     {
@@ -243,7 +313,7 @@ pub fn init_vector_db(app: &AppHandle) -> Result<()> {
         .expect("failed to get app data dir");
     let db_path = app_dir.join("vectors.db");
 
-    let vector_db = VectorDB::new(&db_path, DEFAULT_DIMENSION)?;
+    let vector_db = VectorDB::new(&db_path, dimension)?;
 
     {
         let mut db_guard = state.db.lock().unwrap();
@@ -321,6 +391,18 @@ pub fn vector_rebuild(app: AppHandle) -> Result<usize, String> {
             .map_err(|e| e.to_string())?;
         let main_db_path = app_dir.join("readany.db");
         db.rebuild_from_main_db(&main_db_path).map_err(|e| e.to_string())
+    } else {
+        Err("Vector database not initialized".to_string())
+    }
+}
+
+#[tauri::command]
+pub fn vector_reinit(app: AppHandle, dimension: usize) -> Result<(), String> {
+    let state = app.state::<VectorDBState>();
+    let mut db_guard = state.db.lock().unwrap();
+
+    if let Some(db) = db_guard.as_mut() {
+        db.reinit(dimension).map_err(|e| e.to_string())
     } else {
         Err("Vector database not initialized".to_string())
     }

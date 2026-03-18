@@ -16,6 +16,7 @@ export interface StreamingOptions {
   isVectorized: boolean;
   aiConfig: AIConfig;
   deepThinking?: boolean;
+  spoilerFree?: boolean;
   /** Injected tool provider */
   getAvailableTools: (options: {
     bookId: string | null;
@@ -84,6 +85,7 @@ export class StreamingChat {
           enabledSkills: options.enabledSkills,
           isVectorized: options.isVectorized,
           deepThinking: options.deepThinking,
+          spoilerFree: options.spoilerFree,
           getAvailableTools: options.getAvailableTools,
         },
         userInput,

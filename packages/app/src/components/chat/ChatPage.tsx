@@ -215,7 +215,7 @@ export function ChatPage() {
   const activeThread = threads.find((t) => t.id === activeThreadId);
 
   const handleSend = useCallback(
-    async (content: string, deepThinking: boolean = false) => {
+    async (content: string, deepThinking: boolean = false, spoilerFree: boolean = false) => {
       const { aiConfig } = useSettingsStore.getState();
       const endpoint = aiConfig.endpoints.find((e) => e.id === aiConfig.activeEndpointId);
       if (!endpoint?.apiKey || !aiConfig.activeModel) {
@@ -225,9 +225,9 @@ export function ChatPage() {
 
       if (!activeThreadId) {
         await createThread(undefined, content.slice(0, 50));
-        setTimeout(() => sendMessage(content, contextBookId || undefined, deepThinking), 50);
+        setTimeout(() => sendMessage(content, contextBookId || undefined, deepThinking, spoilerFree), 50);
       } else {
-        sendMessage(content, contextBookId || undefined, deepThinking);
+        sendMessage(content, contextBookId || undefined, deepThinking, spoilerFree);
       }
     },
     [activeThreadId, createThread, sendMessage, contextBookId],

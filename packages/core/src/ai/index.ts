@@ -21,6 +21,7 @@ export {
   loadEmbeddingPipeline,
   generateLocalEmbeddings,
   disposeEmbeddingPipeline,
+  setEmbeddingWorkerFactory,
 } from "./local-embedding-service";
 
 export { getAvailableTools } from "./tools";

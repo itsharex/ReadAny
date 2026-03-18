@@ -15,6 +15,7 @@ interface PromptContext {
   enabledSkills: Skill[];
   isVectorized: boolean;
   userLanguage: string;
+  spoilerFree?: boolean;
 }
 
 /** Build the full system prompt from context */
@@ -25,7 +26,7 @@ export function buildSystemPrompt(ctx: PromptContext): string {
     buildSemanticSection(ctx.semanticContext),
     buildToolsSection(ctx.enabledSkills, ctx.isVectorized),
     buildWorkflowSection(ctx.isVectorized),
-    buildConstraintsSection(ctx.userLanguage),
+    buildConstraintsSection(ctx.userLanguage, ctx.spoilerFree, ctx.book, ctx.semanticContext),
   ];
 
   return sections.filter(Boolean).join("\n\n---\n\n");
@@ -210,8 +211,8 @@ function buildWorkflowSection(isVectorized: boolean): string {
   return steps.join("\n");
 }
 
-function buildConstraintsSection(language: string): string {
-  return [
+function buildConstraintsSection(language: string, spoilerFree?: boolean, book?: Book | null, semanticContext?: SemanticContext | null): string {
+  const lines = [
     "## Response Guidelines",
     `- Respond in ${language || "the same language as the user"}`,
     "- When citing book content, use [1], [2] format with registered citations via addCitation tool",
@@ -235,5 +236,28 @@ function buildConstraintsSection(language: string): string {
     "```",
     "",
     "Note: Do NOT use Mermaid for mindmaps - use the dedicated `mindmap` tool instead.",
-  ].join("\n");
+  ];
+
+  if (spoilerFree && book) {
+    const progress = Math.round(book.progress * 100);
+    const chapter = semanticContext?.currentChapter || "unknown";
+    lines.push("");
+    lines.push("### Spoiler-Free Mode (ACTIVE)");
+    lines.push(`The reader is currently at **${progress}%** of the book, reading **"${chapter}"**.`);
+    lines.push("Everything **after** this chapter/position is considered FUTURE CONTENT and must be protected.");
+    lines.push("");
+    lines.push("**Absolute rules:**");
+    lines.push("1. **NEVER reveal** plot events, character fates, twists, deaths, relationships, or any narrative developments that occur after the reader's current position.");
+    lines.push("2. **NEVER use tools** (ragSearch, ragContext, summarize, extractEntities, findQuotes, compareSections) to retrieve or analyze content from chapters beyond the current reading position. If a tool call would target a later chapter, DO NOT make that call.");
+    lines.push("3. **If the user explicitly asks about later content** (e.g., \"What happens in Chapter 5?\", \"How does the book end?\", \"Does X character die?\"), **politely decline**: explain that you want to protect their reading experience, and suggest they keep reading.");
+    lines.push("4. **When uncertain** whether something is a spoiler, err on the side of caution — refuse rather than risk revealing future content.");
+    lines.push("");
+    lines.push("**What you CAN still discuss freely:**");
+    lines.push("- Content from chapters the reader has already read (up to and including the current chapter)");
+    lines.push("- General themes, writing style, literary techniques, and author background");
+    lines.push("- The reader's own highlights and notes");
+    lines.push("- Factual/contextual information that isn't from the book itself (historical background, etc.)");
+  }
+
+  return lines.join("\n");
 }

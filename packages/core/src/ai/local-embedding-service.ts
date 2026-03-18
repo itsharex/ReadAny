@@ -11,21 +11,30 @@ let worker: Worker | null = null;
 let workerModelId: string | null = null;
 let requestCounter = 0;
 
+/** Injected factory for creating the Web Worker (platform-specific) */
+let workerFactory: (() => Worker) | null = null;
+
+/**
+ * Set the factory function that creates an embedding Web Worker.
+ * Must be called once from the platform layer before using local embeddings.
+ *
+ * Example (Vite / Tauri):
+ *   setEmbeddingWorkerFactory(() =>
+ *     new Worker(new URL("./embedding-worker.ts", import.meta.url), { type: "module" })
+ *   );
+ */
+export function setEmbeddingWorkerFactory(factory: () => Worker): void {
+  workerFactory = factory;
+}
+
 function getWorker(): Worker {
   if (!worker) {
-    // React Native's Hermes engine throws a syntax error on import.meta.
-    // However, local embedding workers via standard Web Workers aren't fully supported in RN anyway.
-    // For web/desktop backgrounds, we can use a workaround to evaluate it without strict syntax parsing,
-    // or just let a bundler replace it. But the safest cross-platform way to write this without 
-    // crashing Hermes on parse is to trick the parser.
-    const isRN = typeof navigator !== 'undefined' && navigator.product === 'ReactNative';
-    if (isRN) {
-      throw new Error("Local embedding web workers are not supported in React Native.");
-    } else {
-      // Use Function constructor to hide import.meta from Hermes parser
-      const getWorkerUrl = new Function('return new Worker(new URL("./embedding-worker.ts", import.meta.url), { type: "module" });');
-      worker = getWorkerUrl();
+    if (!workerFactory) {
+      throw new Error(
+        "Embedding worker factory not set. Call setEmbeddingWorkerFactory() from the platform layer first.",
+      );
     }
+    worker = workerFactory();
   }
   return worker!;
 }

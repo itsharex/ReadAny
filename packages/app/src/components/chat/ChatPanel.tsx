@@ -74,7 +74,7 @@ export function ChatPanel({ book, onNavigateToCitation }: ChatPanelProps) {
   }, [showThreadList]);
 
   const handleSend = useCallback(
-    (content: string, deepThinking: boolean = false, quotes?: AttachedQuote[]) => {
+    (content: string, deepThinking: boolean = false, spoilerFree: boolean = false, quotes?: AttachedQuote[]) => {
       const { aiConfig } = useSettingsStore.getState();
       const endpoint = aiConfig.endpoints.find((e) => e.id === aiConfig.activeEndpointId);
       if (!endpoint?.apiKey || !aiConfig.activeModel) {
@@ -82,7 +82,7 @@ export function ChatPanel({ book, onNavigateToCitation }: ChatPanelProps) {
         return;
       }
 
-      sendMessage(content, bookId, deepThinking, quotes);
+      sendMessage(content, bookId, deepThinking, spoilerFree, quotes);
       setAttachedQuotes([]);
     },
     [sendMessage, bookId],

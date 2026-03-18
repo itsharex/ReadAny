@@ -179,6 +179,8 @@
     "aiAssistantDesc": "分析内容、回答问题，帮助你更好地理解书籍。",
     "deepThinking": "深度思考",
     "deepThinkingHint": "启用更深入的分析和推理过程，响应时间可能更长",
+    "spoilerFree": "防剧透",
+    "spoilerFreeHint": "AI 将避免透露当前阅读进度之后的内容",
     "currentModel": "模型",
     "notConfigured": "请先配置 AI 模型",
     "notConfiguredDesc": "需要配置 API 密钥和选择模型后才能使用 AI 功能。",

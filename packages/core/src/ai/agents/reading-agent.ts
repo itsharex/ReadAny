@@ -48,6 +48,7 @@ export interface ReadingAgentOptions {
   enabledSkills: Skill[];
   isVectorized: boolean;
   deepThinking?: boolean;
+  spoilerFree?: boolean;
   /** Injected tool provider — returns available tools for the agent */
   getAvailableTools: (options: {
     bookId: string | null;
@@ -107,7 +108,7 @@ export async function* streamReadingAgent(
   userInput: string,
   history: Array<{ role: "user" | "assistant"; content: string; reasoning?: string }> = [],
 ): AsyncGenerator<AgentStreamEvent> {
-  const { aiConfig, book, semanticContext, enabledSkills, isVectorized, deepThinking, getAvailableTools } = options;
+  const { aiConfig, book, semanticContext, enabledSkills, isVectorized, deepThinking, spoilerFree, getAvailableTools } = options;
 
   try {
     // Create chat model
@@ -132,6 +133,7 @@ export async function* streamReadingAgent(
       enabledSkills,
       isVectorized,
       userLanguage: "zh-CN",
+      spoilerFree,
     });
 
     // Build input messages (history + user input, without system — handled by agent prompt)

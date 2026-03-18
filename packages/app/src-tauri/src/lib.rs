@@ -7,12 +7,6 @@ use vector::VectorDBState;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    unsafe {
-        rusqlite::ffi::sqlite3_auto_extension(Some(std::mem::transmute(
-            sqlite_vec::sqlite3_vec_init as *const (),
-        )));
-    }
-
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_sql::Builder::new().build())
@@ -34,20 +28,16 @@ pub fn run() {
             vector::vector_search,
             vector::vector_get_stats,
             vector::vector_rebuild,
+            vector::vector_reinit,
         ])
         .setup(|app| {
             let app_handle = app.handle().clone();
             if let Err(e) = db::init_database_sync(&app_handle) {
                 eprintln!("[DB] Failed to initialize database: {}", e);
             }
-            match vector::init_vector_db(&app_handle) {
+            match vector::init_vector_db(&app_handle, 384) {
                 Ok(_) => println!("[VectorDB] Initialized successfully"),
                 Err(e) => eprintln!("[VectorDB] Failed to initialize: {}", e),
-            }
-            unsafe {
-                rusqlite::ffi::sqlite3_cancel_auto_extension(Some(std::mem::transmute(
-                    sqlite_vec::sqlite3_vec_init as *const (),
-                )));
             }
             Ok(())
         })

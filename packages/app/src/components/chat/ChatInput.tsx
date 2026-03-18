@@ -8,14 +8,14 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Send, Brain, Quote, Square, X } from "lucide-react";
+import { Send, Brain, Quote, Square, X, EyeOff } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { AttachedQuote } from "@readany/core/types";
 export type { AttachedQuote };
 
 interface ChatInputProps {
-  onSend: (content: string, deepThinking?: boolean, quotes?: AttachedQuote[]) => void;
+  onSend: (content: string, deepThinking?: boolean, spoilerFree?: boolean, quotes?: AttachedQuote[]) => void;
   onStop?: () => void;
   isStreaming?: boolean;
   disabled?: boolean;
@@ -38,6 +38,7 @@ export function ChatInput({
   const { t } = useTranslation();
   const [value, setValue] = useState("");
   const [deepThinking, setDeepThinking] = useState(false);
+  const [spoilerFree, setSpoilerFree] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const resolvedPlaceholder = placeholder || t("chat.askPlaceholder");
@@ -46,12 +47,12 @@ export function ChatInput({
     (useDeepThinking: boolean = deepThinking) => {
       const trimmed = value.trim();
       if (trimmed || quotes.length > 0) {
-        onSend(trimmed, useDeepThinking, quotes.length > 0 ? quotes : undefined);
+        onSend(trimmed, useDeepThinking, spoilerFree, quotes.length > 0 ? quotes : undefined);
         setValue("");
         if (textareaRef.current) textareaRef.current.style.height = "auto";
       }
     },
-    [value, deepThinking, onSend, quotes],
+    [value, deepThinking, spoilerFree, onSend, quotes],
   );
 
   const handleKeyDown = useCallback(
@@ -74,6 +75,10 @@ export function ChatInput({
 
   const toggleDeepThinking = useCallback(() => {
     setDeepThinking((prev) => !prev);
+  }, []);
+
+  const toggleSpoilerFree = useCallback(() => {
+    setSpoilerFree((prev) => !prev);
   }, []);
 
   return (
@@ -148,6 +153,20 @@ export function ChatInput({
                 <span>{t("chat.deepThinking")}</span>
               </button>
             )}
+            {showDeepThinking && (
+              <button
+                type="button"
+                onClick={toggleSpoilerFree}
+                className={`flex items-center gap-1 rounded-full border px-2 py-1 text-xs transition-colors ${
+                  spoilerFree
+                    ? "border-primary/50 bg-primary/10 text-foreground"
+                    : "border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+                }`}
+              >
+                <EyeOff className="size-3" />
+                <span>{t("chat.spoilerFree")}</span>
+              </button>
+            )}
           </div>
           {isStreaming ? (
             <button
@@ -176,6 +195,11 @@ export function ChatInput({
       {deepThinking && (
         <p className="mt-1.5 text-center text-xs text-muted-foreground">
           {t("chat.deepThinkingHint")}
+        </p>
+      )}
+      {spoilerFree && (
+        <p className="mt-1.5 text-center text-xs text-muted-foreground">
+          {t("chat.spoilerFreeHint")}
         </p>
       )}
     </div>
