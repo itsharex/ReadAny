@@ -1,0 +1,82 @@
+---
+interface Props {
+  t: (key: string) => string;
+}
+
+const { t } = Astro.props;
+
+const faqs = [
+  {
+    question: "Is ReadAny free to use?",
+    answer: "Yes! ReadAny is completely free and open-source under the GPL-3.0 license. You can use all features without any cost or subscription.",
+  },
+  {
+    question: "Which AI providers are supported?",
+    answer: "ReadAny supports OpenAI, Anthropic Claude, Google Gemini, Ollama, DeepSeek, and any custom OpenAI-compatible API. You can use your own API keys.",
+  },
+  {
+    question: "Is my data private?",
+    answer: "Absolutely. All your books, annotations, and reading data are stored locally on your device. Nothing is sent to external servers unless you explicitly sync via WebDAV.",
+  },
+  {
+    question: "What e-book formats are supported?",
+    answer: "ReadAny supports EPUB, PDF, MOBI, AZW, AZW3, FB2, FBZ, CBZ, and more. We're constantly adding support for additional formats.",
+  },
+  {
+    question: "Can I sync across devices?",
+    answer: "Yes! ReadAny supports WebDAV sync, allowing you to sync your library, reading progress, and annotations across all your devices.",
+  },
+  {
+    question: "How does the AI chat work?",
+    answer: "The AI chat understands your current reading context - your position in the book, selected text, and chapter information. It can answer questions, explain concepts, and help with summaries.",
+  },
+];
+---
+
+<section class="py-32">
+  <div class="mx-auto max-w-3xl px-6">
+    <div class="text-center mb-12">
+      <h2 class="text-3xl font-semibold tracking-tight">
+        Frequently Asked Questions
+      </h2>
+      <p class="mt-4 text-muted-foreground">
+        Everything you need to know about ReadAny
+      </p>
+    </div>
+
+    <div class="space-y-4">
+      {faqs.map((faq, index) => (
+        <details class="group rounded-lg border border-border/50 bg-background overflow-hidden">
+          <summary class="flex items-center justify-between p-5 cursor-pointer hover:bg-muted/50 transition-colors">
+            <span class="font-medium pr-4">{faq.question}</span>
+            <svg 
+              xmlns="http://www.w3.org/2000/svg" 
+              fill="none" 
+              viewBox="0 0 24 24" 
+              stroke-width="1.5" 
+              stroke="currentColor" 
+              class="w-5 h-5 text-muted-foreground transition-transform group-open:rotate-180"
+            >
+              <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+            </svg>
+          </summary>
+          <div class="px-5 pb-5 text-sm text-muted-foreground leading-relaxed border-t border-border/50 pt-4">
+            {faq.answer}
+          </div>
+        </details>
+      ))}
+    </div>
+
+    <div class="mt-12 text-center">
+      <p class="text-sm text-muted-foreground mb-4">
+        Still have questions?
+      </p>
+      <a 
+        href="/ReadAny/support/" 
+        class="inline-flex items-center justify-center rounded-full border border-border px-6 py-2.5 text-sm font-medium transition-colors hover:border-foreground/30 hover:bg-muted/50"
+      >
+        Visit Help Center
+      </a>
+    </div>
+  </div>
+</section>
