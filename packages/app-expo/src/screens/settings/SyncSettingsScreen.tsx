@@ -73,6 +73,7 @@ export default function SyncSettingsScreen() {
     testS3Connection,
     saveS3Config,
     syncNow,
+    syncWithBackend,
     setAutoSync,
     resetSync,
   } = useSyncStore();
@@ -312,12 +313,16 @@ export default function SyncSettingsScreen() {
         throw new Error(t("settings.syncLANConnectionFailed"));
       }
       setLanConnectionState("connected");
-      await syncNow();
+      // Use syncWithBackend to pass the LAN backend directly into the sync engine
+      const result = await syncWithBackend(backend);
+      if (result && !result.success) {
+        setLanError(result.error || t("settings.syncLANConnectionFailed"));
+      }
     } catch (e) {
       setLanError(e instanceof Error ? e.message : String(e));
       setLanConnectionState("error");
     }
-  }, [lanManualIP, lanManualPort, lanManualPairCode, syncNow, t]);
+  }, [lanManualIP, lanManualPort, lanManualPairCode, syncWithBackend, t]);
 
   const handleSync = useCallback(async () => {
     await syncNow();

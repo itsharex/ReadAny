@@ -1,12 +1,12 @@
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { useSyncStore } from "@/stores/sync-store";
-import { getPlatformService } from "@readany/core/services";
 import type { LANConnectionState } from "@readany/core/sync/lan-backend";
 import {
   type LANQRData,
   type LANServerStatus,
   createLANServer,
 } from "@readany/core/sync/lan-server";
+import { createLANBackend } from "@readany/core/sync/lan-backend";
 /**
  * LANSyncDialog — LAN sync configuration dialog with QR code and manual connection.
  */
@@ -22,7 +22,7 @@ interface LANSyncDialogProps {
 
 export function LANSyncDialog({ open, onClose, mode }: LANSyncDialogProps) {
   const { t } = useTranslation();
-  const { syncNow } = useSyncStore();
+  const { syncNow, syncWithBackend } = useSyncStore();
 
   // Server state
   const [serverStatus, setServerStatus] = useState<LANServerStatus>("idle");
@@ -137,24 +137,17 @@ export function LANSyncDialog({ open, onClose, mode }: LANSyncDialogProps) {
 
     try {
       const serverUrl = `http://${manualIP}:${manualPort}`;
-      const platform = getPlatformService();
-
-      // Test connection
-      const response = await platform.fetch(`${serverUrl}/ping`, {
-        method: "GET",
-        headers: {
-          "X-Pair-Code": manualPairCode,
-        },
-      });
-
-      if (!response.ok) {
+      const backend = createLANBackend(serverUrl, manualPairCode, "Mobile");
+      
+      const connected = await backend.testConnection();
+      if (!connected) {
         throw new Error(t("settings.syncLANConnectionFailed"));
       }
 
       setConnectionState("connected");
 
-      // Start sync
-      await syncNow();
+      // Start sync using the explicit backend
+      await syncWithBackend(backend);
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));

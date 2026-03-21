@@ -65,19 +65,46 @@
 
 ## 应用截图
 
-<div align="center">
-  <img src="docs/screenshots/library.png" width="45%" alt="书库">
-  <img src="docs/screenshots/reader.png" width="45%" alt="阅读器">
-</div>
+### 主界面
 
 <div align="center">
-  <img src="docs/screenshots/chat.png" width="45%" alt="AI 对话">
-  <img src="docs/screenshots/notes.png" width="45%" alt="笔记管理">
+  <img src="docs/screenshots/hero-screenshot.png" width="80%" alt="ReadAny 主界面">
 </div>
 
-<p align="center">
-  <sub>📚 书库管理 | 📖 沉浸阅读 | 🤖 AI 对话 | 📝 笔记管理</sub>
-</p>
+### AI 智能对话
+
+<div align="center">
+  <img src="docs/screenshots/ai-chat-desktop.png" width="60%" alt="AI 对话 - 桌面端">
+  <img src="docs/screenshots/ai-chat-mobile.png" width="20%" alt="AI 对话 - 移动端">
+</div>
+
+### 笔记和高亮
+
+<div align="center">
+  <img src="docs/screenshots/notes-desktop.png" width="60%" alt="笔记 - 桌面端">
+  <img src="docs/screenshots/notes-mobile.png" width="20%" alt="笔记 - 移动端">
+</div>
+
+### TTS 语音朗读
+
+<div align="center">
+  <img src="docs/screenshots/tts-desktop.png" width="60%" alt="语音朗读 - 桌面端">
+  <img src="docs/screenshots/tts-mobile.png" width="20%" alt="语音朗读 - 移动端">
+</div>
+
+### 阅读统计
+
+<div align="center">
+  <img src="docs/screenshots/stats-desktop.png" width="60%" alt="阅读统计 - 桌面端">
+  <img src="docs/screenshots/stats-mobile.png" width="20%" alt="阅读统计 - 移动端">
+</div>
+
+### 跨设备同步
+
+<div align="center">
+  <img src="docs/screenshots/sync-desktop.png" width="60%" alt="同步 - 桌面端">
+  <img src="docs/screenshots/sync-mobile.png" width="20%" alt="同步 - 移动端">
+</div>
 
 ---
 

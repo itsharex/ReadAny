@@ -11,6 +11,7 @@ import type { S3Config, SyncConfig, WebDavConfig } from "../sync/sync-backend";
 import { DEFAULT_SYNC_CONFIG, SYNC_CONFIG_KEY, SYNC_SECRET_KEYS } from "../sync/sync-backend";
 import { createSyncBackend, getSecretKeyForBackend } from "../sync/sync-backend-factory";
 import { determineSyncDirection, runSync } from "../sync/sync-engine";
+import type { ISyncBackend } from "../sync/sync-backend";
 import type { SyncDirection, SyncProgress, SyncResult, SyncStatusType } from "../sync/sync-types";
 import { WebDavClient } from "../sync/webdav-client";
 
@@ -55,6 +56,8 @@ export interface SyncState {
 
   // Sync actions
   syncNow: (resolvedDirection?: "upload" | "download") => Promise<SyncResult | null>;
+  /** Run sync using an explicitly provided backend (e.g. for LAN sync) */
+  syncWithBackend: (backend: ISyncBackend, resolvedDirection?: "upload" | "download") => Promise<SyncResult | null>;
   setAutoSync: (enabled: boolean) => Promise<void>;
   setWifiOnly: (enabled: boolean) => Promise<void>;
   setNotifyOnComplete: (enabled: boolean) => Promise<void>;
@@ -273,6 +276,59 @@ export const useSyncStore = create<SyncState>((set, get) => ({
         durationMs: 0,
         error,
       };
+    }
+  },
+
+  syncWithBackend: async (backend, resolvedDirection) => {
+    const state = get();
+    if (state.status !== "idle") return null;
+
+    set({ status: "checking", error: null, pendingDirection: null });
+
+    try {
+      let direction: "upload" | "download";
+      let remoteManifest: import("../sync/sync-types").RemoteSyncManifest | null = null;
+
+      if (resolvedDirection) {
+        direction = resolvedDirection;
+      } else {
+        const result = await determineSyncDirection(backend);
+        remoteManifest = result.remoteManifest;
+
+        if (result.direction === "none") {
+          set({ status: "idle", lastSyncAt: Date.now() });
+          return { success: true, direction: "none", filesUploaded: 0, filesDownloaded: 0, durationMs: 0 };
+        }
+
+        if (result.direction === "conflict") {
+          set({ status: "idle", pendingDirection: "conflict" });
+          return null;
+        }
+
+        direction = result.direction;
+      }
+
+      set({ status: direction === "upload" ? "uploading" : "downloading", progress: null });
+
+      const onProgress = (progress: SyncProgress) => { set({ progress }); };
+
+      const onDatabaseReplaced = async () => {
+        if (hasVectorDB()) {
+          const vectorDB = getVectorDB();
+          if (vectorDB?.rebuild && (await vectorDB.isReady())) {
+            try { await vectorDB.rebuild(); } catch (e) { console.error("[Sync] Failed to rebuild vector index:", e); }
+          }
+        }
+      };
+
+      const syncResult = await runSync(backend, direction, onProgress, remoteManifest, onDatabaseReplaced);
+
+      set({ status: "idle", lastSyncAt: Date.now(), lastResult: syncResult, error: syncResult.error || null, pendingDirection: null, progress: null });
+      return syncResult;
+    } catch (e) {
+      const error = e instanceof Error ? e.message : String(e);
+      set({ status: "error", error, pendingDirection: null, progress: null });
+      return { success: false, direction: "none", filesUploaded: 0, filesDownloaded: 0, durationMs: 0, error };
     }
   },
 

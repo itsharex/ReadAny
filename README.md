@@ -65,19 +65,46 @@
 
 ## Screenshots
 
-<div align="center">
-  <img src="docs/screenshots/library.png" width="45%" alt="Library">
-  <img src="docs/screenshots/reader.png" width="45%" alt="Reader">
-</div>
+### Hero
 
 <div align="center">
-  <img src="docs/screenshots/chat.png" width="45%" alt="AI Chat">
-  <img src="docs/screenshots/notes.png" width="45%" alt="Notes">
+  <img src="docs/screenshots/hero-screenshot.png" width="80%" alt="ReadAny Hero">
 </div>
 
-<p align="center">
-  <sub>📚 Library | 📖 Reader | 🤖 AI Chat | 📝 Notes</sub>
-</p>
+### AI-Powered Chat
+
+<div align="center">
+  <img src="docs/screenshots/ai-chat-desktop.png" width="60%" alt="AI Chat - Desktop">
+  <img src="docs/screenshots/ai-chat-mobile.png" width="20%" alt="AI Chat - Mobile">
+</div>
+
+### Notes & Highlights
+
+<div align="center">
+  <img src="docs/screenshots/notes-desktop.png" width="60%" alt="Notes - Desktop">
+  <img src="docs/screenshots/notes-mobile.png" width="20%" alt="Notes - Mobile">
+</div>
+
+### Text-to-Speech
+
+<div align="center">
+  <img src="docs/screenshots/tts-desktop.png" width="60%" alt="TTS - Desktop">
+  <img src="docs/screenshots/tts-mobile.png" width="20%" alt="TTS - Mobile">
+</div>
+
+### Reading Statistics
+
+<div align="center">
+  <img src="docs/screenshots/stats-desktop.png" width="60%" alt="Stats - Desktop">
+  <img src="docs/screenshots/stats-mobile.png" width="20%" alt="Stats - Mobile">
+</div>
+
+### Cross-Device Sync
+
+<div align="center">
+  <img src="docs/screenshots/sync-desktop.png" width="60%" alt="Sync - Desktop">
+  <img src="docs/screenshots/sync-mobile.png" width="20%" alt="Sync - Mobile">
+</div>
 
 ---
 
