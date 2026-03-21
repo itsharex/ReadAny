@@ -250,12 +250,20 @@ export class TauriPlatformService implements IPlatformService {
   // ---- LAN Sync ----
 
   async getLocalIP(): Promise<string> {
+    // Try Rust-side detection first (most reliable)
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      const ip = await invoke<string>("get_local_ip");
+      if (ip) return ip;
+    } catch {
+      // Fallback to WebRTC
+    }
+
     // Try WebRTC approach
     const webrtcIP = await this.getLocalIPViaWebRTC();
     if (webrtcIP) return webrtcIP;
 
-    // Fallback: try to fetch from a service that echoes our IP
-    // This won't give us the local IP, but at least we can try
+    // Fallback: no IP found
     return "";
   }
 

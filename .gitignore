@@ -27,6 +27,8 @@ Thumbs.db
 packages/app/src-tauri/target/
 packages/app/src-tauri/gen/
 packages/app/src-tauri/WixTools/
+tauri-signing-key.key
+tauri-signing-key.key.pub
 
 # Logs
 *.log

@@ -338,6 +338,15 @@ export class ExpoPlatformService implements IPlatformService {
       console.warn("Sharing not available on this device");
     }
   }
+
+  // ---- LAN Sync ----
+
+  async getLocalIP(): Promise<string> {
+    // React Native doesn't have a reliable built-in way to get local IP.
+    // Return empty to trigger manual IP input fallback in the UI.
+    // Could be enhanced later with expo-network or a native module.
+    return "";
+  }
 }
 
 /** Map book file extensions to MIME types for document picker */

@@ -23,6 +23,7 @@ pub fn run() {
             sync::commands::sync_vacuum_into,
             sync::commands::sync_integrity_check,
             sync::commands::sync_hash_file,
+            sync::commands::get_local_ip,
             vector::vector_insert,
             vector::vector_delete_by_book,
             vector::vector_search,

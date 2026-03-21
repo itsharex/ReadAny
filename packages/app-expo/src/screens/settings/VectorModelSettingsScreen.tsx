@@ -139,25 +139,38 @@ function BuiltinModelsSection() {
     updateBuiltinModelState,
   } = useVectorModelStore();
 
+  const handleLoadModel = useCallback(
+    async (modelId: string) => {
+      updateBuiltinModelState(modelId, { status: "downloading", progress: 0, error: undefined });
+      try {
+        const { loadEmbeddingPipeline } = await import("@readany/core/ai/local-embedding-service");
+        await loadEmbeddingPipeline(modelId, (progress: number) => {
+          updateBuiltinModelState(modelId, { progress });
+        });
+        updateBuiltinModelState(modelId, { status: "ready", progress: 100 });
+        setSelectedBuiltinModelId(modelId);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        updateBuiltinModelState(modelId, { status: "error", error: message });
+      }
+    },
+    [updateBuiltinModelState, setSelectedBuiltinModelId],
+  );
+
   const handleSelect = useCallback(
-    (modelId: string, checked: boolean) => {
+    async (modelId: string, checked: boolean) => {
       if (!checked) {
         setSelectedBuiltinModelId(null);
         return;
       }
-      setSelectedBuiltinModelId(modelId);
-    },
-    [setSelectedBuiltinModelId],
-  );
-
-  const handleClear = useCallback(
-    (modelId: string) => {
-      if (selectedBuiltinModelId === modelId) {
-        setSelectedBuiltinModelId(null);
+      const state = builtinModelStates[modelId];
+      if (state?.status === "ready") {
+        setSelectedBuiltinModelId(modelId);
+      } else {
+        await handleLoadModel(modelId);
       }
-      updateBuiltinModelState(modelId, { status: "idle", progress: 0, error: undefined });
     },
-    [selectedBuiltinModelId, setSelectedBuiltinModelId, updateBuiltinModelState],
+    [builtinModelStates, setSelectedBuiltinModelId, handleLoadModel],
   );
 
   return (
@@ -202,7 +215,12 @@ function BuiltinModelsSection() {
                 </View>
               ) : isReady ? (
                 <View style={s.readyActions}>
-                  <TouchableOpacity style={s.clearBtn} onPress={() => handleClear(model.id)}>
+                  <TouchableOpacity style={s.clearBtn} onPress={() => {
+                    if (selectedBuiltinModelId === model.id) {
+                      setSelectedBuiltinModelId(null);
+                    }
+                    updateBuiltinModelState(model.id, { status: "idle", progress: 0, error: undefined });
+                  }}>
                     <Trash2Icon size={12} color={colors.mutedForeground} />
                     <Text style={s.clearBtnText}>{t("settings.vm_clearCache")}</Text>
                   </TouchableOpacity>
@@ -214,12 +232,12 @@ function BuiltinModelsSection() {
                   />
                 </View>
               ) : (
-                <Switch
-                  value={isSelected}
-                  onValueChange={(v) => handleSelect(model.id, v)}
-                  trackColor={{ false: colors.muted, true: colors.primary }}
-                  thumbColor={colors.card}
-                />
+                <TouchableOpacity
+                  style={s.downloadBtn}
+                  onPress={() => handleLoadModel(model.id)}
+                >
+                  <Text style={s.downloadBtnText}>{t("settings.vm_download", "下载")}</Text>
+                </TouchableOpacity>
               )}
             </View>
             <Text style={s.modelDesc}>
@@ -559,6 +577,21 @@ const makeStyles = (colors: ThemeColors) =>
       borderColor: colors.border,
     },
     clearBtnText: { fontSize: 11, color: colors.mutedForeground },
+    downloadBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      borderWidth: 1,
+      borderColor: colors.primary,
+      borderRadius: radius.md,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+    },
+    downloadBtnText: {
+      fontSize: fontSize.xs,
+      fontWeight: fontWeight.medium,
+      color: colors.primary,
+    },
     // Remote
     remoteTitleRow: {
       flexDirection: "row",

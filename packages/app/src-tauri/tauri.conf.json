@@ -63,8 +63,7 @@
   "plugins": {
     "updater": {
       "endpoints": ["https://github.com/codedogQBY/ReadAny/releases/latest/download/latest.json"],
-      "pubkey": "",
-      "dangerousDisableSignatureCheck": true
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEY2QjUyOEZCQ0REMzYxQjkKUldTNVlkUE4reWkxOWdPMUZRTW4wNklocmJORURWRFlFUGQ1a3IweWhUdGpHeFdKbC93SndVcEQK"
     }
   }
 }

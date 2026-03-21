@@ -101,6 +101,8 @@ export default function SyncSettingsScreen() {
   const [lanConnectionState, setLanConnectionState] = useState<string>("idle");
   const [lanServer, setLanServer] = useState<ReturnType<typeof createLANServer> | null>(null);
   const [lanError, setLanError] = useState("");
+  const [showManualIPInput, setShowManualIPInput] = useState(false);
+  const [lanManualServerIP, setLanManualServerIP] = useState("");
 
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<"success" | "error" | null>(null);
@@ -222,13 +224,22 @@ export default function SyncSettingsScreen() {
   const handleStartLanServer = useCallback(async () => {
     setLanError("");
     setLanServerStatus("starting");
+    setShowManualIPInput(false);
     try {
       const deviceName = "ReadAny Mobile";
       const server = createLANServer({
         deviceName,
         events: {
-          onStatusChange: setLanServerStatus,
-          onError: setLanError,
+          onStatusChange: (status) => {
+            setLanServerStatus(status);
+            if (status === "error") {
+              setShowManualIPInput(true);
+            }
+          },
+          onError: (err) => {
+            setLanError(err);
+            setShowManualIPInput(true);
+          },
         },
       });
       await server.start();
@@ -240,8 +251,38 @@ export default function SyncSettingsScreen() {
     } catch (e) {
       setLanError(e instanceof Error ? e.message : String(e));
       setLanServerStatus("error");
+      setShowManualIPInput(true);
     }
   }, []);
+
+  const handleStartWithManualIP = useCallback(async () => {
+    if (!lanManualServerIP) {
+      setLanError(t("settings.syncLANFillAll"));
+      return;
+    }
+    setLanError("");
+    setLanServerStatus("starting");
+    try {
+      const deviceName = "ReadAny Mobile";
+      const server = createLANServer({
+        deviceName,
+        events: {
+          onStatusChange: setLanServerStatus,
+          onError: setLanError,
+        },
+      });
+      server.setManualIP(lanManualServerIP);
+      await server.start();
+      const data = server.getQRData();
+      if (data) {
+        setLanQrData(data);
+      }
+      setLanServer(server);
+    } catch (e) {
+      setLanError(e instanceof Error ? e.message : String(e));
+      setLanServerStatus("error");
+    }
+  }, [lanManualServerIP, t]);
 
   const handleStopLanServer = useCallback(async () => {
     if (lanServer) {
@@ -250,6 +291,8 @@ export default function SyncSettingsScreen() {
     }
     setLanServerStatus("idle");
     setLanQrData(null);
+    setShowManualIPInput(false);
+    setLanManualServerIP("");
   }, [lanServer]);
 
   // LAN Client handlers
@@ -605,13 +648,45 @@ export default function SyncSettingsScreen() {
                       <View
                         style={[
                           styles.lanStatusDot,
-                          lanServerStatus === "running" && styles.lanStatusDotGreen,
+                          lanServerStatus === "running"
+                            ? styles.lanStatusDotGreen
+                            : lanServerStatus === "error"
+                              ? styles.lanStatusDotRed
+                              : undefined,
                         ]}
                       />
                       <Text style={styles.lanStatusText}>
                         {t(`settings.syncLANServerStatus.${lanServerStatus}`)}
                       </Text>
                     </View>
+
+                    {/* Manual IP input (shown when auto-detection fails) */}
+                    {showManualIPInput && lanServerStatus !== "running" && (
+                      <View style={styles.manualIPCard}>
+                        <Text style={styles.manualIPHint}>
+                          {t("settings.syncLANManualIPHint")}
+                        </Text>
+                        <View style={styles.manualIPRow}>
+                          <TextInput
+                            style={[styles.input, { flex: 1 }]}
+                            value={lanManualServerIP}
+                            onChangeText={setLanManualServerIP}
+                            placeholder="192.168.1.100"
+                            placeholderTextColor={colors.mutedForeground}
+                            keyboardType="numeric"
+                          />
+                          <TouchableOpacity
+                            style={[styles.primaryBtn, !lanManualServerIP && styles.btnDisabled]}
+                            onPress={handleStartWithManualIP}
+                            disabled={!lanManualServerIP}
+                          >
+                            <Text style={styles.primaryBtnText}>
+                              {t("settings.syncLANServerStart")}
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    )}
 
                     {lanQrData && (
                       <View style={styles.lanQrSection}>
@@ -626,32 +701,36 @@ export default function SyncSettingsScreen() {
                       </View>
                     )}
 
-                    {lanError && <Text style={styles.errorText}>{lanError}</Text>}
+                    {lanError && !showManualIPInput && (
+                      <Text style={styles.errorText}>{lanError}</Text>
+                    )}
 
-                    <View style={styles.btnRow}>
-                      {lanServerStatus !== "running" ? (
-                        <TouchableOpacity
-                          style={[styles.primaryBtn, styles.lanBtn]}
-                          onPress={handleStartLanServer}
-                          disabled={lanServerStatus === "starting"}
-                        >
-                          <Text style={styles.primaryBtnText}>
-                            {lanServerStatus === "starting"
-                              ? t("settings.syncLANServerStarting")
-                              : t("settings.syncLANServerStart")}
-                          </Text>
-                        </TouchableOpacity>
-                      ) : (
-                        <TouchableOpacity
-                          style={[styles.outlineBtn, styles.lanBtn]}
-                          onPress={handleStopLanServer}
-                        >
-                          <Text style={styles.outlineBtnText}>
-                            {t("settings.syncLANServerStop")}
-                          </Text>
-                        </TouchableOpacity>
-                      )}
-                    </View>
+                    {!showManualIPInput && (
+                      <View style={styles.btnRow}>
+                        {lanServerStatus !== "running" ? (
+                          <TouchableOpacity
+                            style={[styles.primaryBtn, styles.lanBtn]}
+                            onPress={handleStartLanServer}
+                            disabled={lanServerStatus === "starting"}
+                          >
+                            <Text style={styles.primaryBtnText}>
+                              {lanServerStatus === "starting"
+                                ? t("settings.syncLANServerStarting")
+                                : t("settings.syncLANServerStart")}
+                            </Text>
+                          </TouchableOpacity>
+                        ) : (
+                          <TouchableOpacity
+                            style={[styles.outlineBtn, styles.lanBtn]}
+                            onPress={handleStopLanServer}
+                          >
+                            <Text style={styles.outlineBtnText}>
+                              {t("settings.syncLANServerStop")}
+                            </Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    )}
                   </View>
                 ) : (
                   <View style={styles.lanClientSection}>
@@ -1218,4 +1297,25 @@ const makeStyles = (colors: ThemeColors) =>
     },
     lanServerSection: {},
     lanClientSection: {},
+    lanStatusDotRed: {
+      backgroundColor: colors.destructive,
+    },
+    manualIPCard: {
+      borderRadius: radius.lg,
+      borderWidth: 1,
+      borderColor: withOpacity(colors.destructive, 0.3),
+      backgroundColor: withOpacity(colors.destructive, 0.05),
+      padding: 12,
+      marginBottom: 12,
+    },
+    manualIPHint: {
+      fontSize: fontSize.xs,
+      color: colors.mutedForeground,
+      marginBottom: 8,
+    },
+    manualIPRow: {
+      flexDirection: "row",
+      gap: 8,
+      alignItems: "center",
+    },
   });
