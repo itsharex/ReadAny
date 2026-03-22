@@ -34,6 +34,8 @@ import { I18nextProvider } from "react-i18next";
 import { ExpoPlatformService } from "@/lib/platform/expo-platform-service";
 import { MobileSyncAdapter } from "@/lib/sync/sync-adapter-mobile";
 import { RNEmbeddingEngine } from "@/lib/ai/rn-embedding-engine";
+import { UpdateDialog } from "@/components/update/UpdateDialog";
+import { useUpdateChecker } from "@/hooks/use-update-checker";
 import { RootNavigator } from "@/navigation/RootNavigator";
 import { ThemeProvider, useTheme } from "@/styles/ThemeContext";
 
@@ -106,6 +108,7 @@ export default function App() {
 
 function AppInner() {
   const { colors, isDark, mode } = useTheme();
+  useUpdateChecker();
 
   const navTheme = useMemo(
     () => ({
@@ -129,6 +132,7 @@ function AppInner() {
           <StatusBar style={mode === "dark" ? "light" : "dark"} />
           <RootNavigator />
         </NavigationContainer>
+        <UpdateDialog />
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

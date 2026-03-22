@@ -1,5 +1,5 @@
 import { getPlatformService } from "@readany/core/services";
-import { type UpdateCheckResult, checkForUpdate } from "@readany/core/update";
+import { checkForUpdate } from "@readany/core/update";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -21,6 +21,7 @@ import {
   spacing,
   useColors,
 } from "../../styles/theme";
+import { useUpdateStore } from "@/stores/update-store";
 import { SettingsHeader } from "./SettingsHeader";
 
 const TECH_STACK = [
@@ -43,19 +44,13 @@ export default function AboutScreen() {
   const { t } = useTranslation();
   const [version, setVersion] = useState("1.0.0");
   const [checking, setChecking] = useState(false);
-  const [updateResult, setUpdateResult] = useState<UpdateCheckResult | null>(null);
 
-  // Load version + auto-check for updates on mount
+  const checkResult = useUpdateStore((s) => s.checkResult);
+  const setCheckResult = useUpdateStore((s) => s.setCheckResult);
+  const showDialog = useUpdateStore((s) => s.showDialog);
+
   useEffect(() => {
-    const platform = getPlatformService();
-    platform.getAppVersion().then(setVersion);
-
-    // Auto-check (throttled to once per day by the checker)
-    platform.getAppVersion().then((v) => {
-      checkForUpdate(v, platform)
-        .then(setUpdateResult)
-        .catch(() => {});
-    });
+    getPlatformService().getAppVersion().then(setVersion);
   }, []);
 
   const handleCheckUpdate = useCallback(async () => {
@@ -64,32 +59,18 @@ export default function AboutScreen() {
       const platform = getPlatformService();
       const v = await platform.getAppVersion();
       const result = await checkForUpdate(v, platform, true);
-      setUpdateResult(result);
-      if (!result.hasUpdate) {
+      setCheckResult(result);
+      if (result.hasUpdate && result.release) {
+        showDialog();
+      } else {
         Alert.alert(t("settings.upToDate"), t("settings.upToDate"));
-      } else if (result.release) {
-        Alert.alert(
-          t("settings.updateAvailable"),
-          t("settings.newVersionAvailable", { version: result.latestVersion }),
-          [
-            { text: t("settings.later"), style: "cancel" },
-            {
-              text: "GitHub",
-              onPress: () => {
-                if (result.release?.htmlUrl) {
-                  Linking.openURL(result.release.htmlUrl);
-                }
-              },
-            },
-          ],
-        );
       }
     } catch {
       Alert.alert(t("settings.updateError"), t("settings.updaterCheckFailed"));
     } finally {
       setChecking(false);
     }
-  }, [t]);
+  }, [t, setCheckResult, showDialog]);
 
   return (
     <SafeAreaView
@@ -124,14 +105,14 @@ export default function AboutScreen() {
               {checking ? t("settings.updateChecking") : t("settings.checkUpdate")}
             </Text>
           </TouchableOpacity>
-          {updateResult?.hasUpdate && updateResult.release && (
+          {checkResult?.hasUpdate && checkResult.release && (
             <TouchableOpacity
               style={styles.updateBanner}
-              onPress={() => Linking.openURL(updateResult.release!.htmlUrl)}
+              onPress={() => showDialog()}
               activeOpacity={0.7}
             >
               <Text style={styles.updateBannerText}>
-                {t("settings.newVersionAvailable", { version: updateResult.latestVersion })}
+                {t("settings.newVersionAvailable", { version: checkResult.latestVersion })}
               </Text>
               <Text style={styles.linkArrow}>→</Text>
             </TouchableOpacity>

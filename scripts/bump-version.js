@@ -9,6 +9,8 @@
  * Syncs version across:
  *   - packages/app/package.json
  *   - packages/app/src-tauri/tauri.conf.json
+ *   - packages/app-expo/package.json
+ *   - packages/app-expo/app.json (expo.version)
  */
 const fs = require("fs");
 const path = require("path");
@@ -31,6 +33,24 @@ const VERSION_FILES = [
     write: (content, version) => {
       const json = JSON.parse(content);
       json.version = version;
+      return JSON.stringify(json, null, 2) + "\n";
+    },
+  },
+  {
+    path: "packages/app-expo/package.json",
+    read: (content) => JSON.parse(content).version,
+    write: (content, version) => {
+      const json = JSON.parse(content);
+      json.version = version;
+      return JSON.stringify(json, null, 2) + "\n";
+    },
+  },
+  {
+    path: "packages/app-expo/app.json",
+    read: (content) => JSON.parse(content).expo.version,
+    write: (content, version) => {
+      const json = JSON.parse(content);
+      json.expo.version = version;
       return JSON.stringify(json, null, 2) + "\n";
     },
   },
