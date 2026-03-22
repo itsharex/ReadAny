@@ -316,3 +316,13 @@ pnpm tauri build
   <img src="docs/screenshots/小红书群.jpg" width="200" alt="小红书群">
   <img src="docs/screenshots/微信群.jpg" width="200" alt="微信群">
 </p>
+
+---
+
+## Star 历史
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/image?repos=codedogQBY/ReadAny&type=Date&theme=dark" />
+  <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/image?repos=codedogQBY/ReadAny&type=Date" />
+  <img alt="Star History Chart" src="https://api.star-history.com/image?repos=codedogQBY/ReadAny&type=Date" />
+</picture>
