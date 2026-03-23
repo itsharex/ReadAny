@@ -54,7 +54,6 @@ import {
   Dimensions,
   KeyboardAvoidingView,
   Modal,
-  PanResponder,
   Platform,
   Pressable,
   ScrollView,
@@ -260,69 +259,6 @@ export function ReaderScreen({ route, navigation }: Props) {
   const noteTooltipTimer = useRef<NodeJS.Timeout | null>(null);
   const assetLoadedRef = useRef(false);
   const pendingBookmarkRef = useRef(false);
-  const pullDownDistance = useRef(new Animated.Value(0)).current;
-  const [isPullingDown, setIsPullingDown] = useState(false);
-  const [pullAction, setPullAction] = useState<"add" | "remove" | null>(null);
-
-  // Pull down gesture detection for bookmarking
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => false,
-      onMoveShouldSetPanResponder: (_, gestureState) => {
-        // Only activate when pulling down from the top area and no panels are open
-        const panelOpen = showTOC || showSettings || showSearch || showNotebook || showTranslation;
-        if (panelOpen || loading || !webViewReady) return false;
-        return gestureState.dy > 5 && gestureState.vy > 0.2;
-      },
-      onPanResponderMove: (_, gestureState) => {
-        if (gestureState.dy > 0) {
-          setIsPullingDown(true);
-          // Calculate distance with damping
-          const distance = Math.min(gestureState.dy * 0.5, 120);
-          pullDownDistance.setValue(distance);
-
-          // Determine action based on current bookmark state
-          if (distance > 60) {
-            setPullAction(isBookmarked ? "remove" : "add");
-          } else {
-            setPullAction(null);
-          }
-        }
-      },
-      onPanResponderRelease: (_, gestureState) => {
-        const distance = Math.min(gestureState.dy * 0.5, 120);
-
-        if (distance > 80) {
-          // Trigger bookmark action
-          handleToggleBookmark();
-
-          // Show confirmation animation
-          Animated.sequence([
-            Animated.timing(pullDownDistance, {
-              toValue: 50,
-              duration: 100,
-              useNativeDriver: false,
-            }),
-            Animated.timing(pullDownDistance, {
-              toValue: 0,
-              duration: 200,
-              useNativeDriver: false,
-            }),
-          ]).start();
-        } else {
-          // Animate back to original position
-          Animated.timing(pullDownDistance, {
-            toValue: 0,
-            duration: 200,
-            useNativeDriver: false,
-          }).start();
-        }
-
-        setIsPullingDown(false);
-        setPullAction(null);
-      },
-    }),
-  ).current;
 
   const bridgeRef = useRef<{
     requestPageSnippet: () => void;
@@ -510,6 +446,9 @@ export function ReaderScreen({ route, navigation }: Props) {
         return;
       }
       toggleControls();
+    },
+    onToggleBookmark: () => {
+      handleToggleBookmark();
     },
     onSearchResult: (index: number, count: number) => {
       setSearchIndex(index);
@@ -941,40 +880,8 @@ export function ReaderScreen({ route, navigation }: Props) {
 
   return (
     <View style={[s.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
-      {/* Pull down indicator */}
-      <Animated.View
-        style={[
-          s.pullDownIndicator,
-          {
-            height: pullDownDistance,
-            opacity: pullDownDistance.interpolate({
-              inputRange: [0, 30, 80],
-              outputRange: [0, 0.8, 1],
-            }),
-          },
-        ]}
-        {...panResponder.panHandlers}
-      >
-        <View style={s.pullDownContent}>
-          {pullAction === "add" ? (
-            <BookmarkFilledIcon size={28} color={colors.primary} />
-          ) : pullAction === "remove" ? (
-            <BookmarkIcon size={28} color={colors.mutedForeground} />
-          ) : (
-            <BookmarkIcon size={24} color={colors.mutedForeground} />
-          )}
-          <Text style={s.pullDownText}>
-            {pullAction === "add"
-              ? "释放添加书签"
-              : pullAction === "remove"
-                ? "释放移除书签"
-                : "下拉添加书签"}
-          </Text>
-        </View>
-      </Animated.View>
-
       {/* WebView with foliate-js */}
-      <View style={{ flex: 1 }} {...panResponder.panHandlers}>
+      <View style={{ flex: 1 }}>
         <WebView
           ref={bridge.webViewRef}
           source={{ uri: readerHtmlUri }}
@@ -1863,23 +1770,6 @@ const makeStyles = (colors: ThemeColors) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
     webview: { flex: 1 },
-    pullDownIndicator: {
-      backgroundColor: colors.background,
-      justifyContent: "flex-end",
-      alignItems: "center",
-      overflow: "hidden",
-    },
-    pullDownContent: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "center",
-      paddingBottom: 12,
-      gap: 8,
-    },
-    pullDownText: {
-      fontSize: fontSize.sm,
-      color: colors.mutedForeground,
-    },
     loadingWrap: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
     loadingText: { fontSize: fontSize.sm, color: colors.mutedForeground },
     errorText: {
