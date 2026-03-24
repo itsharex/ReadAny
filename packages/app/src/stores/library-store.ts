@@ -540,8 +540,6 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           const bookId = crypto.randomUUID();
 
           // For TXT files, convert to EPUB first before storing
-          let actualExt = ext;
-          let actualFilePath = filePath;
           if (ext === "txt") {
             const { TxtToEpubConverter } = await import("@readany/core/utils/txt-to-epub");
             const { readFile } = await import("@tauri-apps/plugin-fs");
@@ -551,9 +549,6 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
             });
             const converter = new TxtToEpubConverter();
             const result = await converter.convert({ file: txtFile });
-            // Override file path with converted EPUB for storage
-            actualFilePath = result.file.name;
-            actualExt = "epub";
             title = result.bookTitle;
             if (result.language) author = "";
             // Write the converted EPUB to a temp location for copyBookToAppData
