@@ -26,7 +26,7 @@ interface ReaderToolbarProps {
   onPrev?: () => void;
   onNext?: () => void;
   tocItems?: TOCItem[];
-  onGoToChapter?: (index: number) => void;
+  onGoToChapter?: (href: string) => void;
   onToggleSearch?: () => void;
   onToggleToc?: () => void;
   onToggleSettings?: () => void;

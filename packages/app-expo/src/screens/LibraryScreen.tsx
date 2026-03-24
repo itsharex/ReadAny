@@ -12,6 +12,7 @@ import {
   Trash2Icon,
   XIcon,
 } from "@/components/ui/Icon";
+import { setCallback, setExtractorRef } from "@/lib/rag/auto-vectorize-service";
 import { triggerVectorizeBook } from "@/lib/rag/vectorize-trigger";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { useLibraryStore } from "@/stores/library-store";
@@ -152,6 +153,18 @@ export function LibraryScreen() {
   useEffect(() => {
     loadBooks();
   }, [loadBooks]);
+
+  // Connect auto-vectorize service
+  useEffect(() => {
+    setExtractorRef(extractorRef.current);
+    setCallback((bookId, progress) => {
+      console.log(`[AutoVectorize] Book ${bookId}: ${progress.status} (${Math.round(progress.progress * 100)}%)`);
+    });
+    return () => {
+      setExtractorRef(null);
+      setCallback(null);
+    };
+  }, []);
 
   // Refresh library when AI tools modify books/tags
   useEffect(() => {

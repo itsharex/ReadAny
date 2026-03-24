@@ -1,14 +1,12 @@
 import { extractBookMetadata } from "@/lib/book/metadata-extractor";
+import { queueBook as queueAutoVectorize } from "@/lib/rag/auto-vectorize-service";
 import * as db from "@readany/core/db/database";
 import { getPlatformService } from "@readany/core/services";
-/**
- * Expo Library Store — book collection CRUD, import, filtering, tags
- * Adapted from app-mobile library-store. Uses core DB + FS persistence.
- */
 import type { Book, LibraryFilter, SortField, SortOrder } from "@readany/core/types";
 import { generateId } from "@readany/core/utils";
 import { create } from "zustand";
 import { debouncedSave, loadFromFS } from "./persist";
+import { useVectorModelStore } from "./vector-model-store";
 
 // Hermes (React Native) only supports UTF-8 in TextDecoder.
 // Use text-encoding polyfill for GBK/GB18030/Shift-JIS etc.
@@ -367,6 +365,13 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
               };
               await get().addBook(book);
               console.log(`[importBooks] TXT imported as EPUB: ${title}`);
+              
+              // Auto-vectorize if enabled
+              const vmState = useVectorModelStore.getState();
+              if (vmState.vectorModelEnabled && vmState.hasVectorCapability()) {
+                const base64 = btoa(String.fromCharCode(...result.epubBytes));
+                queueAutoVectorize(book, base64, "application/epub+zip");
+              }
               continue;
             } catch (convErr) {
               console.error(`[importBooks] TXT conversion failed:`, convErr);
@@ -435,6 +440,26 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
             lastOpenedAt: Date.now(),
           };
           await get().addBook(book);
+          
+          // Auto-vectorize if enabled
+          const vmState = useVectorModelStore.getState();
+          if (vmState.vectorModelEnabled && vmState.hasVectorCapability()) {
+            const base64 = btoa(String.fromCharCode(...fileBytes));
+            const mimeTypes: Record<string, string> = {
+              epub: "application/epub+zip",
+              pdf: "application/pdf",
+              mobi: "application/x-mobipocket-ebook",
+              azw: "application/vnd.amazon.ebook",
+              azw3: "application/vnd.amazon.ebook",
+              cbz: "application/vnd.comicbook+zip",
+              cbr: "application/vnd.comicbook+zip",
+              fb2: "application/x-fictionbook+xml",
+              fbz: "application/x-zip-compressed-fb2",
+              txt: "text/plain",
+            };
+            const mimeType = mimeTypes[format] || "application/epub+zip";
+            queueAutoVectorize(book, base64, mimeType);
+          }
         } catch (err) {
           console.error(`Failed to import ${fileInfo.uri}:`, err);
         }

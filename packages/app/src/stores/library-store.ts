@@ -1,11 +1,8 @@
 import * as db from "@/lib/db/database";
+import { triggerVectorizeBook } from "@/lib/rag/vectorize-trigger";
 import { debouncedSave, loadFromFS } from "@readany/core/stores/persist";
+import { useVectorModelStore } from "@readany/core/stores/vector-model-store";
 import type { Book, LibraryFilter, SortField, SortOrder } from "@readany/core/types";
-/**
- * Library store — book collection CRUD, import, filtering
- * Connected to SQLite for persistence.
- * Uses FS-level JSON cache for fast startup (avoids re-querying SQLite every launch).
- */
 import { create } from "zustand";
 
 interface EpubMeta {
@@ -540,8 +537,6 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           const bookId = crypto.randomUUID();
 
           // For TXT files, convert to EPUB first before storing
-          let actualExt = ext;
-          let actualFilePath = filePath;
           if (ext === "txt") {
             const { TxtToEpubConverter } = await import("@readany/core/utils/txt-to-epub");
             const { readFile } = await import("@tauri-apps/plugin-fs");
@@ -551,9 +546,6 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
             });
             const converter = new TxtToEpubConverter();
             const result = await converter.convert({ file: txtFile });
-            // Override file path with converted EPUB for storage
-            actualFilePath = result.file.name;
-            actualExt = "epub";
             title = result.bookTitle;
             if (result.language) author = "";
             // Write the converted EPUB to a temp location for copyBookToAppData
@@ -655,6 +647,14 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
             lastOpenedAt: Date.now(),
           };
           get().addBook(book);
+          
+          // Auto-vectorize if enabled
+          const vmState = useVectorModelStore.getState();
+          if (vmState.vectorModelEnabled && vmState.hasVectorCapability()) {
+            triggerVectorizeBook(book.id, relativePath).catch((err) => {
+              console.warn(`[importBooks] Auto-vectorize failed for ${title}:`, err);
+            });
+          }
         } catch (err) {
           console.error(`Failed to import ${filePath}:`, err);
         }
