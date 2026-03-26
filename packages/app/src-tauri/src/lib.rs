@@ -3,6 +3,7 @@ mod sync;
 mod vector;
 
 use std::sync::Mutex;
+use tauri::Manager;
 use vector::VectorDBState;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
