@@ -3,7 +3,7 @@
  * Supports WebDAV, S3, and LAN sync through ISyncBackend interface.
  */
 
-import { getDB } from "../db/database";
+import { ensureNoTransaction, getDB } from "../db/database";
 import { getSyncAdapter } from "./sync-adapter";
 import type { ISyncBackend } from "./sync-backend";
 import {
@@ -29,9 +29,12 @@ async function getSyncMeta(key: string): Promise<string | null> {
 
 /** Set multiple sync metadata values in a single transaction */
 async function batchSetSyncMeta(entries: [string, string][]): Promise<void> {
+  await ensureNoTransaction();
   const db = await getDB();
-  await db.execute("BEGIN TRANSACTION", []);
+  let inTransaction = false;
   try {
+    await db.execute("BEGIN TRANSACTION", []);
+    inTransaction = true;
     for (const [key, value] of entries) {
       await db.execute("INSERT OR REPLACE INTO sync_metadata (key, value) VALUES (?, ?)", [
         key,
@@ -39,8 +42,15 @@ async function batchSetSyncMeta(entries: [string, string][]): Promise<void> {
       ]);
     }
     await db.execute("COMMIT", []);
+    inTransaction = false;
   } catch (e) {
-    await db.execute("ROLLBACK", []);
+    if (inTransaction) {
+      try {
+        await db.execute("ROLLBACK", []);
+      } catch {
+        // Ignore rollback errors
+      }
+    }
     throw e;
   }
 }
@@ -561,9 +571,10 @@ export async function runSync(
   onProgress?: (progress: import("./sync-types").SyncProgress) => void,
   remoteManifest?: RemoteSyncManifest | null,
   onDatabaseReplaced?: () => Promise<void>,
+  useIncremental?: boolean,
 ): Promise<SyncResult> {
   const startTime = Date.now();
-  console.log(`[Sync] 🚀 Starting sync: direction=${direction}`);
+  console.log(`[Sync] 🚀 Starting sync: direction=${direction}, incremental=${useIncremental ?? false}`);
 
   try {
     console.log("[Sync] Ensuring remote directory structure...");
@@ -574,6 +585,43 @@ export async function runSync(
     } catch (error) {
       console.warn("[Sync] ⚠️ Failed to create directories (they might already exist):", error);
       console.log("[Sync] Continuing with sync anyway...");
+    }
+
+    if (useIncremental) {
+      const { runIncrementalSync } = await import("./incremental-sync");
+      const result = await runIncrementalSync(backend, direction, (msg) => {
+        onProgress?.({
+          phase: "database",
+          operation: direction === "upload" ? "upload" : "download",
+          completedFiles: 0,
+          totalFiles: 1,
+          message: msg,
+        });
+      });
+      
+      if (result.needsFullSync) {
+        console.log("[Sync] Incremental sync not possible, falling back to full sync");
+        if (direction === "upload") {
+          await executeUpload(backend, onProgress);
+        } else {
+          await executeDownload(backend, remoteManifest ?? null, onProgress);
+          if (onDatabaseReplaced) {
+            console.log("[Sync] Running post-download callback...");
+            await onDatabaseReplaced();
+          }
+        }
+      }
+      
+      const { filesUploaded, filesDownloaded } = await syncFiles(backend, onProgress);
+      
+      return {
+        success: result.success,
+        direction,
+        filesUploaded,
+        filesDownloaded,
+        durationMs: Date.now() - startTime,
+        error: result.error,
+      };
     }
 
     if (direction === "upload") {

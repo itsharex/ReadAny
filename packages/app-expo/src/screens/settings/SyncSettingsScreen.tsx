@@ -4,6 +4,7 @@ import { useSyncStore } from "@readany/core/stores";
 import { type LANQRData, createLANBackend } from "@readany/core/sync/lan-backend";
 import { createLANServer } from "@readany/core/sync/lan-server";
 import type { S3Config, WebDavConfig } from "@readany/core/sync/sync-backend";
+import { SYNC_SECRET_KEYS } from "@readany/core/sync/sync-backend";
 /**
  * SyncSettingsScreen — Multi-backend sync configuration and status panel (mobile).
  * Supports WebDAV, S3, and LAN sync.
@@ -151,7 +152,7 @@ export default function SyncSettingsScreen() {
         setUsername(config.username);
         setAllowInsecure(config.allowInsecure ?? false);
         getPlatformService()
-          .kvGetItem("sync_password")
+          .kvGetItem(SYNC_SECRET_KEYS.webdav)
           .then((pw) => {
             if (pw) setPassword(pw);
           });

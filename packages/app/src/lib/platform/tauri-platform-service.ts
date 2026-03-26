@@ -257,6 +257,11 @@ export class TauriPlatformService implements IPlatformService {
 
   // ---- LAN Sync ----
 
+  async isOnWifi(): Promise<boolean> {
+    // Desktop is always considered "on WiFi"
+    return true;
+  }
+
   async getLocalIP(): Promise<string> {
     // Try Rust-side detection first (most reliable)
     try {

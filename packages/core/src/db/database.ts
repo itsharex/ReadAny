@@ -40,6 +40,17 @@ export async function closeDB(): Promise<void> {
   }
 }
 
+/** Ensure no active transaction (rollback if any) */
+export async function ensureNoTransaction(): Promise<void> {
+  if (db) {
+    try {
+      await db.execute("ROLLBACK", []);
+    } catch {
+      // No active transaction, ignore
+    }
+  }
+}
+
 /** Reset the DB cache without closing (for use after external file replacement) */
 export function resetDBCache(): void {
   db = null;
@@ -170,6 +181,23 @@ export async function initDatabase(): Promise<void> {
       chapter_title TEXT,
       created_at INTEGER NOT NULL,
       FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE
+    )
+  `);
+
+  await database.execute(`
+    CREATE TABLE IF NOT EXISTS tags (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE
+    )
+  `);
+
+  await database.execute(`
+    CREATE TABLE IF NOT EXISTS book_tags (
+      book_id TEXT NOT NULL,
+      tag_id TEXT NOT NULL,
+      PRIMARY KEY (book_id, tag_id),
+      FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE,
+      FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
     )
   `);
 
@@ -340,6 +368,27 @@ export async function initDatabase(): Promise<void> {
     } catch {
       // Column already exists
     }
+  }
+
+  // Migration 8: Add updated_at to tables that need it for incremental sync
+  const tablesNeedingUpdatedAt = ["bookmarks", "reading_sessions"];
+  for (const table of tablesNeedingUpdatedAt) {
+    try {
+      await database.execute(`ALTER TABLE ${table} ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0`);
+    } catch {
+      // Column already exists
+    }
+  }
+  // Initialize updated_at from created_at or started_at
+  try {
+    await database.execute("UPDATE bookmarks SET updated_at = created_at WHERE updated_at = 0");
+  } catch {
+    // Already updated or column doesn't exist
+  }
+  try {
+    await database.execute("UPDATE reading_sessions SET updated_at = started_at WHERE updated_at = 0");
+  } catch {
+    // Already updated or column doesn't exist
   }
 
   dbInitialized = true;

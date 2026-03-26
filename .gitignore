@@ -36,3 +36,5 @@ npm-debug.log*
 pnpm-debug.log*
 
 readese/*
+
+webdav-server/

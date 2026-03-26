@@ -165,19 +165,12 @@ export class ExpoPlatformService implements IPlatformService {
 
   async fetch(url: string, options?: FetchOptions): Promise<Response> {
     const { allowInsecure, ...fetchOptions } = options ?? {};
-    // When allowInsecure is enabled, downgrade https → http (RN cannot skip TLS verification)
     const effectiveUrl = allowInsecure ? url.replace(/^https:\/\//i, "http://") : url;
     const method = fetchOptions?.method?.toUpperCase() || "GET";
-    const standardMethods = ["GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS", "PATCH"];
 
-    // Use XMLHttpRequest for custom WebDAV methods (MKCOL, PROPFIND, etc.)
-    // React Native's fetch doesn't properly support custom HTTP methods
-    if (!standardMethods.includes(method)) {
-      return this._fetchWithXHR(effectiveUrl, fetchOptions);
-    }
-
-    // Use standard fetch for standard HTTP methods
-    return globalThis.fetch(effectiveUrl, fetchOptions);
+    // Always use XHR for WebDAV to handle large binary files properly
+    // React Native's fetch has issues with large arrayBuffer responses
+    return this._fetchWithXHR(effectiveUrl, fetchOptions);
   }
 
   private _fetchWithXHR(url: string, options?: RequestInit): Promise<Response> {
@@ -186,6 +179,7 @@ export class ExpoPlatformService implements IPlatformService {
       const method = options?.method || "GET";
 
       xhr.open(method, url, true);
+      xhr.responseType = "arraybuffer";
 
       // Set headers
       if (options?.headers) {
@@ -196,18 +190,18 @@ export class ExpoPlatformService implements IPlatformService {
       }
 
       xhr.onload = () => {
+        const buffer = xhr.response as ArrayBuffer;
+        const decoder = new TextDecoder();
+
         // Create a Response-like object
         const response = {
           status: xhr.status,
           statusText: xhr.statusText,
           ok: xhr.status >= 200 && xhr.status < 300,
           headers: new Headers(),
-          text: async () => xhr.responseText,
-          json: async () => JSON.parse(xhr.responseText),
-          arrayBuffer: async () => {
-            const encoder = new TextEncoder();
-            return encoder.encode(xhr.responseText).buffer;
-          },
+          text: async () => decoder.decode(buffer),
+          json: async () => JSON.parse(decoder.decode(buffer)),
+          arrayBuffer: async () => buffer,
         } as Response;
 
         resolve(response);
@@ -306,17 +300,32 @@ export class ExpoPlatformService implements IPlatformService {
   }
 
   async kvGetItem(key: string): Promise<string | null> {
-    return SecureStore.getItemAsync(key);
+    try {
+      return await SecureStore.getItemAsync(key);
+    } catch (e) {
+      console.error(`[SecureStore] getItem failed for key "${key}":`, e);
+      return null;
+    }
   }
 
   async kvSetItem(key: string, value: string): Promise<void> {
-    await SecureStore.setItemAsync(key, value);
-    await this._addKeyToIndex(key);
+    try {
+      await SecureStore.setItemAsync(key, value);
+      await this._addKeyToIndex(key);
+      console.log(`[SecureStore] Saved key "${key}" successfully`);
+    } catch (e) {
+      console.error(`[SecureStore] setItem failed for key "${key}":`, e);
+      throw e;
+    }
   }
 
   async kvRemoveItem(key: string): Promise<void> {
-    await SecureStore.deleteItemAsync(key);
-    await this._removeKeyFromIndex(key);
+    try {
+      await SecureStore.deleteItemAsync(key);
+      await this._removeKeyFromIndex(key);
+    } catch (e) {
+      console.error(`[SecureStore] deleteItem failed for key "${key}":`, e);
+    }
   }
 
   async kvGetAllKeys(): Promise<string[]> {
@@ -345,6 +354,15 @@ export class ExpoPlatformService implements IPlatformService {
   }
 
   // ---- LAN Sync ----
+
+  async isOnWifi(): Promise<boolean> {
+    try {
+      const state = await Network.getNetworkStateAsync();
+      return state.type === Network.NetworkStateType.WIFI;
+    } catch {
+      return false;
+    }
+  }
 
   async getLocalIP(): Promise<string> {
     try {

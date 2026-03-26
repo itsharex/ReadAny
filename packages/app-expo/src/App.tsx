@@ -37,7 +37,9 @@ import { RNEmbeddingEngine } from "@/lib/ai/rn-embedding-engine";
 import { UpdateDialog } from "@/components/update/UpdateDialog";
 import { useUpdateChecker } from "@/hooks/use-update-checker";
 import { RootNavigator } from "@/navigation/RootNavigator";
+import { useLibraryStore } from "@/stores/library-store";
 import { ThemeProvider, useTheme } from "@/styles/ThemeContext";
+import { useAutoSync } from "@readany/core/hooks/use-auto-sync";
 
 export default function App() {
   const [ready, setReady] = useState(false);
@@ -108,7 +110,9 @@ export default function App() {
 
 function AppInner() {
   const { colors, isDark, mode } = useTheme();
+  const loadBooks = useLibraryStore((s) => s.loadBooks);
   useUpdateChecker();
+  useAutoSync(loadBooks);
 
   const navTheme = useMemo(
     () => ({

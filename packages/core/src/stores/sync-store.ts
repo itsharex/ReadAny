@@ -55,9 +55,9 @@ export interface SyncState {
   ) => Promise<boolean>;
 
   // Sync actions
-  syncNow: (resolvedDirection?: "upload" | "download") => Promise<SyncResult | null>;
+  syncNow: (resolvedDirection?: "upload" | "download", useIncremental?: boolean) => Promise<SyncResult | null>;
   /** Run sync using an explicitly provided backend (e.g. for LAN sync) */
-  syncWithBackend: (backend: ISyncBackend, resolvedDirection?: "upload" | "download") => Promise<SyncResult | null>;
+  syncWithBackend: (backend: ISyncBackend, resolvedDirection?: "upload" | "download", useIncremental?: boolean) => Promise<SyncResult | null>;
   setAutoSync: (enabled: boolean) => Promise<void>;
   setWifiOnly: (enabled: boolean) => Promise<void>;
   setNotifyOnComplete: (enabled: boolean) => Promise<void>;
@@ -79,10 +79,12 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     try {
       const platform = getPlatformService();
       const configStr = await platform.kvGetItem(SYNC_CONFIG_KEY);
+      console.log(`[SyncStore] loadConfig: configStr = ${configStr ? 'found' : 'not found'}`);
       if (configStr) {
         const config = JSON.parse(configStr) as SyncConfig;
         const secretKey = config.type !== "lan" ? getSecretKeyForBackend(config.type) : null;
         const secret = secretKey ? await platform.kvGetItem(secretKey) : null;
+        console.log(`[SyncStore] loadConfig: secretKey = ${secretKey}, secret = ${secret ? 'found' : 'not found'}`);
 
         const isConfigured =
           config.type === "lan"
@@ -93,14 +95,15 @@ export const useSyncStore = create<SyncState>((set, get) => ({
                   (config.type === "s3" && config.endpoint && config.bucket && config.accessKeyId))
               );
 
+        console.log(`[SyncStore] loadConfig: isConfigured = ${isConfigured}, backendType = ${config.type}`);
         set({
           config,
           isConfigured,
           backendType: config.type,
         });
       }
-    } catch {
-      // Config not yet saved — that's fine
+    } catch (e) {
+      console.error('[SyncStore] loadConfig error:', e);
     }
   },
 
@@ -119,8 +122,15 @@ export const useSyncStore = create<SyncState>((set, get) => ({
       notifyOnComplete:
         (existing as WebDavConfig)?.notifyOnComplete ?? DEFAULT_SYNC_CONFIG.notifyOnComplete,
     };
+    console.log(`[SyncStore] saveWebDavConfig: saving config and password...`);
+    console.log(`[SyncStore] saveWebDavConfig: SYNC_CONFIG_KEY = "${SYNC_CONFIG_KEY}", SYNC_SECRET_KEYS.webdav = "${SYNC_SECRET_KEYS.webdav}"`);
     await platform.kvSetItem(SYNC_CONFIG_KEY, JSON.stringify(config));
     await platform.kvSetItem(SYNC_SECRET_KEYS.webdav, password);
+    
+    // Verify save
+    const savedPassword = await platform.kvGetItem(SYNC_SECRET_KEYS.webdav);
+    console.log(`[SyncStore] saveWebDavConfig: password verification = ${savedPassword ? 'SUCCESS' : 'FAILED'}`);
+    
     set({ config, isConfigured: true, backendType: "webdav" });
   },
 
@@ -164,7 +174,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     }
   },
 
-  syncNow: async (resolvedDirection) => {
+  syncNow: async (resolvedDirection, useIncremental) => {
     const state = get();
     if (state.status !== "idle") return null;
     if (!state.isConfigured || !state.config) {
@@ -182,13 +192,22 @@ export const useSyncStore = create<SyncState>((set, get) => ({
       return null;
     }
 
+    // Enforce wifiOnly setting
+    if (state.config.type !== "lan" && "wifiOnly" in state.config && state.config.wifiOnly) {
+      if (platform.isOnWifi) {
+        const isWifi = await platform.isOnWifi();
+        if (!isWifi) {
+          set({ error: "Sync skipped: WiFi-only mode is enabled and device is not on WiFi" });
+          return null;
+        }
+      }
+    }
+
     set({ status: "checking", error: null, pendingDirection: null });
 
     try {
-      // Create backend instance
       const backend = createSyncBackend(state.config, secret || "");
 
-      // Test connection
       const connected = await backend.testConnection();
       if (!connected) {
         throw new Error("Failed to connect to sync backend");
@@ -200,7 +219,6 @@ export const useSyncStore = create<SyncState>((set, get) => ({
       if (resolvedDirection) {
         direction = resolvedDirection;
       } else {
-        // Determine direction automatically
         const result = await determineSyncDirection(backend);
         remoteManifest = result.remoteManifest;
 
@@ -223,7 +241,6 @@ export const useSyncStore = create<SyncState>((set, get) => ({
         direction = result.direction;
       }
 
-      // Execute sync
       set({
         status: direction === "upload" ? "uploading" : "downloading",
         progress: null,
@@ -248,12 +265,16 @@ export const useSyncStore = create<SyncState>((set, get) => ({
         }
       };
 
+      const shouldUseIncremental = useIncremental ?? (remoteManifest !== null);
+      console.log(`[SyncStore] Using incremental sync: ${shouldUseIncremental} (hasRemoteManifest: ${remoteManifest !== null})`);
+
       const syncResult = await runSync(
         backend,
         direction,
         onProgress,
         remoteManifest,
         onDatabaseReplaced,
+        shouldUseIncremental,
       );
 
       set({
@@ -280,7 +301,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     }
   },
 
-  syncWithBackend: async (backend, resolvedDirection) => {
+  syncWithBackend: async (backend, resolvedDirection, useIncremental = true) => {
     const state = get();
     if (state.status !== "idle") return null;
 
@@ -322,7 +343,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
         }
       };
 
-      const syncResult = await runSync(backend, direction, onProgress, remoteManifest, onDatabaseReplaced);
+      const syncResult = await runSync(backend, direction, onProgress, remoteManifest, onDatabaseReplaced, useIncremental);
 
       set({ status: "idle", lastSyncAt: Date.now(), lastResult: syncResult, error: syncResult.error || null, pendingDirection: null, progress: null });
       return syncResult;

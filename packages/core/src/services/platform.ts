@@ -98,6 +98,8 @@ export interface IPlatformService {
   shareOrDownloadFile(content: string, filename: string, mimeType: string): Promise<void>;
 
   // ---- LAN Sync ----
+  // Check if device is on WiFi (returns true on desktop)
+  isOnWifi?(): Promise<boolean>;
   // Get local IP address for LAN sync
   getLocalIP?(): Promise<string>;
   // Start a local HTTP server for LAN sync
