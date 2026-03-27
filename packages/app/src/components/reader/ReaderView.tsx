@@ -247,10 +247,14 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
   // Current section index for chapter translation
   const [currentSectionIndex, setCurrentSectionIndex] = useState(0);
 
+  // Track when foliate is ready to receive annotations
+  const [foliateReady, setFoliateReady] = useState(false);
+
   // Chapter translation hook
   const chapterTranslation = useChapterTranslation({
     bookId,
     sectionIndex: currentSectionIndex,
+    ready: foliateReady,
     getParagraphs: () => foliateRef.current?.getChapterParagraphs() ?? [],
     injectTranslations: (results) => foliateRef.current?.injectChapterTranslations(results),
     removeTranslations: () => foliateRef.current?.removeChapterTranslations(),
@@ -258,9 +262,6 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
 
   // Track which highlights have been rendered (id -> {cfi, note}) to detect changes
   const renderedHighlightsRef = useRef<Map<string, { cfi: string; hasNote: boolean }>>(new Map());
-
-  // Track when foliate is ready to receive annotations
-  const [foliateReady, setFoliateReady] = useState(false);
 
   // Reset rendered highlights tracking when book changes
   useEffect(() => {
@@ -582,17 +583,18 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
       const contents = renderer?.getContents?.();
       if (!contents?.[0]?.doc) return;
       const doc = contents[0].doc as Document;
+      const { originalVisible, translationVisible } = chapterTranslation.state;
       // Translation elements
       const translationEls = doc.querySelectorAll(".readany-translation");
-      const translationHidden = !chapterTranslation.state.translationVisible;
       translationEls.forEach((el) => {
-        (el as HTMLElement).setAttribute("data-hidden", String(translationHidden));
+        (el as HTMLElement).setAttribute("data-hidden", String(!translationVisible));
+        // When original is hidden, show translation in original style
+        (el as HTMLElement).setAttribute("data-solo", String(!originalVisible && translationVisible));
       });
       // Original text elements
       const originalEls = doc.querySelectorAll("[data-translate-id]");
-      const originalHidden = !chapterTranslation.state.originalVisible;
       originalEls.forEach((el) => {
-        (el as HTMLElement).setAttribute("data-original-hidden", String(originalHidden));
+        (el as HTMLElement).setAttribute("data-original-hidden", String(!originalVisible));
       });
     } catch {
       // Ignore

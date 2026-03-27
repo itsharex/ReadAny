@@ -7,9 +7,9 @@
  * Supports progressive injection, cancellation, and visibility toggle.
  */
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSettingsStore } from "../stores/settings-store";
-import { markChapterFullyCached } from "../translation/chapter-cache";
+import { isChapterFullyCached, markChapterFullyCached } from "../translation/chapter-cache";
 import type {
   ChapterParagraph,
   ChapterTranslationProgress,
@@ -31,6 +31,8 @@ export type ChapterTranslationState =
 export interface UseChapterTranslationOptions {
   bookId: string;
   sectionIndex: number;
+  /** Whether the reader is ready (DOM loaded) — auto-restore waits for this */
+  ready?: boolean;
   /** Extract paragraphs from the current section DOM */
   getParagraphs: () => Promise<ChapterParagraph[]> | ChapterParagraph[];
   /** Inject translated paragraphs into the DOM */
@@ -40,10 +42,11 @@ export interface UseChapterTranslationOptions {
 }
 
 export function useChapterTranslation(options: UseChapterTranslationOptions) {
-  const { bookId, sectionIndex, getParagraphs, injectTranslations, removeTranslations } = options;
+  const { bookId, sectionIndex, ready = true, getParagraphs, injectTranslations, removeTranslations } = options;
 
   const [state, setState] = useState<ChapterTranslationState>({ status: "idle" });
   const abortRef = useRef<AbortController | null>(null);
+  const autoRestoreAttemptedRef = useRef<string>("");
 
   const translationConfig = useSettingsStore((s) => s.translationConfig);
   const aiConfig = useSettingsStore((s) => s.aiConfig);
@@ -149,9 +152,27 @@ export function useChapterTranslation(options: UseChapterTranslationOptions) {
   const reset = useCallback(() => {
     abortRef.current?.abort();
     abortRef.current = null;
+    autoRestoreAttemptedRef.current = "";
     removeTranslations();
     setState({ status: "idle" });
   }, [removeTranslations]);
+
+  // ---- Auto-restore cached translations on section load -----------------------
+  useEffect(() => {
+    const key = `${bookId}_${sectionIndex}_${translationConfig.targetLang}`;
+    // Only attempt once per section+lang combo, and only when idle+ready
+    if (!ready || state.status !== "idle" || autoRestoreAttemptedRef.current === key) return;
+    autoRestoreAttemptedRef.current = key;
+
+    let cancelled = false;
+    isChapterFullyCached(bookId, sectionIndex, translationConfig.targetLang).then((cached) => {
+      if (cached && !cancelled) {
+        startTranslation();
+      }
+    }).catch(() => {});
+
+    return () => { cancelled = true; };
+  }, [ready, bookId, sectionIndex, translationConfig.targetLang, state.status, startTranslation]);
 
   return { state, startTranslation, cancelTranslation, toggleOriginalVisible, toggleTranslationVisible, reset };
 }

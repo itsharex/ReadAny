@@ -317,6 +317,7 @@ export function ReaderScreen({ route, navigation }: Props) {
   const chapterTranslation = useChapterTranslation({
     bookId,
     sectionIndex: currentSectionIndex,
+    ready: webViewReady && !loading,
     getParagraphs: async () => {
       if (!chapterTranslationBridgeRef.current) return [];
       return chapterTranslationBridgeRef.current.getChapterParagraphs();
@@ -567,8 +568,10 @@ export function ReaderScreen({ route, navigation }: Props) {
   // Sync chapter translation visibility with WebView DOM
   useEffect(() => {
     if (chapterTranslation.state.status !== "complete") return;
-    const translationHidden = !chapterTranslation.state.translationVisible;
-    const originalHidden = !chapterTranslation.state.originalVisible;
+    const { originalVisible, translationVisible } = chapterTranslation.state;
+    const translationHidden = !translationVisible;
+    const originalHidden = !originalVisible;
+    const solo = !originalVisible && translationVisible;
     // Inject JS to toggle data-hidden on translation elements and data-original-hidden on originals
     bridge.webViewRef.current?.injectJavaScript(`
       (function() {
@@ -592,6 +595,7 @@ export function ReaderScreen({ route, navigation }: Props) {
           var els = doc.querySelectorAll('.readany-translation');
           for (var i = 0; i < els.length; i++) {
             els[i].setAttribute('data-hidden', '${translationHidden}');
+            els[i].setAttribute('data-solo', '${solo}');
           }
           var origEls = doc.querySelectorAll('[data-translate-id]');
           for (var j = 0; j < origEls.length; j++) {
