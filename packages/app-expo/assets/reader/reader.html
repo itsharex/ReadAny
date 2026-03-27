@@ -742,8 +742,10 @@
         var walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, {
           acceptNode: function(node) {
             if (!node.nodeValue || !node.nodeValue.trim()) return NodeFilter.FILTER_SKIP;
-            var tag = node.parentElement && node.parentElement.tagName && node.parentElement.tagName.toLowerCase();
+            var parent = node.parentElement;
+            var tag = parent && parent.tagName && parent.tagName.toLowerCase();
             if (tag === 'script' || tag === 'style') return NodeFilter.FILTER_REJECT;
+            if (parent && parent.closest && parent.closest('.readany-translation')) return NodeFilter.FILTER_REJECT;
             return NodeFilter.FILTER_ACCEPT;
           }
         });
@@ -808,8 +810,10 @@
         var walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, {
           acceptNode: function(node) {
             if (!node.nodeValue || !node.nodeValue.trim()) return NodeFilter.FILTER_SKIP;
-            var tag = node.parentElement && node.parentElement.tagName && node.parentElement.tagName.toLowerCase();
+            var parent = node.parentElement;
+            var tag = parent && parent.tagName && parent.tagName.toLowerCase();
             if (tag === 'script' || tag === 'style') return NodeFilter.FILTER_REJECT;
+            if (parent && parent.closest && parent.closest('.readany-translation')) return NodeFilter.FILTER_REJECT;
             return NodeFilter.FILTER_ACCEPT;
           }
         });
@@ -1199,6 +1203,8 @@
             '  line-height: 1.5;',
             '  margin-top: 4px;',
             '  margin-bottom: 8px;',
+            '  user-select: none;',
+            '  -webkit-user-select: none;',
             '  padding-left: 8px;',
             '  border-left: 2px solid #d1d5db;',
             '  opacity: 0.85;',

@@ -43,6 +43,7 @@ export function ChapterTranslationSheet({
   const colors = useColors();
   const s = makeStyles(colors);
   const defaultLang = useSettingsStore((ss) => ss.translationConfig.targetLang);
+  const setTranslationLang = useSettingsStore((ss) => ss.setTranslationLang);
   const [selectedLang, setSelectedLang] = useState<TranslationTargetLang>(defaultLang);
   const [showLangPicker, setShowLangPicker] = useState(false);
 
@@ -67,6 +68,7 @@ export function ChapterTranslationSheet({
           <Pressable
             style={s.primaryButton}
             onPress={() => {
+              setTranslationLang(selectedLang);
               onStart(selectedLang);
             }}
           >
@@ -217,7 +219,10 @@ export function ChapterTranslationSheet({
           <Text style={[s.statusText, { color: colors.destructive || "#ef4444", textAlign: "center" }]} numberOfLines={2}>
             {state.message}
           </Text>
-          <Pressable style={s.primaryButton} onPress={() => onStart(selectedLang)}>
+          <Pressable style={s.primaryButton} onPress={() => {
+            setTranslationLang(selectedLang);
+            onStart(selectedLang);
+          }}>
             <Text style={s.primaryButtonText}>{t("common.retry")}</Text>
           </Pressable>
           <Pressable

@@ -335,6 +335,7 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
                   const parent = (node as Text).parentElement;
                   const tag = parent?.tagName?.toLowerCase();
                   if (tag === "script" || tag === "style") return NodeFilter.FILTER_REJECT;
+                  if (parent?.closest?.(".readany-translation")) return NodeFilter.FILTER_REJECT;
                   return NodeFilter.FILTER_ACCEPT;
                 },
               });
@@ -445,6 +446,8 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
                   font-size: 0.9em;
                   line-height: 1.5;
                   margin-top: 4px;
+                  user-select: none;
+                  -webkit-user-select: none;
                   margin-bottom: 8px;
                   padding-left: 8px;
                   border-left: 2px solid #d1d5db;

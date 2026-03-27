@@ -49,6 +49,7 @@ export function ChapterTranslationMenu({
 }: ChapterTranslationMenuProps) {
   const { t } = useTranslation();
   const defaultLang = useSettingsStore((s) => s.translationConfig.targetLang);
+  const setTranslationLang = useSettingsStore((s) => s.setTranslationLang);
   const [selectedLang, setSelectedLang] = useState<TranslationTargetLang>(defaultLang);
 
   const isActive = state.status !== "idle";
@@ -89,7 +90,10 @@ export function ChapterTranslationMenu({
             </div>
             <DropdownMenuItem
               className="gap-2 text-xs"
-              onSelect={() => onStart(selectedLang)}
+              onSelect={() => {
+                setTranslationLang(selectedLang);
+                onStart(selectedLang);
+              }}
             >
               <Languages className="h-3.5 w-3.5" />
               {t("translation.translateChapter")}
@@ -200,7 +204,10 @@ export function ChapterTranslationMenu({
             <DropdownMenuSeparator />
             <DropdownMenuItem
               className="gap-2 text-xs"
-              onSelect={() => onStart(selectedLang)}
+              onSelect={() => {
+                setTranslationLang(selectedLang);
+                onStart(selectedLang);
+              }}
             >
               <Languages className="h-3.5 w-3.5" />
               {t("common.retry")}
