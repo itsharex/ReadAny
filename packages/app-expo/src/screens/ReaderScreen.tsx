@@ -1698,7 +1698,7 @@ export function ReaderScreen({ route, navigation }: Props) {
       >
         <KeyboardAvoidingView
           style={s.noteViewOverlay}
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
         >
           <TouchableOpacity
             style={StyleSheet.absoluteFill}

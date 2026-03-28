@@ -33,7 +33,6 @@ import { I18nextProvider } from "react-i18next";
 
 import { ExpoPlatformService } from "@/lib/platform/expo-platform-service";
 import { MobileSyncAdapter } from "@/lib/sync/sync-adapter-mobile";
-import { RNEmbeddingEngine } from "@/lib/ai/rn-embedding-engine";
 import { UpdateDialog } from "@/components/update/UpdateDialog";
 import { useUpdateChecker } from "@/hooks/use-update-checker";
 import { RootNavigator } from "@/navigation/RootNavigator";
@@ -75,9 +74,8 @@ export default function App() {
       const { fetch: expoFetch } = await import("expo/fetch");
       setStreamingFetch(expoFetch as typeof globalThis.fetch);
 
-      // 8. Inject React Native local embedding engine
-      const { setLocalEmbeddingEngine } = await import("@readany/core/ai/local-embedding-service");
-      setLocalEmbeddingEngine(new RNEmbeddingEngine());
+      // Note: Mobile app only supports remote embedding APIs (OpenAI, DeepSeek, etc.)
+      // Local embedding is not supported to reduce APK size by ~100MB
 
       setReady(true);
     }
