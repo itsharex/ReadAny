@@ -35,17 +35,10 @@
       "WebFetch(domain:mozilla.github.io)",
       "WebFetch(domain:jsdev.space)",
       "WebFetch(domain:pdf-lib.js.org)",
-      "Read(//Users/bealqiu/Downloads/**)",
-      "Read(//Users/bealqiu/Desktop/**)",
-      "Bash(iconv:*)",
-      "Bash(/tmp/txt_import_analysis.md:*)",
-      "Read(//tmp/**)",
-      "Bash(npm install:*)",
-      "Bash(grep \"\"packageManager\"\":*)",
-      "Bash(grep \"\"main\"\":*)",
-      "Bash(/tmp/encoding_detection_flow.txt:*)",
-      "Bash(gh pr:*)",
-      "Bash(gh api:*)"
+      "Bash(xargs basename:*)",
+      "WebFetch(domain:deepwiki.com)",
+      "WebFetch(domain:daviddaytw.github.io)",
+      "WebFetch(domain:docs.rs)"
     ]
   }
 }

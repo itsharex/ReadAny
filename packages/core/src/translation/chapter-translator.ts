@@ -24,8 +24,8 @@ export interface ChapterParagraph {
 }
 
 export interface ChapterTranslationProgress {
-  totalParagraphs: number;
-  translatedCount: number;
+  totalChars: number;
+  translatedChars: number;
 }
 
 export interface ChapterTranslationResult {
@@ -39,8 +39,8 @@ export interface TranslateChapterOptions {
   sourceLang: string;
   targetLang: string;
   config: TranslationConfig;
-  /** How many paragraphs per API call (default 5) */
-  chunkSize?: number;
+  /** Target characters per API call (default 2000) */
+  charsPerChunk?: number;
   /** Max concurrent chunk requests (default 2) */
   concurrency?: number;
   /** Called after each chunk is translated */
@@ -49,6 +49,43 @@ export interface TranslateChapterOptions {
   onChunkComplete?: (results: ChapterTranslationResult[]) => void;
   /** Abort signal – checked between chunks */
   signal?: AbortSignal;
+}
+
+// ---------------------------------------------------------------------------
+// Helper: split paragraphs into chunks by character count
+// ---------------------------------------------------------------------------
+
+function splitByCharCount(
+  paragraphs: ChapterParagraph[],
+  targetChars: number,
+): ChapterParagraph[][] {
+  const chunks: ChapterParagraph[][] = [];
+  let currentChunk: ChapterParagraph[] = [];
+  let currentChars = 0;
+
+  for (const para of paragraphs) {
+    const paraLen = para.text.length;
+
+    if (currentChunk.length === 0) {
+      currentChunk.push(para);
+      currentChars = paraLen;
+    } else if (currentChars + paraLen <= targetChars) {
+      currentChunk.push(para);
+      currentChars += paraLen;
+    } else {
+      if (currentChunk.length > 0) {
+        chunks.push(currentChunk);
+      }
+      currentChunk = [para];
+      currentChars = paraLen;
+    }
+  }
+
+  if (currentChunk.length > 0) {
+    chunks.push(currentChunk);
+  }
+
+  return chunks;
 }
 
 // ---------------------------------------------------------------------------
@@ -63,7 +100,7 @@ export async function translateChapter(
     sourceLang,
     targetLang,
     config,
-    chunkSize = 5,
+    charsPerChunk = 2000,
     concurrency = 2,
     onProgress,
     onChunkComplete,
@@ -71,6 +108,9 @@ export async function translateChapter(
   } = options;
 
   const providerId = config.provider.id;
+
+  // Calculate total characters for progress
+  const totalChars = paragraphs.reduce((sum, p) => sum + p.text.length, 0);
 
   // 1. Check cache for each paragraph -----------------------------------------
   const allResults: ChapterTranslationResult[] = [];
@@ -96,18 +136,21 @@ export async function translateChapter(
     onChunkComplete?.(allResults);
   }
 
-  let translatedCount = allResults.length;
-  onProgress?.({ totalParagraphs: paragraphs.length, translatedCount });
+  // Report progress for cached results
+  const cachedChars = allResults.reduce((sum, r) => sum + r.originalText.length, 0);
+  let translatedChars = cachedChars;
+  onProgress?.({ totalChars, translatedChars });
 
   if (uncachedParas.length === 0) {
     return allResults;
   }
 
-  // 2. Split uncached paragraphs into chunks -----------------------------------
-  const chunks: ChapterParagraph[][] = [];
-  for (let i = 0; i < uncachedParas.length; i += chunkSize) {
-    chunks.push(uncachedParas.slice(i, i + chunkSize));
-  }
+  // 2. Split uncached paragraphs into chunks by character count ---------------
+  const chunks = splitByCharCount(uncachedParas, charsPerChunk);
+
+  console.log(
+    `[translateChapter] Split ${uncachedParas.length} paragraphs into ${chunks.length} chunks (target: ${charsPerChunk} chars/chunk)`,
+  );
 
   // 3. Process chunks with bounded concurrency ---------------------------------
   const newResults: ChapterTranslationResult[] = [];
@@ -167,8 +210,10 @@ export async function translateChapter(
         }
       }
 
-      translatedCount += chunk.length;
-      onProgress?.({ totalParagraphs: paragraphs.length, translatedCount });
+      // Update progress based on characters translated
+      const chunkChars = chunk.reduce((sum, p) => sum + p.text.length, 0);
+      translatedChars += chunkChars;
+      onProgress?.({ totalChars, translatedChars });
       onChunkComplete?.(chunkResults);
     }
   }

@@ -350,7 +350,7 @@ export default function AISettingsScreen() {
 
       <KeyboardAvoidingView
         style={styles.keyboardView}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
         <ScrollView
           style={styles.scroll}
@@ -841,6 +841,8 @@ const makeStyles = (colors: ThemeColors) =>
       backgroundColor: colors.background,
       fontSize: fontSize.sm,
       color: colors.foreground,
-      textAlignVertical: "center",
+      paddingHorizontal: 4,
+      paddingVertical: 6,
+      textAlign: "center",
     },
   });

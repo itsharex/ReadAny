@@ -90,7 +90,8 @@ export function ChapterTranslationMenu({
             </div>
             <DropdownMenuItem
               className="gap-2 text-xs"
-              onSelect={() => {
+              onSelect={(e) => {
+                e.preventDefault();
                 setTranslationLang(selectedLang);
                 onStart(selectedLang);
               }}
@@ -111,8 +112,8 @@ export function ChapterTranslationMenu({
 
         {/* ── translating: progress + cancel ── */}
         {state.status === "translating" && (() => {
-          const { translatedCount, totalParagraphs } = state.progress;
-          const pct = totalParagraphs > 0 ? Math.round((translatedCount / totalParagraphs) * 100) : 0;
+          const { translatedChars, totalChars } = state.progress;
+          const pct = totalChars > 0 ? Math.round((translatedChars / totalChars) * 100) : 0;
           return (
             <>
               <div className="px-2 py-2 space-y-1.5">
@@ -120,8 +121,8 @@ export function ChapterTranslationMenu({
                   <Loader2 className="h-3.5 w-3.5 animate-spin text-primary shrink-0" />
                   <span className="text-xs text-muted-foreground">
                     {t("translation.translatingProgress", {
-                      count: translatedCount,
-                      total: totalParagraphs,
+                      count: Math.round(translatedChars / 100),
+                      total: Math.round(totalChars / 100),
                     })}
                   </span>
                 </div>
@@ -153,6 +154,35 @@ export function ChapterTranslationMenu({
                 {t("translation.chapterTranslated")}
               </span>
             </div>
+            <DropdownMenuSeparator />
+            <div className="px-2 py-1.5">
+              <Select
+                value={selectedLang}
+                onValueChange={(v) => setSelectedLang(v as TranslationTargetLang)}
+              >
+                <SelectTrigger className="h-7 w-full text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(TRANSLATOR_LANGS).map(([code, name]) => (
+                    <SelectItem key={code} value={code} className="text-xs">
+                      {name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <DropdownMenuItem
+              className="gap-2 text-xs"
+              onSelect={(e) => {
+                e.preventDefault();
+                setTranslationLang(selectedLang);
+                onStart(selectedLang);
+              }}
+            >
+              <Languages className="h-3.5 w-3.5" />
+              {t("translation.translateChapter")}
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
               className="gap-2 text-xs"
@@ -187,7 +217,10 @@ export function ChapterTranslationMenu({
             <DropdownMenuSeparator />
             <DropdownMenuItem
               className="gap-2 text-xs text-destructive"
-              onSelect={onReset}
+              onSelect={(e) => {
+                e.preventDefault();
+                onReset();
+              }}
             >
               <Trash2 className="h-3.5 w-3.5" />
               {t("common.remove")}
@@ -204,7 +237,8 @@ export function ChapterTranslationMenu({
             <DropdownMenuSeparator />
             <DropdownMenuItem
               className="gap-2 text-xs"
-              onSelect={() => {
+              onSelect={(e) => {
+                e.preventDefault();
                 setTranslationLang(selectedLang);
                 onStart(selectedLang);
               }}
@@ -214,7 +248,10 @@ export function ChapterTranslationMenu({
             </DropdownMenuItem>
             <DropdownMenuItem
               className="gap-2 text-xs text-destructive"
-              onSelect={onReset}
+              onSelect={(e) => {
+                e.preventDefault();
+                onReset();
+              }}
             >
               <Trash2 className="h-3.5 w-3.5" />
               {t("common.remove")}

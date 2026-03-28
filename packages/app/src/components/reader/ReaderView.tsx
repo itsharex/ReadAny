@@ -260,6 +260,8 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
     getParagraphs: () => foliateRef.current?.getChapterParagraphs() ?? [],
     injectTranslations: (results) => foliateRef.current?.injectChapterTranslations(results),
     removeTranslations: () => foliateRef.current?.removeChapterTranslations(),
+    applyVisibility: (originalVisible, translationVisible) =>
+      foliateRef.current?.applyChapterTranslationVisibility(originalVisible, translationVisible),
   });
 
   // Track which highlights have been rendered (id -> {cfi, note}) to detect changes
@@ -278,7 +280,14 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
   // Unified navigation function that records history
   const navigateToCfi = useCallback(
     (cfi: string) => {
-      if (!foliateRef.current || !readerTab) return;
+      if (!foliateRef.current || !readerTab) {
+        console.warn("[ReaderView] navigateToCfi aborted:", {
+          hasFoliate: !!foliateRef.current,
+          hasReaderTab: !!readerTab,
+          tabId,
+        });
+        return;
+      }
 
       // Push CURRENT location to history before jumping
       if (readerTab.currentCfi) {
@@ -495,7 +504,7 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
 
       // Update chapter info
       if (detail.tocItem?.label) {
-        setChapter(tabId, detail.section?.current ?? 0, detail.tocItem.label);
+        setChapter(tabId, detail.section?.current ?? 0, detail.tocItem.label, detail.tocItem.href);
       }
 
       // Track pages (reference: Readest progressRelocateHandler)
@@ -709,13 +718,10 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
   }, []);
 
   const handleGoToChapter = useCallback(
-    (index: number) => {
-      const item = tocItems[index];
-      if (item?.href) {
-        foliateRef.current?.goToHref(item.href);
-      }
+    (href: string) => {
+      foliateRef.current?.goToHref(href);
     },
-    [tocItems],
+    [],
   );
 
   // --- Selection actions ---
@@ -1055,7 +1061,7 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
       setSearchIndex(0);
       navigateToCfi(results[0].cfi);
     }
-  }, []);
+  }, [navigateToCfi, setSearchResults, setSearchIndex]);
 
   const navigateSearchResult = useCallback((direction: "next" | "prev") => {
     const results = searchResultsListRef.current;
@@ -1069,7 +1075,7 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
       navigateToCfi(results[next].cfi);
       return next;
     });
-  }, []);
+  }, [navigateToCfi]);
 
   const handleNavigateToCitation = useCallback((citation: CitationPart) => {
     if (!citation.cfi || citation.cfi.trim() === "") {
@@ -1134,7 +1140,7 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
     } catch (error) {
       console.error("[handleNavigateToCitation] Failed to navigate to citation:", error, citation);
     }
-  }, []);
+  }, [navigateToCfi]);
 
   if (!readerTab) {
     return <div className="flex h-full items-center justify-center">{t("common.loading")}</div>;
@@ -1350,8 +1356,8 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
             <div className="absolute top-2 bottom-2 left-0 z-50 flex animate-in slide-in-from-left duration-200">
               <TOCPanel
                 tocItems={tocItems}
-                onGoToChapter={(index) => {
-                  handleGoToChapter(index);
+                onGoToChapter={(href) => {
+                  handleGoToChapter(href);
                   setShowToc(false);
                 }}
                 onGoToCfi={(cfi) => {

@@ -131,8 +131,8 @@ export function ChapterTranslationSheet({
 
     // ── translating: progress + cancel ──
     if (state.status === "translating") {
-      const { translatedCount, totalParagraphs } = state.progress;
-      const pct = totalParagraphs > 0 ? Math.round((translatedCount / totalParagraphs) * 100) : 0;
+      const { translatedChars, totalChars } = state.progress;
+      const pct = totalChars > 0 ? Math.round((translatedChars / totalChars) * 100) : 0;
 
       return (
         <>
@@ -140,8 +140,8 @@ export function ChapterTranslationSheet({
             <ActivityIndicator size="small" color={colors.primary} />
             <Text style={s.statusText}>
               {t("translation.translatingProgress", {
-                count: translatedCount,
-                total: totalParagraphs,
+                count: Math.round(translatedChars / 100),
+                total: Math.round(totalChars / 100),
               })}
             </Text>
           </View>
@@ -165,6 +165,24 @@ export function ChapterTranslationSheet({
               {t("translation.chapterTranslated")}
             </Text>
           </View>
+
+          <Pressable style={s.langSelector} onPress={() => setShowLangPicker(true)}>
+            <Text style={s.langSelectorLabel}>{t("translation.targetLanguage")}</Text>
+            <View style={s.langSelectorValue}>
+              <Text style={s.langSelectorText}>{TRANSLATOR_LANGS[selectedLang]}</Text>
+              <Text style={s.langChevron}>▾</Text>
+            </View>
+          </Pressable>
+
+          <Pressable
+            style={s.primaryButton}
+            onPress={() => {
+              setTranslationLang(selectedLang);
+              onStart(selectedLang);
+            }}
+          >
+            <Text style={s.primaryButtonText}>{t("translation.translateChapter")}</Text>
+          </Pressable>
 
           <View style={s.toggleRow}>
             <Pressable
@@ -208,6 +226,47 @@ export function ChapterTranslationSheet({
               <Text style={s.destructiveButtonText}>{t("common.remove")}</Text>
             </View>
           </Pressable>
+
+          {/* Language picker modal */}
+          <Modal
+            visible={showLangPicker}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setShowLangPicker(false)}
+          >
+            <Pressable style={s.langModalOverlay} onPress={() => setShowLangPicker(false)}>
+              <View style={s.langModalContent}>
+                <Text style={s.langModalTitle}>
+                  {t("translation.selectLanguage", { defaultValue: "Select Language" })}
+                </Text>
+                <FlatList
+                  data={Object.entries(TRANSLATOR_LANGS) as [TranslationTargetLang, string][]}
+                  keyExtractor={([code]) => code}
+                  renderItem={({ item: [code, name] }) => (
+                    <Pressable
+                      style={[
+                        s.langOption,
+                        code === selectedLang && { backgroundColor: colors.muted },
+                      ]}
+                      onPress={() => {
+                        setSelectedLang(code as TranslationTargetLang);
+                        setShowLangPicker(false);
+                      }}
+                    >
+                      <Text
+                        style={[
+                          s.langOptionText,
+                          code === selectedLang && { color: colors.primary },
+                        ]}
+                      >
+                        {name}
+                      </Text>
+                    </Pressable>
+                  )}
+                />
+              </View>
+            </Pressable>
+          </Modal>
         </>
       );
     }

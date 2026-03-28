@@ -40,6 +40,7 @@ import { useReadingSession } from "@readany/core/hooks/use-reading-session";
 import { getPlatformService } from "@readany/core/services";
 import type { TOCItem } from "@readany/core/types";
 import { generateId } from "@readany/core/utils";
+import { throttle } from "@readany/core/utils/throttle";
 import { Asset } from "expo-asset";
 import * as FileSystem from "expo-file-system/legacy";
 /**
@@ -242,6 +243,7 @@ export function ReaderScreen({ route, navigation }: Props) {
   const [toc, setToc] = useState<TOCItem[]>([]);
   const [bookTitle, setBookTitle] = useState("");
   const [webViewReady, setWebViewReady] = useState(false);
+  const [translationReady, setTranslationReady] = useState(false);
   const [readerHtmlUri, setReaderHtmlUri] = useState<string | null>(null);
   const [currentCfi, setCurrentCfi] = useState("");
   const [pageSnippet, setPageSnippet] = useState("");
@@ -272,6 +274,7 @@ export function ReaderScreen({ route, navigation }: Props) {
 
   // Chapter translation state
   const [currentSectionIndex, setCurrentSectionIndex] = useState(0);
+  const webViewRefForVisibility = useRef<WebView | null>(null);
   const chapterTranslationBridgeRef = useRef<{
     getChapterParagraphs: () => Promise<Array<{ id: string; text: string; tagName: string }>>;
     injectChapterTranslations: (results: Array<{ paragraphId: string; originalText: string; translatedText: string }>) => void;
@@ -298,6 +301,16 @@ export function ReaderScreen({ route, navigation }: Props) {
   const {} = useReadingSessionStore(); // Removed startSession and stopSession
   const { sendEvent } = useReadingSession(bookId); // Added useReadingSession hook
   const { books, updateBook } = useLibraryStore();
+
+  // Throttled progress save (same as desktop - 5 seconds)
+  const throttledSaveProgress = useRef(
+    throttle((bId: string, prog: number, cfi: string) => {
+      updateBook(bId, {
+        progress: prog,
+        currentCfi: cfi,
+      });
+    }, 5000),
+  ).current;
   const {
     addHighlight,
     removeHighlight,
@@ -317,7 +330,7 @@ export function ReaderScreen({ route, navigation }: Props) {
   const chapterTranslation = useChapterTranslation({
     bookId,
     sectionIndex: currentSectionIndex,
-    ready: webViewReady && !loading,
+    ready: translationReady,
     getParagraphs: async () => {
       if (!chapterTranslationBridgeRef.current) return [];
       return chapterTranslationBridgeRef.current.getChapterParagraphs();
@@ -327,6 +340,43 @@ export function ReaderScreen({ route, navigation }: Props) {
     },
     removeTranslations: () => {
       chapterTranslationBridgeRef.current?.removeChapterTranslations();
+    },
+    applyVisibility: (originalVisible, translationVisible) => {
+      const translationHidden = !translationVisible;
+      const originalHidden = !originalVisible;
+      const solo = !originalVisible && translationVisible;
+      webViewRefForVisibility.current?.injectJavaScript(`
+        (function() {
+          try {
+            var doc = null;
+            var renderer = typeof view !== 'undefined' && view && view.renderer;
+            if (renderer && renderer.getContents) {
+              var contents = renderer.getContents();
+              if (contents && contents[0] && contents[0].doc) doc = contents[0].doc;
+            }
+            if (!doc) {
+              var iframes = document.querySelectorAll('iframe');
+              for (var fi = 0; fi < iframes.length; fi++) {
+                try {
+                  var iframeDoc = iframes[fi].contentDocument || (iframes[fi].contentWindow && iframes[fi].contentWindow.document);
+                  if (iframeDoc && iframeDoc.body) { doc = iframeDoc; break; }
+                } catch (e) {}
+              }
+            }
+            if (!doc) return;
+            var els = doc.querySelectorAll('.readany-translation');
+            for (var i = 0; i < els.length; i++) {
+              els[i].setAttribute('data-hidden', '${translationHidden}');
+              els[i].setAttribute('data-solo', '${solo}');
+            }
+            var origEls = doc.querySelectorAll('[data-translate-id]');
+            for (var j = 0; j < origEls.length; j++) {
+              origEls[j].setAttribute('data-original-hidden', '${originalHidden}');
+            }
+          } catch(e) {}
+        })();
+        true;
+      `);
     },
   });
 
@@ -414,6 +464,7 @@ export function ReaderScreen({ route, navigation }: Props) {
       const newSection = detail.section?.current ?? 0;
       if (newSection !== currentSectionIndex) {
         setCurrentSectionIndex(newSection);
+        setTranslationReady(false);
         chapterTranslation.reset();
       }
 
@@ -435,11 +486,12 @@ export function ReaderScreen({ route, navigation }: Props) {
         }
         lastCfiRef.current = detail.cfi;
         setCurrentCfi(detail.cfi);
-        updateBook(bookId, {
-          progress: detail.fraction ?? 0,
-          currentCfi: detail.cfi,
-        });
+        // Use throttled save instead of immediate update
+        throttledSaveProgress(bookId, detail.fraction ?? 0, detail.cfi);
       }
+
+      // Mark translation ready after first successful relocate (CFI navigation done)
+      if (!translationReady) setTranslationReady(true);
 
       // Sync reading context for AI tools
       readingContextService.updateContext({
@@ -565,47 +617,12 @@ export function ReaderScreen({ route, navigation }: Props) {
   bridgeRef.current = bridge;
   chapterTranslationBridgeRef.current = bridge;
 
-  // Sync chapter translation visibility with WebView DOM
+  // Sync webViewRefForVisibility when WebView is ready
   useEffect(() => {
-    if (chapterTranslation.state.status !== "complete") return;
-    const { originalVisible, translationVisible } = chapterTranslation.state;
-    const translationHidden = !translationVisible;
-    const originalHidden = !originalVisible;
-    const solo = !originalVisible && translationVisible;
-    // Inject JS to toggle data-hidden on translation elements and data-original-hidden on originals
-    bridge.webViewRef.current?.injectJavaScript(`
-      (function() {
-        try {
-          var doc = null;
-          var renderer = typeof view !== 'undefined' && view && view.renderer;
-          if (renderer && renderer.getContents) {
-            var contents = renderer.getContents();
-            if (contents && contents[0] && contents[0].doc) doc = contents[0].doc;
-          }
-          if (!doc) {
-            var iframes = document.querySelectorAll('iframe');
-            for (var fi = 0; fi < iframes.length; fi++) {
-              try {
-                var iframeDoc = iframes[fi].contentDocument || (iframes[fi].contentWindow && iframes[fi].contentWindow.document);
-                if (iframeDoc && iframeDoc.body) { doc = iframeDoc; break; }
-              } catch (e) {}
-            }
-          }
-          if (!doc) return;
-          var els = doc.querySelectorAll('.readany-translation');
-          for (var i = 0; i < els.length; i++) {
-            els[i].setAttribute('data-hidden', '${translationHidden}');
-            els[i].setAttribute('data-solo', '${solo}');
-          }
-          var origEls = doc.querySelectorAll('[data-translate-id]');
-          for (var j = 0; j < origEls.length; j++) {
-            origEls[j].setAttribute('data-original-hidden', '${originalHidden}');
-          }
-        } catch(e) {}
-      })();
-      true;
-    `);
-  }, [chapterTranslation.state, bridge.webViewRef]);
+    if (webViewReady && bridge.webViewRef.current) {
+      webViewRefForVisibility.current = bridge.webViewRef.current;
+    }
+  }, [webViewReady]);
 
   // Load book
   useEffect(() => {
@@ -622,6 +639,20 @@ export function ReaderScreen({ route, navigation }: Props) {
       readingContextService.clearContext();
     };
   }, [bookId]);
+
+  // Save progress immediately on unmount
+  useEffect(() => {
+    return () => {
+      // Flush the last known position to database immediately
+      if (lastCfiRef.current) {
+        const db = require("@readany/core/db/database");
+        db.updateBook(bookId, {
+          progress: progress,
+          currentCfi: lastCfiRef.current,
+        }).catch((err: Error) => console.error("Failed to save progress on unmount:", err));
+      }
+    };
+  }, [bookId, progress]);
 
   // When WebView is ready and book is available, send the open command
   useEffect(() => {
@@ -641,10 +672,15 @@ export function ReaderScreen({ route, navigation }: Props) {
           encoding: FileSystem.EncodingType.Base64,
         });
 
+        // Get the latest currentCfi directly from database (not from store cache)
+        const db = await import("@readany/core/db/database");
+        const latestBook = await db.getBook(bookId);
+        const lastLocation = latestBook?.currentCfi || book.currentCfi || undefined;
+
         bridge.openBook({
           base64,
           fileName: book.filePath.split("/").pop() || "book.epub",
-          lastLocation: book.currentCfi || undefined,
+          lastLocation,
           pageMargin: settingPageMargin,
         });
 
@@ -663,7 +699,7 @@ export function ReaderScreen({ route, navigation }: Props) {
     };
 
     loadBook();
-  }, [webViewReady, book?.filePath]);
+  }, [webViewReady, book?.filePath, bookId]);
 
   // Apply theme colors when theme changes
   useEffect(() => {
@@ -872,18 +908,14 @@ export function ReaderScreen({ route, navigation }: Props) {
   }, [ttsPlay, ttsSetOnEnd, ttsStop]);
 
   const handleToggleTTS = useCallback(async () => {
-    console.log("[ReaderScreen] handleToggleTTS called, showTTS:", showTTS);
     if (showTTS) {
       ttsContinuousRef.current = false;
       ttsSetOnEnd(null);
       ttsStop();
       setShowTTS(false);
     } else {
-      // Show TTS panel first
       setShowTTS(true);
-      // Then get visible text and start playing
       const text = await bridgeRef.current?.getVisibleText();
-      console.log("[ReaderScreen] getVisibleText result:", text ? `${text.length} chars` : "null");
       if (text) {
         ttsContinuousRef.current = true;
         ttsSetOnEnd(handleTTSPageEnd);
@@ -893,18 +925,11 @@ export function ReaderScreen({ route, navigation }: Props) {
   }, [showTTS, ttsPlay, ttsStop, ttsSetOnEnd, handleTTSPageEnd]);
 
   const handleTTSReplay = useCallback(async () => {
-    console.log("[ReaderScreen] handleTTSReplay called");
     const text = await bridgeRef.current?.getVisibleText();
-    console.log(
-      "[ReaderScreen] getVisibleText result:",
-      text ? `"${text.substring(0, 50)}..." (${text.length} chars)` : "empty",
-    );
     if (text && text.trim()) {
       ttsContinuousRef.current = true;
       ttsSetOnEnd(handleTTSPageEnd);
       ttsPlay(text);
-    } else {
-      console.log("[ReaderScreen] No visible text found for TTS");
     }
   }, [ttsPlay, ttsSetOnEnd, handleTTSPageEnd]);
 
@@ -1673,7 +1698,7 @@ export function ReaderScreen({ route, navigation }: Props) {
       >
         <KeyboardAvoidingView
           style={s.noteViewOverlay}
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
         >
           <TouchableOpacity
             style={StyleSheet.absoluteFill}

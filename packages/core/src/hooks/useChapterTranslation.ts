@@ -9,7 +9,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSettingsStore } from "../stores/settings-store";
-import { isChapterFullyCached, markChapterFullyCached } from "../translation/chapter-cache";
+import {
+  clearChapterCache,
+  isChapterFullyCached,
+  markChapterFullyCached,
+} from "../translation/chapter-cache";
+import { getFromCache } from "../translation/cache";
 import type {
   ChapterParagraph,
   ChapterTranslationProgress,
@@ -39,10 +44,20 @@ export interface UseChapterTranslationOptions {
   injectTranslations: (results: ChapterTranslationResult[]) => void;
   /** Remove all injected translations from the DOM */
   removeTranslations: () => void;
+  /** Apply visibility settings to the DOM */
+  applyVisibility?: (originalVisible: boolean, translationVisible: boolean) => void;
 }
 
 export function useChapterTranslation(options: UseChapterTranslationOptions) {
-  const { bookId, sectionIndex, ready = true, getParagraphs, injectTranslations, removeTranslations } = options;
+  const {
+    bookId,
+    sectionIndex,
+    ready = true,
+    getParagraphs,
+    injectTranslations,
+    removeTranslations,
+    applyVisibility,
+  } = options;
 
   const [state, setState] = useState<ChapterTranslationState>({ status: "idle" });
   const abortRef = useRef<AbortController | null>(null);
@@ -56,6 +71,14 @@ export function useChapterTranslation(options: UseChapterTranslationOptions) {
   /** @param overrideTargetLang — if provided, overrides the settings targetLang for this run */
   const startTranslation = useCallback(
     async (overrideTargetLang?: string) => {
+      // Clear previous translation if any
+      if (state.status !== "idle") {
+        abortRef.current?.abort();
+        abortRef.current = null;
+        removeTranslations();
+        await clearChapterCache(bookId, sectionIndex);
+      }
+
       // Build effective config (resolve AI endpoint)
       const config = { ...translationConfig };
       if (overrideTargetLang) {
@@ -87,9 +110,10 @@ export function useChapterTranslation(options: UseChapterTranslationOptions) {
         const abortController = new AbortController();
         abortRef.current = abortController;
 
+        const totalChars = paragraphs.reduce((sum, p) => sum + p.text.length, 0);
         setState({
           status: "translating",
-          progress: { totalParagraphs: paragraphs.length, translatedCount: 0 },
+          progress: { totalChars, translatedChars: 0 },
         });
 
         await translateChapter({
@@ -124,7 +148,7 @@ export function useChapterTranslation(options: UseChapterTranslationOptions) {
         abortRef.current = null;
       }
     },
-    [translationConfig, aiConfig, bookId, sectionIndex, getParagraphs, injectTranslations],
+    [state.status, translationConfig, aiConfig, bookId, sectionIndex, getParagraphs, injectTranslations, removeTranslations],
   );
 
   // Keep ref in sync so auto-restore effect doesn't depend on startTranslation identity
@@ -140,26 +164,33 @@ export function useChapterTranslation(options: UseChapterTranslationOptions) {
   const toggleOriginalVisible = useCallback(() => {
     setState((prev) => {
       if (prev.status !== "complete") return prev;
-      return { ...prev, originalVisible: !prev.originalVisible };
+      const newVisible = !prev.originalVisible;
+      // Apply to DOM
+      applyVisibility?.(newVisible, prev.translationVisible);
+      return { ...prev, originalVisible: newVisible };
     });
-  }, []);
+  }, [applyVisibility]);
 
   // ---- Toggle Translation Visibility ----------------------------------------
   const toggleTranslationVisible = useCallback(() => {
     setState((prev) => {
       if (prev.status !== "complete") return prev;
-      return { ...prev, translationVisible: !prev.translationVisible };
+      const newVisible = !prev.translationVisible;
+      // Apply to DOM
+      applyVisibility?.(prev.originalVisible, newVisible);
+      return { ...prev, translationVisible: newVisible };
     });
-  }, []);
+  }, [applyVisibility]);
 
   // ---- Reset (e.g. on chapter change) ---------------------------------------
-  const reset = useCallback(() => {
+  const reset = useCallback(async () => {
     abortRef.current?.abort();
     abortRef.current = null;
     autoRestoreAttemptedRef.current = "";
     removeTranslations();
     setState({ status: "idle" });
-  }, [removeTranslations]);
+    await clearChapterCache(bookId, sectionIndex);
+  }, [removeTranslations, bookId, sectionIndex]);
 
   // ---- Auto-restore cached translations on section load -----------------------
   useEffect(() => {
@@ -170,16 +201,50 @@ export function useChapterTranslation(options: UseChapterTranslationOptions) {
 
     let cancelled = false;
     // Small delay to ensure DOM is fully stable after navigation
-    const timer = setTimeout(() => {
-      isChapterFullyCached(bookId, sectionIndex, translationConfig.targetLang).then((cached) => {
+    const timer = setTimeout(async () => {
+      try {
+        const cached = await isChapterFullyCached(bookId, sectionIndex, translationConfig.targetLang);
         if (cached && !cancelled) {
-          startTranslationRef.current();
+          // Get paragraphs and restore translations from cache
+          const paragraphs = await getParagraphs();
+          const providerId = translationConfig.provider.id;
+          const results: ChapterTranslationResult[] = [];
+          
+          for (const p of paragraphs) {
+            const translation = await getFromCache(
+              p.text,
+              "AUTO",
+              translationConfig.targetLang,
+              providerId,
+            );
+            if (translation) {
+              results.push({
+                paragraphId: p.id,
+                originalText: p.text,
+                translatedText: translation,
+              });
+            }
+          }
+          
+          // Inject translations to DOM
+          if (results.length > 0) {
+            injectTranslations(results);
+          }
+          
+          // Always show both original and translation by default
+          setState({
+            status: "complete",
+            originalVisible: true,
+            translationVisible: true,
+          });
         }
-      }).catch(() => {});
+      } catch {
+        // Ignore errors
+      }
     }, 300);
 
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [ready, bookId, sectionIndex, translationConfig.targetLang, state.status]);
+  }, [ready, bookId, sectionIndex, translationConfig.targetLang, state.status, getParagraphs, injectTranslations, translationConfig.provider.id]);
 
   return { state, startTranslation, cancelTranslation, toggleOriginalVisible, toggleTranslationVisible, reset };
 }

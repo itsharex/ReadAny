@@ -594,17 +594,32 @@
       if (doc.__readany_tap) return;
       doc.__readany_tap = true;
 
-      const LONG_HOLD_MS = 500;
-      let holdTimer = null;
+      let touchStartTime = 0;
+      let touchStartX = 0;
+      let touchStartY = 0;
 
-      doc.addEventListener('touchstart', () => {
-        holdTimer = setTimeout(() => { holdTimer = null; }, LONG_HOLD_MS);
+      doc.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 1) {
+          touchStartTime = Date.now();
+          touchStartX = e.touches[0].clientX;
+          touchStartY = e.touches[0].clientY;
+        }
       }, { passive: true });
 
-      doc.addEventListener('click', (e) => {
-        if (!holdTimer) return;
-        clearTimeout(holdTimer);
-        holdTimer = null;
+      doc.addEventListener('touchend', (e) => {
+        const touchEndTime = Date.now();
+        const touchDuration = touchEndTime - touchStartTime;
+        
+        // Ignore if touch duration > 800ms (long press)
+        if (touchDuration > 800) return;
+        
+        // Check if finger moved significantly
+        if (e.changedTouches.length === 1) {
+          const touch = e.changedTouches[0];
+          const dx = Math.abs(touch.clientX - touchStartX);
+          const dy = Math.abs(touch.clientY - touchStartY);
+          if (dx > 20 || dy > 20) return; // Moved too much, not a tap
+        }
 
         const target = e.target;
         if (target && target.closest && target.closest('a[href], audio, video, button, input, select, textarea')) return;
@@ -616,13 +631,13 @@
         try { viewW = window.top.innerWidth || window.innerWidth; } catch { viewW = window.innerWidth; }
         const iframe = doc.defaultView && doc.defaultView.frameElement;
         const iframeLeft = iframe ? iframe.getBoundingClientRect().left : 0;
-        const viewportX = e.clientX + iframeLeft;
+        const viewportX = e.changedTouches[0].clientX + iframeLeft;
         const normalizedX = ((viewportX % viewW) + viewW) % viewW;
 
         if (normalizedX >= viewW * 0.25 && normalizedX <= viewW * 0.75) {
           postToRN('tap', {});
         }
-      });
+      }, { passive: true });
     }
 
     // ─── Selection detection ───

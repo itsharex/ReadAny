@@ -81,27 +81,36 @@ export async function aiTranslate(
   // For multiple texts, translate individually
   return Promise.all(
     texts.map(async (text) => {
-      const response = await fetch(`${apiUrl}/chat/completions`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: model || "gpt-4o-mini",
-          messages: [
-            {
-              role: "system",
-              content: `You are a professional translator. Translate the following text to ${targetLangName}. Only output the translation.`,
-            },
-            { role: "user", content: text },
-          ],
-          temperature: 0.3,
-          max_tokens: 2048,
-        }),
-      });
-      const data = await response.json();
-      return data.choices[0]?.message?.content?.trim() || text;
+      try {
+        const response = await fetch(`${apiUrl}/chat/completions`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model: model || "gpt-4o-mini",
+            messages: [
+              {
+                role: "system",
+                content: `You are a professional translator. Translate the following text to ${targetLangName}. Only output the translation.`,
+              },
+              { role: "user", content: text },
+            ],
+            temperature: 0.3,
+            max_tokens: 2048,
+          }),
+        });
+        if (!response.ok) {
+          console.warn(`[aiTranslate] API error for text: ${response.status}`);
+          return "";
+        }
+        const data = await response.json();
+        return data.choices[0]?.message?.content?.trim() || "";
+      } catch (err) {
+        console.warn("[aiTranslate] Individual translation failed:", err);
+        return "";
+      }
     }),
   );
 }

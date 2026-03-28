@@ -149,6 +149,8 @@ export interface FoliateViewerHandle {
   injectChapterTranslations: (results: ChapterTranslationResult[]) => void;
   /** Remove all injected chapter translation elements */
   removeChapterTranslations: () => void;
+  /** Apply visibility settings to original and translation elements */
+  applyChapterTranslationVisibility: (originalVisible: boolean, translationVisible: boolean) => void;
 }
 
 interface FoliateViewerProps {
@@ -503,6 +505,31 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
             style?.remove();
           } catch (err) {
             console.error("[removeChapterTranslations] Error:", err);
+          }
+        },
+        applyChapterTranslationVisibility: (originalVisible: boolean, translationVisible: boolean) => {
+          try {
+            const renderer = viewRef.current?.renderer;
+            const contents = renderer?.getContents?.();
+            if (!contents?.[0]?.doc) return;
+            const doc = contents[0].doc as Document;
+
+            // Update original paragraphs visibility
+            const originalParagraphs = doc.querySelectorAll("[data-translate-id]");
+            originalParagraphs.forEach((el) => {
+              (el as HTMLElement).setAttribute("data-original-hidden", String(!originalVisible));
+            });
+
+            // Update translation visibility
+            const translations = doc.querySelectorAll(".readany-translation");
+            translations.forEach((el) => {
+              const translationEl = el as HTMLElement;
+              translationEl.setAttribute("data-hidden", String(!translationVisible));
+              // If only translation is visible (no original), apply solo style
+              translationEl.setAttribute("data-solo", String(!originalVisible && translationVisible));
+            });
+          } catch (err) {
+            console.error("[applyChapterTranslationVisibility] Error:", err);
           }
         },
       }),
@@ -1002,7 +1029,12 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
 
           // Navigate to last location or start
           if (lastLocation && !isFixedLayout) {
-            await view.init({ lastLocation });
+            try {
+              await view.init({ lastLocation });
+            } catch (initErr) {
+              console.warn("[FoliateViewer] Failed to init with lastLocation, falling back to start:", initErr);
+              await view.goToFraction(0);
+            }
           } else {
             await view.goToFraction(0);
           }
