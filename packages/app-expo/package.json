@@ -15,7 +15,6 @@
     }
   },
   "scripts": {
-    "postinstall": "bash scripts/cleanup-unused-modules.sh || true",
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",

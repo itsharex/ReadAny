@@ -6,7 +6,8 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
-      "node": "20.18.0"
+      "node": "20.18.0",
+      "preBuild": "bash scripts/cleanup-unused-modules.sh || true"
     },
     "preview": {
       "android": {
@@ -19,7 +20,8 @@
       "node": "20.18.0",
       "env": {
         "EXPO_NO_METRO_WORKSPACE_ROOT": "1"
-      }
+      },
+      "preBuild": "bash scripts/cleanup-unused-modules.sh || true"
     },
     "production": {
       "android": {
@@ -28,7 +30,8 @@
       "node": "20.18.0",
       "env": {
         "EXPO_NO_METRO_WORKSPACE_ROOT": "1"
-      }
+      },
+      "preBuild": "bash scripts/cleanup-unused-modules.sh || true"
     }
   }
 }
