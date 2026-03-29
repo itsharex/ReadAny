@@ -911,8 +911,8 @@ function createListBooksTool(): ToolDefinition {
       if (searchTerm) {
         books = books.filter(
           (b) =>
-            b.meta.title.toLowerCase().includes(searchTerm) ||
-            (b.meta.author && b.meta.author.toLowerCase().includes(searchTerm)),
+            b.meta.title?.toLowerCase().includes(searchTerm) ||
+            (b.meta.author?.toLowerCase().includes(searchTerm)),
         );
       }
 
@@ -1058,7 +1058,7 @@ function createSearchAllNotesTool(): ToolDefinition {
       if (bookTitleSearch) {
         allNotes = allNotes.filter((n) => {
           const title = bookMap.get(n.bookId)?.toLowerCase() || "";
-          return title.includes(bookTitleSearch);
+          return title?.includes(bookTitleSearch);
         });
       }
 
@@ -1374,7 +1374,7 @@ function createManageBookTagsTool(): ToolDefinition {
         const books = await getBooks();
         let affectedCount = 0;
         for (const book of books) {
-          if (book.tags.includes(oldTag)) {
+          if (book.tags?.includes(oldTag)) {
             const updated = book.tags.map((t) => (t === oldTag ? newTag : t));
             const deduped = [...new Set(updated)];
             await updateBook(book.id, { tags: deduped });
@@ -1399,9 +1399,9 @@ function createManageBookTagsTool(): ToolDefinition {
         const books = await getBooks();
         let affectedCount = 0;
         for (const book of books) {
-          const hasAnyTag = tagsToDelete.some((tag) => book.tags.includes(tag));
+          const hasAnyTag = tagsToDelete.some((tag) => book.tags?.includes(tag));
           if (hasAnyTag) {
-            const updated = book.tags.filter((t) => !tagsToDelete.includes(t));
+            const updated = book.tags?.filter((t) => !tagsToDelete.includes(t)) || [];
             await updateBook(book.id, { tags: updated });
             affectedCount++;
           }
@@ -1425,7 +1425,7 @@ function createManageBookTagsTool(): ToolDefinition {
         if (!book) {
           return { success: false, error: "Book not found" };
         }
-        const updated = book.tags.filter((t) => !tagsToRemove.includes(t));
+        const updated = book.tags?.filter((t) => !tagsToRemove.includes(t)) || [];
         await updateBook(bookId, { tags: updated });
         emitLibraryChanged();
         return {
@@ -1499,7 +1499,7 @@ function createGetSkillsTool(): ToolDefinition {
       },
     },
     execute: async (args) => {
-      const task = (args.task as string).toLowerCase();
+      const task = (args.task as string)?.toLowerCase() || "";
 
       // Merge builtin and custom skills
       const builtins = getBuiltinSkills();
@@ -1515,9 +1515,9 @@ function createGetSkillsTool(): ToolDefinition {
       // Fuzzy match by name or description
       const matched = allSkills.filter(
         (s) =>
-          s.name.toLowerCase().includes(task) ||
-          s.description.toLowerCase().includes(task) ||
-          s.id.toLowerCase().includes(task),
+          s.name?.toLowerCase().includes(task) ||
+          s.description?.toLowerCase().includes(task) ||
+          s.id?.toLowerCase().includes(task),
       );
 
       if (matched.length > 0) {

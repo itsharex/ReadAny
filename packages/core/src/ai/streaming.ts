@@ -140,6 +140,10 @@ export class StreamingChat {
       }
     } catch (error) {
       if (this.aborted) return;
+      console.error("[StreamingChat] Error:", error);
+      if (error instanceof Error) {
+        console.error("[StreamingChat] Stack:", error.stack);
+      }
       options.onError(error as Error);
     }
   }

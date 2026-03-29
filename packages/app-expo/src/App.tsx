@@ -14,6 +14,14 @@ if (typeof AbortSignal !== "undefined" && !AbortSignal.prototype.throwIfAborted)
   };
 }
 
+// Polyfill navigator.userAgent for LangChain — React Native doesn't have userAgent
+if (typeof navigator !== "undefined" && !navigator.userAgent) {
+  Object.defineProperty(navigator, "userAgent", {
+    get: () => "ReactNative",
+    configurable: true,
+  });
+}
+
 import { DarkTheme, DefaultTheme, NavigationContainer } from "@react-navigation/native";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useMemo, useState } from "react";

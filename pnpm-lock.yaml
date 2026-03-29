@@ -358,6 +358,9 @@ importers:
       react:
         specifier: 19.1.4
         version: 19.1.4
+      react-devtools-core:
+        specifier: ^7.0.1
+        version: 7.0.1
       react-i18next:
         specifier: ^16.5.4
         version: 16.5.8(i18next@25.8.18(typescript@5.9.3))(react-dom@19.1.4(react@19.1.4))(react-native@0.81.6(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.4))(react@19.1.4)(typescript@5.9.3)
@@ -6677,6 +6680,9 @@ packages:
 
   react-devtools-core@6.1.5:
     resolution: {integrity: sha512-ePrwPfxAnB+7hgnEr8vpKxL9cmnp7F322t8oqcPshbIQQhDKgFDW4tjhF2wjVbdXF9O/nyuy3sQWd9JGpiLPvA==}
+
+  react-devtools-core@7.0.1:
+    resolution: {integrity: sha512-C3yNvRHaizlpiASzy7b9vbnBGLrhvdhl1CbdU6EnZgxPNbai60szdLtl+VL76UNOt5bOoVTOz5rNWZxgGt+Gsw==}
 
   react-dom@19.1.4:
     resolution: {integrity: sha512-s2868ab/xo2SI6H4106A7aFI8Mrqa4xC6HZT/pBzYyQ3cBLqa88hu47xYD8xf+uECleN698Awn7RCWlkTiKnqQ==}
@@ -15642,6 +15648,14 @@ snapshots:
       strip-json-comments: 2.0.1
 
   react-devtools-core@6.1.5:
+    dependencies:
+      shell-quote: 1.8.3
+      ws: 7.5.10
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
+
+  react-devtools-core@7.0.1:
     dependencies:
       shell-quote: 1.8.3
       ws: 7.5.10

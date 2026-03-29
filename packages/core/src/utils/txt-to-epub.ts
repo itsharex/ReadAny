@@ -807,6 +807,7 @@ export class TxtToEpubConverter {
   }
 
   private resolveSupportedEncoding(detectedEncoding: string): string {
+    if (!detectedEncoding) return "utf-8";
     const normalized = detectedEncoding.toLowerCase();
     const candidates = [
       normalized,

@@ -376,6 +376,10 @@ export async function* streamReadingAgent(
       }
     }
   } catch (error) {
+    console.error("[ReadingAgent] Error:", error);
+    if (error instanceof Error) {
+      console.error("[ReadingAgent] Stack:", error.stack);
+    }
     yield { type: "error", error: error instanceof Error ? error.message : String(error) };
   }
 }
