@@ -112,6 +112,8 @@
     let searchGenerator = null;
     let searchResults = [];
     let searchIndex = 0;
+    let currentSectionIndex = 0;
+    let totalSections = 0;
     // Track current theme colors and last renderer styles for theme injection
     let currentThemeColors = { bg: '#1c1c1e', fg: '#e8e8ed', muted: '#7c7c82', primary: '#3b82f6' };
     let lastRendererStyles = '';
@@ -324,6 +326,13 @@
 
         const book = await makeBook(file);
         currentBook = book;
+        
+        // Get total sections count
+        if (book.sections) {
+          totalSections = book.sections.length;
+        } else if (book.toc) {
+          totalSections = book.toc.length;
+        }
 
         const el = document.createElement('foliate-view');
         el.style.width = '100%';
@@ -336,6 +345,7 @@
           attachTapListener(doc);
           attachSelectionListener(doc);
           attachNoteLongPress(doc);
+          attachContinuousScrollListener(doc);
           // Re-add all user annotations for this page
           // foliate-view will only render those that belong to current section
           for (const [cfi, annotation] of userAnnotations) {
@@ -349,6 +359,9 @@
         var snippetTimer = null;
         el.addEventListener('relocate', (e) => {
           const detail = e.detail;
+          if (detail.section != null) {
+            currentSectionIndex = detail.section;
+          }
           postToRN('relocate', {
             fraction: detail.fraction,
             section: detail.section,
@@ -758,6 +771,48 @@ a { color: ${primary} !important; }
       });
     }
 
+    // ─── Continuous scroll listener ───
+    function attachContinuousScrollListener(doc) {
+      if (doc.__readany_continuous_scroll) return;
+      doc.__readany_continuous_scroll = true;
+
+      let touchStartY = 0;
+      let touchStartX = 0;
+
+      doc.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 1) {
+          touchStartY = e.touches[0].clientY;
+          touchStartX = e.touches[0].clientX;
+        }
+      }, { passive: true });
+
+      doc.addEventListener('touchend', (e) => {
+        if (!view || !view.renderer) return;
+        const renderer = view.renderer;
+        if (!renderer.scrolled) return;
+
+        if (e.changedTouches.length === 1) {
+          const touchEndY = e.changedTouches[0].clientY;
+          const touchEndX = e.changedTouches[0].clientX;
+          const deltaY = touchEndY - touchStartY;
+          const deltaX = touchEndX - touchStartX;
+
+          // Only handle vertical swipes
+          if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 30) {
+            postToRN('continuous-scroll', {
+              deltaY,
+              start: renderer.start,
+              end: renderer.end,
+              viewSize: renderer.viewSize,
+              size: renderer.size,
+              currentSectionIndex,
+              totalSections,
+            });
+          }
+        }
+      }, { passive: true });
+    }
+
     // ─── TOC conversion ───
     function convertTOC(toc, level) {
       if (!toc) return [];
@@ -936,8 +991,26 @@ a { color: ${primary} !important; }
     }
 
     // ─── Expose global functions for injectJavaScript ───
-    window.goNext = function () { if (view) view.next(); };
-    window.goPrev = function () { if (view) view.prev(); };
+    window.goNext = function () { 
+      if (view && view.renderer) {
+        postToRN('debug', { message: 'goNext called' });
+        view.renderer.nextSection().then(() => {
+          postToRN('debug', { message: 'goNext completed' });
+        }).catch(err => {
+          postToRN('debug', { message: 'goNext error: ' + String(err) });
+        });
+      }
+    };
+    window.goPrev = function () { 
+      if (view && view.renderer) {
+        postToRN('debug', { message: 'goPrev called' });
+        view.renderer.prevSection().then(() => {
+          postToRN('debug', { message: 'goPrev completed' });
+        }).catch(err => {
+          postToRN('debug', { message: 'goPrev error: ' + String(err) });
+        });
+      }
+    };
     window.goToHref = function (href) { if (view) view.goTo(href); };
     window.goToCFI = function (cfi) { if (view) view.goTo(cfi); };
     window.goToProgress = function (p) { if (view) view.goToFraction(p); };

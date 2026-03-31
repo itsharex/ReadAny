@@ -141,7 +141,7 @@
     "tryDifferentSearch": "Try a different search term",
     "emptyLibrary": "Your library is empty, import books to start reading",
     "dropToUpload": "Drop books here to upload",
-    "supportedFormat": "Supported formats: .epub, .pdf, .mobi, .azw, .azw3, .fb2, .fbz",
+    "supportedFormat": "Supported formats: .epub, .pdf, .mobi, .azw, .azw3, .fb2, .fbz, .cbz",
     "importBooks": "Import Books",
     "new": "New",
     "complete": "Complete",

@@ -295,6 +295,66 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
     `);
   }, []);
 
+  // ─── Handle continuous scroll for chapter navigation ───
+  const scrollTransitioningRef = useRef(false);
+
+  const handleContinuousScroll = useCallback((msg: {
+    deltaY: number;
+    start: number;
+    end: number;
+    viewSize: number;
+    size: number;
+    currentSectionIndex: { current: number; total: number } | number;
+    totalSections: number;
+  }) => {
+    if (scrollTransitioningRef.current) {
+      console.log("[ReaderBridge] continuous-scroll: already transitioning, skip");
+      return;
+    }
+    
+    const { deltaY, start, end, viewSize, size, totalSections } = msg;
+    const currentIndex = typeof msg.currentSectionIndex === 'number' 
+      ? msg.currentSectionIndex 
+      : msg.currentSectionIndex.current;
+    const threshold = 30;
+
+    const atStart = start <= Math.abs(deltaY) || start <= size * 0.3;
+    const atEnd = Math.ceil(end) >= viewSize - Math.abs(deltaY) || Math.ceil(end) >= viewSize - size * 0.3;
+    
+    console.log("[ReaderBridge] continuous-scroll:", { 
+      deltaY, 
+      start, 
+      end, 
+      viewSize, 
+      size, 
+      currentIndex, 
+      totalSections,
+      atStart,
+      atEnd,
+      thresholdCheck: deltaY < -threshold,
+      indexCheck: currentIndex < totalSections - 1
+    });
+
+    // Finger moves up (deltaY < 0) at end of chapter → go to next
+    if (deltaY < -threshold && atEnd && currentIndex < totalSections - 1) {
+      console.log("[ReaderBridge] Going to next chapter");
+      scrollTransitioningRef.current = true;
+      goNext();
+      setTimeout(() => {
+        scrollTransitioningRef.current = false;
+      }, 500);
+    }
+    // Finger moves down (deltaY > 0) at start of chapter → go to prev
+    else if (deltaY > threshold && atStart && currentIndex > 0) {
+      console.log("[ReaderBridge] Going to previous chapter");
+      scrollTransitioningRef.current = true;
+      goPrev();
+      setTimeout(() => {
+        scrollTransitioningRef.current = false;
+      }, 500);
+    }
+  }, [goNext, goPrev]);
+
   // ─── Handle messages from WebView ───
 
   const handleMessage = useCallback((event: { nativeEvent: { data: string } }) => {
@@ -391,6 +451,12 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
           } else {
             console.warn("[ChapterTranslation] No pending resolve for chapterParagraphs (timed out?)");
           }
+          break;
+        case "continuous-scroll":
+          handleContinuousScroll(msg);
+          break;
+        case "debug":
+          console.log("[WebView]", msg.message);
           break;
         default:
           break;

@@ -16,7 +16,7 @@ export function ImportDropZone() {
       const selected = await open({
         multiple: true,
         filters: [
-          { name: "Books", extensions: ["epub", "pdf", "mobi", "azw", "azw3", "fb2", "fbz", "txt"] },
+          { name: "Books", extensions: ["epub", "pdf", "mobi", "azw", "azw3", "fb2", "fbz", "txt", "cbz"] },
         ],
       } as const);
       if (selected) {
@@ -49,7 +49,8 @@ export function ImportDropZone() {
             ext === "azw3" ||
             ext === "fb2" ||
             ext === "fbz" ||
-            ext === "txt"
+            ext === "txt" ||
+            ext === "cbz"
           ) {
             paths.push(f.path);
           }
