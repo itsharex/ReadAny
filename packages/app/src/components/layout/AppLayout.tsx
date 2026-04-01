@@ -60,14 +60,27 @@ export function AppLayout() {
   const { hasCompletedOnboarding: _hasCompletedOnboarding, _hasHydrated } = useSettingsStore();
   const { t } = useTranslation();
 
-  // Command palette state
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const readerTabs = tabs.filter((t) => t.type === "reader" && t.bookId);
+  const isReaderActive = readerTabs.some((t) => t.id === activeTabId);
+  const [showTabBar, setShowTabBar] = useState(!isReaderActive);
+  const hideTabBarTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevIsReaderActiveRef = useRef(isReaderActive);
+
+  useEffect(() => {
+    if (isReaderActive && !prevIsReaderActiveRef.current) {
+      setShowTabBar(false);
+    }
+    if (!isReaderActive) {
+      setShowTabBar(true);
+    }
+    prevIsReaderActiveRef.current = isReaderActive;
+  }, [isReaderActive]);
 
   const toggleCommandPalette = useCallback(() => {
     setCommandPaletteOpen((prev) => !prev);
   }, []);
 
-  // Global keyboard shortcut: Cmd+Shift+P / Ctrl+Shift+P
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const isCmdOrCtrl = e.metaKey || e.ctrlKey;
@@ -81,8 +94,70 @@ export function AppLayout() {
     return () => window.removeEventListener("keydown", handleKeyDown, { capture: true });
   }, [toggleCommandPalette]);
 
-  const readerTabs = tabs.filter((t) => t.type === "reader" && t.bookId);
-  const isReaderActive = readerTabs.some((t) => t.id === activeTabId);
+  useEffect(() => {
+    if (!isReaderActive) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const threshold = 10;
+      if (e.clientY <= threshold) {
+        if (hideTabBarTimerRef.current) {
+          clearTimeout(hideTabBarTimerRef.current);
+          hideTabBarTimerRef.current = null;
+        }
+        setShowTabBar(true);
+      }
+    };
+
+    const handleMouseLeaveTabBar = () => {
+      if (hideTabBarTimerRef.current) {
+        clearTimeout(hideTabBarTimerRef.current);
+      }
+      hideTabBarTimerRef.current = setTimeout(() => {
+        setShowTabBar(false);
+      }, 500);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+
+    const tabBarEl = document.querySelector("[data-tab-bar]");
+    if (tabBarEl) {
+      tabBarEl.addEventListener("mouseleave", handleMouseLeaveTabBar);
+      tabBarEl.addEventListener("mouseenter", () => {
+        if (hideTabBarTimerRef.current) {
+          clearTimeout(hideTabBarTimerRef.current);
+          hideTabBarTimerRef.current = null;
+        }
+      });
+    }
+
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      if (tabBarEl) {
+        tabBarEl.removeEventListener("mouseleave", handleMouseLeaveTabBar);
+      }
+      if (hideTabBarTimerRef.current) {
+        clearTimeout(hideTabBarTimerRef.current);
+      }
+    };
+  }, [isReaderActive]);
+
+  const handleTabBarMouseEnter = useCallback(() => {
+    if (hideTabBarTimerRef.current) {
+      clearTimeout(hideTabBarTimerRef.current);
+      hideTabBarTimerRef.current = null;
+    }
+    setShowTabBar(true);
+  }, []);
+
+  const handleTabBarMouseLeave = useCallback(() => {
+    if (!isReaderActive) return;
+    if (hideTabBarTimerRef.current) {
+      clearTimeout(hideTabBarTimerRef.current);
+    }
+    hideTabBarTimerRef.current = setTimeout(() => {
+      setShowTabBar(false);
+    }, 500);
+  }, [isReaderActive]);
 
   // Determine which home sub-view is active
   const homeViewKey = isReaderActive ? null : (activeTabId ?? "home");
@@ -185,8 +260,20 @@ export function AppLayout() {
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-muted">
       {_hasHydrated && <OnboardingModal />}
-      <TabBar />
-      <main className="relative flex-1 overflow-hidden">
+      <div
+        data-tab-bar
+        onMouseEnter={handleTabBarMouseEnter}
+        onMouseLeave={handleTabBarMouseLeave}
+        className={`absolute left-0 right-0 top-0 z-50 transition-transform duration-300 ease-in-out ${
+          isReaderActive && !showTabBar ? "-translate-y-full" : "translate-y-0"
+        }`}
+      >
+        <TabBar />
+      </div>
+      <main className="relative h-full flex-1 overflow-hidden">
+        {!isReaderActive && (
+          <div className="h-8 shrink-0" />
+        )}
         {/* === Home layer (sidebar + content card) === */}
         <div
           className="flex h-full w-full overflow-hidden"

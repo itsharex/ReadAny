@@ -7,6 +7,7 @@ import { type Tab, useAppStore } from "@/stores/app-store";
 import { useLibraryStore } from "@/stores/library-store";
 import { useReaderStore } from "@/stores/reader-store";
 import { BookOpen, Home, MessageSquare, NotebookPen, X } from "lucide-react";
+import { useEffect, useState } from "react";
 
 const TAB_ICONS: Record<string, React.ElementType> = {
   home: Home,
@@ -15,10 +16,45 @@ const TAB_ICONS: Record<string, React.ElementType> = {
   notes: NotebookPen,
 };
 
+function useTrafficLightPadding() {
+  const [padding, setPadding] = useState(68);
+
+  useEffect(() => {
+    const checkFullscreen = async () => {
+      const isMac = navigator.userAgent.toLowerCase().includes("mac");
+      if (!isMac) {
+        setPadding(8);
+        return;
+      }
+
+      try {
+        const { getCurrentWindow } = await import("@tauri-apps/api/window");
+        const win = getCurrentWindow();
+        const fullscreen = await win.isFullscreen();
+        setPadding(fullscreen ? 8 : 68);
+
+        const unlisten = await win.onResized(async () => {
+          const fs = await win.isFullscreen();
+          setPadding(fs ? 8 : 68);
+        });
+
+        return unlisten;
+      } catch {
+        setPadding(68);
+      }
+    };
+
+    checkFullscreen();
+  }, []);
+
+  return padding;
+}
+
 export function TabBar() {
   const { tabs, activeTabId, setActiveTab, removeTab } = useAppStore();
   const removeReaderTab = useReaderStore((s) => s.removeTab);
   const books = useLibraryStore((s) => s.books);
+  const trafficLightPadding = useTrafficLightPadding();
 
   const readerTabs = tabs.filter((t) => t.type !== "home");
 
@@ -50,7 +86,7 @@ export function TabBar() {
       style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
     >
       {/* macOS traffic light spacing + Home icon */}
-      <div className="flex h-full shrink-0 items-center" style={{ paddingLeft: 68 }}>
+      <div className="flex h-full shrink-0 items-center" style={{ paddingLeft: trafficLightPadding }}>
         <button
           type="button"
           className="flex items-center justify-center rounded-md p-1 text-neutral-500 transition-colors hover:bg-neutral-200/60 hover:text-neutral-800"
