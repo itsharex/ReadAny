@@ -31,6 +31,7 @@ export function SyncSettings() {
     testS3Connection,
     saveS3Config,
     syncNow,
+    forceFullSync,
     setAutoSync,
     resetSync,
   } = useSyncStore();
@@ -98,16 +99,32 @@ export function SyncSettings() {
   const handleTestWebDav = useCallback(async () => {
     setTesting(true);
     setTestResult(null);
+    setTestError("");
     try {
-      const success = await testWebDavConnection(webdavUrl, webdavUsername, webdavPassword, webdavAllowInsecure);
+      const success = await testWebDavConnection(
+        webdavUrl,
+        webdavUsername,
+        webdavPassword,
+        webdavAllowInsecure,
+      );
       setTestResult(success ? "success" : "error");
+      if (!success) {
+        setTestError(t("common.failed", "Failed"));
+      }
     } catch (e) {
       setTestResult("error");
       setTestError(String(e));
     } finally {
       setTesting(false);
     }
-  }, [webdavUrl, webdavUsername, webdavPassword, webdavAllowInsecure, testWebDavConnection]);
+  }, [
+    webdavUrl,
+    webdavUsername,
+    webdavPassword,
+    webdavAllowInsecure,
+    testWebDavConnection,
+    t,
+  ]);
 
   const handleSaveWebDav = useCallback(async () => {
     setSaving(true);
@@ -121,6 +138,7 @@ export function SyncSettings() {
   const handleTestS3 = useCallback(async () => {
     setTesting(true);
     setTestResult(null);
+    setTestError("");
     try {
       const success = await testS3Connection(
         {
@@ -133,6 +151,9 @@ export function SyncSettings() {
         s3SecretAccessKey,
       );
       setTestResult(success ? "success" : "error");
+      if (!success) {
+        setTestError(t("common.failed", "Failed"));
+      }
     } catch (e) {
       setTestResult("error");
       setTestError(String(e));
@@ -147,6 +168,7 @@ export function SyncSettings() {
     s3SecretAccessKey,
     s3PathStyle,
     testS3Connection,
+    t,
   ]);
 
   const handleSaveS3 = useCallback(async () => {
@@ -192,6 +214,18 @@ export function SyncSettings() {
       setS3SecretAccessKey("");
     }
   }, [resetSync, t]);
+
+  const handleForceFullUpload = useCallback(async () => {
+    if (window.confirm(t("settings.syncForceUploadConfirm"))) {
+      await forceFullSync("upload");
+    }
+  }, [forceFullSync, t]);
+
+  const handleForceFullDownload = useCallback(async () => {
+    if (window.confirm(t("settings.syncForceDownloadConfirm"))) {
+      await forceFullSync("download");
+    }
+  }, [forceFullSync, t]);
 
   const formatLastSync = (ts: number | null) => {
     if (!ts) return t("settings.syncNever");
@@ -615,6 +649,34 @@ export function SyncSettings() {
 
           {showAdvanced && (
             <div className="space-y-3">
+              <div className="grid gap-3 md:grid-cols-2">
+                <button
+                  onClick={handleForceFullUpload}
+                  disabled={isBusy}
+                  className="rounded-lg border border-input bg-background p-4 text-left transition-colors hover:bg-muted/50 disabled:opacity-50"
+                >
+                  <Upload className="mb-2 h-5 w-5 text-muted-foreground" />
+                  <div className="text-sm font-medium text-foreground">
+                    {t("settings.syncForceUpload")}
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {t("settings.syncForceUploadDesc")}
+                  </p>
+                </button>
+                <button
+                  onClick={handleForceFullDownload}
+                  disabled={isBusy}
+                  className="rounded-lg border border-input bg-background p-4 text-left transition-colors hover:bg-muted/50 disabled:opacity-50"
+                >
+                  <Download className="mb-2 h-5 w-5 text-muted-foreground" />
+                  <div className="text-sm font-medium text-foreground">
+                    {t("settings.syncForceDownload")}
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {t("settings.syncForceDownloadDesc")}
+                  </p>
+                </button>
+              </div>
               <div className="pt-2">
                 <button
                   onClick={handleReset}

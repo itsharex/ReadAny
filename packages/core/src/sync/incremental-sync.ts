@@ -52,11 +52,11 @@ const SYNC_TABLES = [
   { name: "bookmarks", pk: "id", timestampCol: "updated_at" },
   { name: "highlights", pk: "id", timestampCol: "updated_at" },
   { name: "notes", pk: "id", timestampCol: "updated_at" },
+  { name: "reading_sessions", pk: "id", timestampCol: "updated_at" },
   { name: "threads", pk: "id", timestampCol: "updated_at" },
   { name: "messages", pk: "id", timestampCol: "created_at" },
   { name: "skills", pk: "id", timestampCol: "updated_at" },
   // NOT synced: chunks (large vector data, regenerated locally)
-  // NOT synced: reading_sessions (temporary data)
 ] as const;
 
 /** Max age for tombstone records (30 days) */

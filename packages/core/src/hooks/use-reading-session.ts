@@ -9,6 +9,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { type SessionEvent, createSessionDetector } from "../reader/session-detector";
 import { useAppStore } from "../stores/app-store";
 import { useReadingSessionStore } from "../stores/reading-session-store";
+import { useSyncStore } from "../stores/sync-store";
 
 // Save session every 5 minutes
 const AUTO_SAVE_INTERVAL = 5 * 60 * 1000;
@@ -142,7 +143,9 @@ export function useReadingSession(bookId: string | null, tabId?: string) {
       if (currentState === "ACTIVE" && isCurrentTabActive) {
         updateActiveTime();
 
-        if (Date.now() - lastSaveRef.current >= AUTO_SAVE_INTERVAL) {
+        const syncStatus = useSyncStore.getState().status;
+        const syncInProgress = syncStatus !== "idle" && syncStatus !== "error";
+        if (!syncInProgress && Date.now() - lastSaveRef.current >= AUTO_SAVE_INTERVAL) {
           lastSaveRef.current = Date.now();
           saveCurrentSession();
         }

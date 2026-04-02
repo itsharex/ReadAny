@@ -10,8 +10,29 @@ import type { S3Config, SyncConfig, WebDavConfig } from "../sync/sync-backend";
 import { DEFAULT_SYNC_CONFIG, SYNC_CONFIG_KEY, SYNC_SECRET_KEYS } from "../sync/sync-backend";
 import type { ISyncBackend } from "../sync/sync-backend";
 import { createSyncBackend, getSecretKeyForBackend } from "../sync/sync-backend-factory";
-import type { SyncDirection, SyncProgress, SyncResult, SyncStatusType } from "../sync/sync-types";
+import { REMOTE_MANIFEST } from "../sync/sync-types";
+import type {
+  RemoteSyncManifest,
+  SyncDirection,
+  SyncProgress,
+  SyncResult,
+  SyncStatusType,
+} from "../sync/sync-types";
 import { WebDavClient } from "../sync/webdav-client";
+
+function statusFromProgress(progress: SyncProgress): SyncStatusType {
+  if (progress.phase === "files") return "syncing-files";
+  return progress.operation === "upload" ? "uploading" : "downloading";
+}
+
+async function flushPendingReadingSession(): Promise<void> {
+  try {
+    const { useReadingSessionStore } = await import("./reading-session-store");
+    await useReadingSessionStore.getState().saveCurrentSession();
+  } catch (error) {
+    console.warn("[SyncStore] Failed to flush reading session before sync:", error);
+  }
+}
 
 export interface SyncState {
   // Config
@@ -75,6 +96,7 @@ export interface SyncState {
   ) => Promise<SyncResult | null>;
   /** New simplified sync (JSON-based, no full db file sync) */
   syncSimple: (backend: ISyncBackend) => Promise<SyncResult | null>;
+  forceFullSync: (direction: "upload" | "download") => Promise<SyncResult | null>;
   setAutoSync: (enabled: boolean) => Promise<void>;
   setWifiOnly: (enabled: boolean) => Promise<void>;
   setNotifyOnComplete: (enabled: boolean) => Promise<void>;
@@ -231,6 +253,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     set({ status: "checking", error: null, pendingDirection: null });
 
     try {
+      await flushPendingReadingSession();
       const backend = createSyncBackend(state.config, secret || "");
 
       const connected = await backend.testConnection();
@@ -272,6 +295,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     set({ status: "checking", error: null, pendingDirection: null });
 
     try {
+      await flushPendingReadingSession();
       // Use new simplified sync (JSON-based, no full db file sync)
       return await get().syncSimple(backend);
     } catch (e) {
@@ -290,21 +314,23 @@ export const useSyncStore = create<SyncState>((set, get) => ({
 
   syncSimple: async (backend: ISyncBackend) => {
     const state = get();
-    if (state.status !== "idle") return null;
+    // syncSimple is usually entered right after a successful connection check,
+    // so allow both "idle" and "checking" as valid entry states.
+    if (state.status !== "idle" && state.status !== "checking") return null;
 
     set({ status: "syncing-files", error: null, progress: null });
 
     try {
       const { runSimpleSync } = await import("../sync/simple-sync");
 
-      const result = await runSimpleSync(backend, (message) => {
+      const result = await runSimpleSync(backend, (progress) => {
         set({
           progress: {
-            phase: "database",
-            operation: "upload",
+            phase: progress.phase,
+            operation: progress.operation,
             completedFiles: 0,
             totalFiles: 1,
-            message,
+            message: progress.message,
           },
         });
       });
@@ -313,12 +339,27 @@ export const useSyncStore = create<SyncState>((set, get) => ({
         set({
           status: "idle",
           lastSyncAt: Date.now(),
+          lastResult: {
+            success: true,
+            direction: "upload",
+            filesUploaded: result.filesUploaded,
+            filesDownloaded: result.filesDownloaded,
+            durationMs: 0,
+          },
           error: null,
           progress: null,
         });
       } else {
         set({
           status: "error",
+          lastResult: {
+            success: false,
+            direction: "none",
+            filesUploaded: 0,
+            filesDownloaded: 0,
+            durationMs: 0,
+            error: result.error || "同步失败",
+          },
           error: result.error || "同步失败",
           progress: null,
         });
@@ -327,14 +368,26 @@ export const useSyncStore = create<SyncState>((set, get) => ({
       return {
         success: result.success,
         direction: "upload" as const,
-        filesUploaded: result.changes,
-        filesDownloaded: 0,
+        filesUploaded: result.filesUploaded,
+        filesDownloaded: result.filesDownloaded,
         durationMs: 0,
         error: result.error,
       };
     } catch (e) {
       const error = e instanceof Error ? e.message : String(e);
-      set({ status: "error", error, progress: null });
+      set({
+        status: "error",
+        lastResult: {
+          success: false,
+          direction: "none",
+          filesUploaded: 0,
+          filesDownloaded: 0,
+          durationMs: 0,
+          error,
+        },
+        error,
+        progress: null,
+      });
       return {
         success: false,
         direction: "none" as const,
@@ -343,6 +396,125 @@ export const useSyncStore = create<SyncState>((set, get) => ({
         durationMs: 0,
         error,
       };
+    }
+  },
+
+  forceFullSync: async (direction) => {
+    const state = get();
+    if (state.status !== "idle") return null;
+    if (!state.isConfigured || !state.config) {
+      set({ error: "Sync not configured" });
+      return null;
+    }
+
+    const platform = getPlatformService();
+    const secretKey =
+      state.config.type !== "lan" ? getSecretKeyForBackend(state.config.type) : null;
+    const secret = secretKey ? await platform.kvGetItem(secretKey) : null;
+
+    if (state.config.type !== "lan" && !secret) {
+      set({ error: "No credentials configured" });
+      return null;
+    }
+
+    if (state.config.type !== "lan" && "wifiOnly" in state.config && state.config.wifiOnly) {
+      if (platform.isOnWifi) {
+        const isWifi = await platform.isOnWifi();
+        if (!isWifi) {
+          set({ error: "Sync skipped: WiFi-only mode is enabled and device is not on WiFi" });
+          return null;
+        }
+      }
+    }
+
+    set({ status: "checking", error: null, pendingDirection: null, progress: null });
+
+    try {
+      await flushPendingReadingSession();
+      const backend = createSyncBackend(state.config, secret || "");
+      const connected = await backend.testConnection();
+
+      if (!connected) {
+        const connectionError = "无法连接到同步服务器，请检查网络和凭据";
+        const result: SyncResult = {
+          success: false,
+          direction: "none",
+          filesUploaded: 0,
+          filesDownloaded: 0,
+          durationMs: 0,
+          error: connectionError,
+        };
+        set({
+          status: "error",
+          error: connectionError,
+          pendingDirection: null,
+          progress: null,
+          lastResult: result,
+        });
+        return result;
+      }
+
+      const { runSync } = await import("../sync/sync-engine");
+      const remoteManifest =
+        direction === "download"
+          ? await backend.getJSON<RemoteSyncManifest>(REMOTE_MANIFEST).catch(() => null)
+          : null;
+
+      const result = await runSync(
+        backend,
+        direction,
+        (progress) => {
+          set({
+            status: statusFromProgress(progress),
+            progress,
+          });
+        },
+        remoteManifest,
+        undefined,
+        false,
+        direction === "upload"
+          ? { forceUploadAll: true }
+          : { forceDownloadAll: true, downloadRemoteBooks: true },
+      );
+
+      if (result.success) {
+        set({
+          status: "idle",
+          lastSyncAt: Date.now(),
+          lastResult: result,
+          error: null,
+          progress: null,
+          pendingDirection: null,
+        });
+      } else {
+        set({
+          status: "error",
+          lastResult: result,
+          error: result.error || "同步失败",
+          progress: null,
+          pendingDirection: null,
+        });
+      }
+
+      return result;
+    } catch (e) {
+      const error = e instanceof Error ? e.message : String(e);
+      const result: SyncResult = {
+        success: false,
+        direction,
+        filesUploaded: 0,
+        filesDownloaded: 0,
+        durationMs: 0,
+        error,
+      };
+      set({
+        status: "error",
+        lastResult: result,
+        error,
+        progress: null,
+        pendingDirection: null,
+      });
+      return result;
     }
   },
 
