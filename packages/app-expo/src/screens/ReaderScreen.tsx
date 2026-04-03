@@ -39,6 +39,7 @@ import { readingContextService } from "@readany/core/ai/reading-context-service"
 import { useReadingSession } from "@readany/core/hooks/use-reading-session";
 import { getPlatformService } from "@readany/core/services";
 import type { TOCItem } from "@readany/core/types";
+import { eventBus } from "@readany/core/utils/event-bus";
 import { generateId } from "@readany/core/utils";
 import { throttle } from "@readany/core/utils/throttle";
 import { Asset } from "expo-asset";
@@ -648,6 +649,12 @@ export function ReaderScreen({ route, navigation }: Props) {
       readingContextService.clearContext();
     };
   }, [bookId]);
+
+  useEffect(() => {
+    return eventBus.on("sync:completed", () => {
+      void loadAnnotations(bookId);
+    });
+  }, [bookId, loadAnnotations]);
 
   // Save progress immediately on unmount
   useEffect(() => {
@@ -1856,6 +1863,7 @@ const TOOLTIP_FG = "#f1f5f9";
 const TOOLTIP_MUTED = "rgba(148, 163, 184, 0.5)";
 const noteTooltipMdStyles = {
   body: { color: TOOLTIP_FG, fontSize: 13, lineHeight: 19 },
+  textgroup: { color: TOOLTIP_FG, fontSize: 13, lineHeight: 19 },
   text: { color: TOOLTIP_FG, fontSize: 13, lineHeight: 19 },
   paragraph: { color: TOOLTIP_FG, fontSize: 13, lineHeight: 19, marginBottom: 4, marginTop: 0 },
   heading1: {
@@ -1907,10 +1915,17 @@ const noteTooltipMdStyles = {
     borderLeftColor: TOOLTIP_MUTED,
     paddingLeft: 10,
     backgroundColor: "transparent",
+    color: TOOLTIP_FG,
   },
   bullet_list: { marginVertical: 2 },
   ordered_list: { marginVertical: 2 },
   list_item: { marginBottom: 2, flexDirection: "row" as const },
+  bullet_list_icon: { color: TOOLTIP_FG, marginLeft: 0, marginRight: 8 },
+  bullet_list_content: { color: TOOLTIP_FG, flex: 1 },
+  ordered_list_icon: { color: TOOLTIP_FG, marginLeft: 0, marginRight: 8 },
+  ordered_list_content: { color: TOOLTIP_FG, flex: 1 },
+  hardbreak: { color: TOOLTIP_FG },
+  softbreak: { color: TOOLTIP_FG },
 };
 
 const makeStyles = (colors: ThemeColors) =>

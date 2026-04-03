@@ -112,14 +112,20 @@ export class ReadingStatsService {
     let totalSessions = 0;
     let totalPages = 0;
     const readingDays = new Set<string>();
+    const readBookIds = new Set<string>();
 
     for (const book of books) {
+      if (book.progress > 0) {
+        readBookIds.add(book.id);
+      }
+
       const sessions = await getReadingSessions(book.id);
       for (const session of sessions) {
         totalTime += session.totalActiveTime;
         totalSessions++;
         totalPages += session.pagesRead;
         readingDays.add(new Date(session.startedAt).toISOString().split("T")[0]);
+        readBookIds.add(book.id);
       }
     }
 
@@ -129,7 +135,7 @@ export class ReadingStatsService {
     const daysCount = readingDays.size || 1;
 
     return {
-      totalBooks: books.filter((b) => b.progress > 0).length,
+      totalBooks: readBookIds.size,
       totalReadingTime: totalTime / 60000,
       totalSessions,
       totalReadingDays: readingDays.size,

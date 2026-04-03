@@ -8,6 +8,7 @@ import { useAppStore } from "@/stores/app-store";
 import { useLibraryStore } from "@/stores/library-store";
 import { type ExportFormat, annotationExporter } from "@readany/core/export";
 import type { Highlight, Note } from "@readany/core/types";
+import { eventBus } from "@readany/core/utils/event-bus";
 import { HIGHLIGHT_COLOR_HEX } from "@readany/core/types";
 import { cn } from "@readany/core/utils";
 import {
@@ -78,6 +79,16 @@ export function NotesPage() {
     setIsLoading(true);
     Promise.all([loadAllHighlightsWithBooks(500), loadStats()]).finally(() => setIsLoading(false));
   }, [loadAllHighlightsWithBooks, loadStats, activeTabId]);
+
+  useEffect(() => {
+    return eventBus.on("sync:completed", () => {
+      if (activeTabId !== "notes") return;
+      setIsLoading(true);
+      Promise.all([loadAllHighlightsWithBooks(500), loadStats()]).finally(() =>
+        setIsLoading(false),
+      );
+    });
+  }, [activeTabId, loadAllHighlightsWithBooks, loadStats]);
 
   // Group highlights by book
   const bookNotebooks = useMemo(() => {

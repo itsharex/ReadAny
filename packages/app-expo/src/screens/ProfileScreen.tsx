@@ -18,6 +18,10 @@ import {
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { useReadingSessionStore } from "@/stores";
 import {
+  mergeCurrentSessionIntoDailyStats,
+  mergeCurrentSessionIntoOverallStats,
+} from "@/lib/stats/live-reading-stats";
+import {
   type ThemeColors,
   fontSize,
   fontWeight,
@@ -25,7 +29,7 @@ import {
   useColors,
   withOpacity,
 } from "@/styles/theme";
-import { useNavigation } from "@react-navigation/native";
+import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { readingStatsService } from "@readany/core/stats";
 import Constants from "expo-constants";
@@ -35,7 +39,7 @@ import type { DailyStats, OverallStats } from "@readany/core/stats";
  * Features: reading stats cards, heatmap, settings menu (general/skills/about),
  * complete menu items including Skills and VectorModel.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ActivityIndicator,
@@ -262,31 +266,44 @@ export function ProfileScreen() {
   const [dailyStats, setDailyStats] = useState<DailyStats[]>([]);
   const [statsLoading, setStatsLoading] = useState(true);
   const saveCurrentSession = useReadingSessionStore((s) => s.saveCurrentSession);
+  const currentSession = useReadingSessionStore((s) => s.currentSession);
 
-  useEffect(() => {
-    const loadStats = async () => {
-      try {
-        setStatsLoading(true);
-        await saveCurrentSession();
+  const loadStats = useCallback(async () => {
+    try {
+      setStatsLoading(true);
+      await saveCurrentSession();
 
-        const endDate = new Date();
-        const startDate = new Date();
-        startDate.setDate(startDate.getDate() - 365);
+      const endDate = new Date();
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - 365);
 
-        const [daily, overallStats] = await Promise.all([
-          readingStatsService.getDailyStats(startDate, endDate),
-          readingStatsService.getOverallStats(),
-        ]);
-        setDailyStats(daily);
-        setOverall(overallStats);
-      } catch (err) {
-        console.error("[ProfileScreen] Failed to load stats:", err);
-      } finally {
-        setStatsLoading(false);
-      }
-    };
-    loadStats();
+      const [daily, overallStats] = await Promise.all([
+        readingStatsService.getDailyStats(startDate, endDate),
+        readingStatsService.getOverallStats(),
+      ]);
+      setDailyStats(daily);
+      setOverall(overallStats);
+    } catch (err) {
+      console.error("[ProfileScreen] Failed to load stats:", err);
+    } finally {
+      setStatsLoading(false);
+    }
   }, [saveCurrentSession]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadStats();
+    }, [loadStats]),
+  );
+
+  const liveDailyStats = useMemo(
+    () => mergeCurrentSessionIntoDailyStats(dailyStats, currentSession),
+    [dailyStats, currentSession],
+  );
+  const liveOverall = useMemo(
+    () => mergeCurrentSessionIntoOverallStats(overall, dailyStats, currentSession),
+    [overall, dailyStats, currentSession],
+  );
 
   // Settings menu — matching Tauri ProfilePage exactly
   const menuSections = useMemo(
@@ -339,10 +356,10 @@ export function ProfileScreen() {
     [t],
   );
 
-  const booksRead = overall?.totalBooks ?? 0;
-  const totalTime = overall ? formatTime(overall.totalReadingTime) : "0m";
-  const streak = overall?.currentStreak ?? 0;
-  const avgDaily = overall ? formatTime(overall.avgDailyTime) : "0m";
+  const booksRead = liveOverall?.totalBooks ?? 0;
+  const totalTime = liveOverall ? formatTime(liveOverall.totalReadingTime) : "0m";
+  const streak = liveOverall?.currentStreak ?? 0;
+  const avgDaily = liveOverall ? formatTime(liveOverall.avgDailyTime) : "0m";
 
   return (
     <SafeAreaView style={[s.container, { backgroundColor: colors.background }]} edges={["top"]}>
@@ -394,7 +411,7 @@ export function ProfileScreen() {
               <Text style={s.heatmapDetailText}>{t("profile.viewDetails", "查看详情")}</Text>
             </TouchableOpacity>
           </View>
-          <MiniHeatmap dailyStats={dailyStats} />
+          <MiniHeatmap dailyStats={liveDailyStats} />
         </View>
 
         {/* Settings menu */}

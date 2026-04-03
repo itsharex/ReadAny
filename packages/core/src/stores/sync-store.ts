@@ -20,6 +20,7 @@ import type {
   SyncStatusType,
 } from "../sync/sync-types";
 import { WebDavClient } from "../sync/webdav-client";
+import { eventBus } from "../utils/event-bus";
 
 let activeSyncPromise: Promise<SyncResult | null> | null = null;
 const SYNC_RUNTIME_STATE_KEY = "sync_runtime_state";
@@ -58,6 +59,14 @@ function notifyLibraryStateChanged(): void {
     emitLibraryChanged();
   } catch (error) {
     console.warn("[SyncStore] Failed to notify library refresh after sync:", error);
+  }
+}
+
+function notifySyncCompleted(timestamp: number): void {
+  try {
+    eventBus.emit("sync:completed", { timestamp });
+  } catch (error) {
+    console.warn("[SyncStore] Failed to emit sync completion event:", error);
   }
 }
 
@@ -450,9 +459,10 @@ export const useSyncStore = create<SyncState>((set, get) => ({
       });
 
       if (result.success) {
+        const syncedAt = Date.now();
         set({
           status: "idle",
-          lastSyncAt: Date.now(),
+          lastSyncAt: syncedAt,
           lastResult: {
             success: true,
             direction: "upload",
@@ -464,8 +474,9 @@ export const useSyncStore = create<SyncState>((set, get) => ({
           progress: null,
         });
         notifyLibraryStateChanged();
+        notifySyncCompleted(syncedAt);
         await persistSyncRuntimeState({
-          lastSyncAt: Date.now(),
+          lastSyncAt: syncedAt,
           lastResult: {
             success: true,
             direction: "upload",
@@ -634,17 +645,19 @@ export const useSyncStore = create<SyncState>((set, get) => ({
         );
 
         if (result.success) {
+          const syncedAt = Date.now();
           set({
             status: "idle",
-            lastSyncAt: Date.now(),
+            lastSyncAt: syncedAt,
             lastResult: result,
             error: null,
             progress: null,
             pendingDirection: null,
           });
           notifyLibraryStateChanged();
+          notifySyncCompleted(syncedAt);
           await persistSyncRuntimeState({
-            lastSyncAt: Date.now(),
+            lastSyncAt: syncedAt,
             lastResult: result,
           });
         } else {

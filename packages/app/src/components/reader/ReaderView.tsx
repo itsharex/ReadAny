@@ -27,6 +27,7 @@ import { useReaderStore } from "@/stores/reader-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useTTSStore } from "@/stores/tts-store";
 import type { CitationPart, HighlightColor } from "@readany/core/types";
+import { eventBus } from "@readany/core/utils/event-bus";
 import { throttle } from "@readany/core/utils/throttle";
 import { X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -474,6 +475,12 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
       isInitializedRef.current = false;
     };
   }, [book?.filePath]);
+
+  useEffect(() => {
+    return eventBus.on("sync:completed", () => {
+      void loadAnnotations(bookId);
+    });
+  }, [bookId, loadAnnotations]);
 
   // Load annotations
   useEffect(() => {

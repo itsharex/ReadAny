@@ -15,7 +15,7 @@ import {
   useColors,
   withOpacity,
 } from "@/styles/theme";
-import { useNavigation } from "@react-navigation/native";
+import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { getPlatformService } from "@readany/core/services";
 import { readingStatsService } from "@readany/core/stats";
 import type { DailyStats, OverallStats, PeriodBookStats, TrendPoint } from "@readany/core/stats";
@@ -729,9 +729,11 @@ export default function StatsScreen() {
     }
   }, [saveCurrentSession]);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  useFocusEffect(
+    useCallback(() => {
+      void loadData();
+    }, [loadData]),
+  );
 
   // Resolve cover URLs from relative paths to absolute paths
   useEffect(() => {

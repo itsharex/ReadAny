@@ -32,6 +32,7 @@ import { AnnotationExporter, type ExportFormat } from "@readany/core/export";
 import { getPlatformService } from "@readany/core/services";
 import { HIGHLIGHT_COLOR_HEX } from "@readany/core/types";
 import type { Highlight } from "@readany/core/types";
+import { eventBus } from "@readany/core/utils/event-bus";
 /**
  * NotesScreen — matching Tauri mobile NotesPage exactly.
  * Features: stats header, book notebooks list with covers, detail view with
@@ -113,6 +114,15 @@ export function NotesView({
       };
     }, [loadAllHighlightsWithBooks, loadStats]),
   );
+
+  useEffect(() => {
+    return eventBus.on("sync:completed", () => {
+      setIsLoading(true);
+      Promise.all([loadAllHighlightsWithBooks(500), loadStats()]).finally(() =>
+        setIsLoading(false),
+      );
+    });
+  }, [loadAllHighlightsWithBooks, loadStats]);
 
   // Handle incoming bookId
   useEffect(() => {
