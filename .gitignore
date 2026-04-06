@@ -9,6 +9,7 @@ target/
 
 # IDE
 .vscode/
+.obsidian/
 .idea/
 *.swp
 *.swo
