@@ -24,6 +24,7 @@ import { Directory, File, Paths } from "expo-file-system";
 import * as Network from "expo-network";
 import * as SecureStore from "expo-secure-store";
 import * as Sharing from "expo-sharing";
+import i18n from "@readany/core/i18n";
 
 /** Simple KV storage keys tracking (SecureStore doesn't have getAllKeys) */
 const KV_KEYS_INDEX = "__readany_kv_keys__";
@@ -142,6 +143,68 @@ export class ExpoPlatformService implements IPlatformService {
 
   async loadDatabase(path: string): Promise<IDatabase> {
     const SQLite = await import("expo-sqlite");
+    const createQueuedAdapter = (
+      db: Awaited<ReturnType<typeof SQLite.openDatabaseAsync>>,
+      closeImpl: () => Promise<void>,
+    ): IDatabase => {
+      let operationQueue = Promise.resolve();
+      const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+      const isRetryableSqliteError = (error: unknown): boolean => {
+        const message = error instanceof Error ? error.message : String(error);
+        return (
+          message.includes("database is locked") ||
+          message.includes("another row available")
+        );
+      };
+      const withSqliteRetry = async <T>(operation: () => Promise<T>): Promise<T> => {
+        const maxAttempts = 4;
+        let lastError: unknown;
+
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+          try {
+            return await operation();
+          } catch (error) {
+            lastError = error;
+            if (!isRetryableSqliteError(error) || attempt === maxAttempts) {
+              throw error;
+            }
+            await sleep(50 * attempt);
+          }
+        }
+
+        throw lastError;
+      };
+
+      const enqueue = <T>(operation: () => Promise<T>): Promise<T> => {
+        const run = operationQueue.then(operation, operation);
+        operationQueue = run.then(
+          () => undefined,
+          () => undefined,
+        );
+        return run;
+      };
+
+      return {
+        async execute(sql: string, params?: unknown[]): Promise<void> {
+          await enqueue(async () => {
+            await withSqliteRetry(async () => {
+              await db.runAsync(sql, ...((params as (string | number | null)[]) ?? []));
+            });
+          });
+        },
+        async select<T>(sql: string, params?: unknown[]): Promise<T[]> {
+          return enqueue(async () => {
+            const rows = await withSqliteRetry(async () =>
+              db.getAllAsync(sql, ...((params as (string | number | null)[]) ?? [])),
+            );
+            return rows as T[];
+          });
+        },
+        async close(): Promise<void> {
+          await enqueue(closeImpl);
+        },
+      };
+    };
     const normalizedPath = path.replace("sqlite:", "");
     const isExternalPath =
       normalizedPath.includes("/") ||
@@ -150,19 +213,9 @@ export class ExpoPlatformService implements IPlatformService {
 
     if (!isExternalPath) {
       const db = await SQLite.openDatabaseAsync(normalizedPath);
-
-      return {
-        async execute(sql: string, params?: unknown[]): Promise<void> {
-          await db.runAsync(sql, ...((params as (string | number | null)[]) ?? []));
-        },
-        async select<T>(sql: string, params?: unknown[]): Promise<T[]> {
-          const rows = await db.getAllAsync(sql, ...((params as (string | number | null)[]) ?? []));
-          return rows as T[];
-        },
-        async close(): Promise<void> {
-          await db.closeAsync();
-        },
-      };
+      return createQueuedAdapter(db, async () => {
+        await db.closeAsync();
+      });
     }
 
     const sqliteDirPath = `${Paths.document.uri.replace(/\/$/, "")}/SQLite`;
@@ -191,15 +244,7 @@ export class ExpoPlatformService implements IPlatformService {
       throw error;
     }
 
-    return {
-      async execute(sql: string, params?: unknown[]): Promise<void> {
-        await db.runAsync(sql, ...((params as (string | number | null)[]) ?? []));
-      },
-      async select<T>(sql: string, params?: unknown[]): Promise<T[]> {
-        const rows = await db.getAllAsync(sql, ...((params as (string | number | null)[]) ?? []));
-        return rows as T[];
-      },
-      async close(): Promise<void> {
+    return createQueuedAdapter(db, async () => {
         try {
           await db.closeAsync();
         } finally {
@@ -212,8 +257,7 @@ export class ExpoPlatformService implements IPlatformService {
             tempFile.delete();
           }
         }
-      },
-    };
+      });
   }
 
   // ---- Network ----
@@ -537,7 +581,7 @@ export class ExpoPlatformService implements IPlatformService {
       Constants.executionEnvironment === "storeClient" || Constants.appOwnership === "expo";
     if (isExpoGo) {
       throw new Error(
-        "由于需要底层原生 TCP 模块，局域网服务端不支持在原味 Expo Go 中运行。请使用自定义 Dev Client (expo run) 或桌面版进行互传。",
+        i18n.t("settings.syncLANExpoGoUnsupported"),
       );
     }
 

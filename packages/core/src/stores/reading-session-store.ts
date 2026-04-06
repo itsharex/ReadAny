@@ -1,11 +1,16 @@
 import { create } from "zustand";
 import * as db from "../db/database";
+import { runWithDbRetry } from "../db/write-retry";
 /**
  * Reading session store — session state machine (ACTIVE/PAUSED/STOPPED)
  * Connected to SQLite for persistence via core db module
  */
 import type { ReadingSession, ReadingStats, SessionState } from "../types";
 import { generateId } from "../utils/generate-id";
+
+async function persistReadingSession(session: ReadingSession): Promise<void> {
+  await runWithDbRetry(() => db.insertReadingSession(session));
+}
 
 export interface ReadingSessionState {
   currentSession: ReadingSession | null;
@@ -65,7 +70,7 @@ export const useReadingSessionStore = create<ReadingSessionState>((set, get) => 
           state: "STOPPED" as const,
           endedAt: Date.now(),
         };
-        db.insertReadingSession(session).catch((err) =>
+        persistReadingSession(session).catch((err) =>
           console.error("Failed to save reading session:", err),
         );
       }
@@ -100,7 +105,7 @@ export const useReadingSessionStore = create<ReadingSessionState>((set, get) => 
           ...currentSession,
           endedAt: Date.now(),
         };
-        await db.insertReadingSession(session);
+        await persistReadingSession(session);
 
         set({
           currentSession: {

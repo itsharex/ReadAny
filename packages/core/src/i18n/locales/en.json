@@ -710,6 +710,8 @@
     "syncLANImportProgressFiles": "Importing files {{completed}}/{{total}}",
     "syncLANImportComplete": "Import completed",
     "syncLANImportedFiles": "Imported {{count}} files",
+    "syncLANExpoGoUnsupported": "Expo Go does not support the LAN sender because it requires native TCP modules. Please use a custom Dev Client (expo run) or the desktop app.",
+    "syncAndroidExpoGoHttpUnsupported": "Android Expo Go does not support testing this plain HTTP WebDAV endpoint. Please use HTTPS, or test again in a custom Dev Client / release build.",
     "cameraPermission": "Camera Permission",
     "cameraPermissionDesc": "Sync feature needs camera permission to scan QR code",
     "syncClose": "Close",

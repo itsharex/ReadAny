@@ -10,6 +10,7 @@ export interface RelocateEvent {
   fraction?: number;
   section?: { current: number; total: number };
   location?: { current: number; next: number; total: number };
+  page?: { current: number; total: number };
   tocItem?: { label?: string; href?: string; id?: number };
   pageItem?: { label?: string };
   cfi?: string;
@@ -92,6 +93,14 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
 
   const goPrev = useCallback(() => {
     inject("window.goPrev()");
+  }, [inject]);
+
+  const goLeft = useCallback(() => {
+    inject("window.goLeft()");
+  }, [inject]);
+
+  const goRight = useCallback(() => {
+    inject("window.goRight()");
   }, [inject]);
 
   const goToFraction = useCallback(
@@ -474,6 +483,8 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
       openBook,
       goNext,
       goPrev,
+      goLeft,
+      goRight,
       goToFraction,
       goToHref,
       goToCFI,
@@ -498,6 +509,8 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
       openBook,
       goNext,
       goPrev,
+      goLeft,
+      goRight,
       goToFraction,
       goToHref,
       goToCFI,

@@ -1,10 +1,9 @@
 import { MarkdownRenderer } from "@/components/chat/MarkdownRenderer";
 import { BookmarkRibbon } from "@/components/reader/BookmarkRibbon";
+import { ChapterTranslationSheet } from "@/components/reader/ChapterTranslationSheet";
 import { SelectionPopover } from "@/components/reader/SelectionPopover";
 import { TTSControls } from "@/components/reader/TTSControls";
 import { TranslationPanel } from "@/components/reader/TranslationPanel";
-import { ChapterTranslationSheet } from "@/components/reader/ChapterTranslationSheet";
-import { useChapterTranslation } from "@readany/core/hooks";
 import {
   BookmarkFilledIcon,
   BookmarkIcon,
@@ -36,12 +35,14 @@ import { useTheme } from "@/styles/ThemeContext";
 import { type ThemeColors, fontSize, fontWeight, radius, useColors } from "@/styles/theme";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { readingContextService } from "@readany/core/ai/reading-context-service";
+import { runWithDbRetry } from "@readany/core/db/write-retry";
+import { useChapterTranslation } from "@readany/core/hooks";
 import { useReadingSession } from "@readany/core/hooks/use-reading-session";
 import { createSelectionNoteMutation } from "@readany/core/reader";
 import { getPlatformService } from "@readany/core/services";
 import type { TOCItem } from "@readany/core/types";
-import { eventBus } from "@readany/core/utils/event-bus";
 import { generateId } from "@readany/core/utils";
+import { eventBus } from "@readany/core/utils/event-bus";
 import { throttle } from "@readany/core/utils/throttle";
 import { Asset } from "expo-asset";
 import * as FileSystem from "expo-file-system/legacy";
@@ -280,7 +281,9 @@ export function ReaderScreen({ route, navigation }: Props) {
   const webViewRefForVisibility = useRef<WebView | null>(null);
   const chapterTranslationBridgeRef = useRef<{
     getChapterParagraphs: () => Promise<Array<{ id: string; text: string; tagName: string }>>;
-    injectChapterTranslations: (results: Array<{ paragraphId: string; originalText: string; translatedText: string }>) => void;
+    injectChapterTranslations: (
+      results: Array<{ paragraphId: string; originalText: string; translatedText: string }>,
+    ) => void;
     removeChapterTranslations: () => void;
   } | null>(null);
 
@@ -300,6 +303,7 @@ export function ReaderScreen({ route, navigation }: Props) {
   const TOOLBAR_HIDE_OFFSET = 200;
   const toolbarAnim = useRef(new Animated.Value(TOOLBAR_HIDE_OFFSET)).current;
   const lastCfiRef = useRef<string>("");
+  const progressRef = useRef(0);
   const locationHistoryRef = useRef<string[]>([]);
   const lastNavigatedCfiRef = useRef<string | undefined>(undefined);
 
@@ -387,6 +391,10 @@ export function ReaderScreen({ route, navigation }: Props) {
       `);
     },
   });
+
+  useEffect(() => {
+    progressRef.current = progress;
+  }, [progress]);
 
   // Bookmark state
   const existingBookmark = useMemo(
@@ -476,6 +484,13 @@ export function ReaderScreen({ route, navigation }: Props) {
       });
     },
     onRelocate: (detail: RelocateEvent) => {
+      console.log("[ReaderScreen] onRelocate", {
+        section: detail.section,
+        fraction: detail.fraction,
+        cfi: detail.cfi,
+        routeCfi: cfi,
+        lastNavigated: lastNavigatedCfiRef.current,
+      });
       // Track section changes for chapter translation reset
       const newSection = detail.section?.current ?? 0;
       if (newSection !== currentSectionIndex) {
@@ -485,9 +500,12 @@ export function ReaderScreen({ route, navigation }: Props) {
       }
 
       if (detail.fraction != null) setProgress(detail.fraction);
-      if (detail.location) {
-        setCurrentPage(detail.location.current);
-        setTotalPages(detail.location.total);
+      if (detail.location?.total) {
+        setCurrentPage(Math.max(1, detail.location.current));
+        setTotalPages(Math.max(1, detail.location.total));
+      } else if (detail.page) {
+        setCurrentPage(Math.max(1, detail.page.current));
+        setTotalPages(Math.max(1, detail.page.total));
       }
       if (detail.tocItem?.label) setCurrentChapter(detail.tocItem.label);
       if (detail.cfi) {
@@ -668,13 +686,17 @@ export function ReaderScreen({ route, navigation }: Props) {
       // Flush the last known position to database immediately
       if (lastCfiRef.current) {
         const db = require("@readany/core/db/database");
-        db.updateBook(bookId, {
-          progress: progress,
-          currentCfi: lastCfiRef.current,
-        }).catch((err: Error) => console.error("Failed to save progress on unmount:", err));
+        runWithDbRetry(
+          () =>
+            db.updateBook(bookId, {
+              progress: progressRef.current,
+              currentCfi: lastCfiRef.current,
+            }),
+          { attempts: 10, initialDelayMs: 150 },
+        ).catch((err: Error) => console.error("Failed to save progress on unmount:", err));
       }
     };
-  }, [bookId, progress]);
+  }, [bookId]);
 
   // When WebView is ready and book is available, send the open command
   useEffect(() => {
@@ -688,23 +710,26 @@ export function ReaderScreen({ route, navigation }: Props) {
         const platform = getPlatformService();
         const appData = await platform.getAppDataDir();
         const absPath = await platform.joinPath(appData, book.filePath);
+        const lastLocation = book.currentCfi || undefined;
 
-        // Read the book file and send as base64 for reliability
-        const base64 = await FileSystem.readAsStringAsync(absPath, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
-
-        // Get the latest currentCfi directly from database (not from store cache)
-        const db = await import("@readany/core/db/database");
-        const latestBook = await db.getBook(bookId);
-        const lastLocation = latestBook?.currentCfi || book.currentCfi || undefined;
-
-        bridge.openBook({
-          base64,
-          fileName: book.filePath.split("/").pop() || "book.epub",
-          lastLocation,
-          pageMargin: settingPageMargin,
-        });
+        if (Platform.OS === "android") {
+          bridge.openBook({
+            uri: platform.convertFileSrc(absPath),
+            fileName: book.filePath.split("/").pop() || "book.epub",
+            lastLocation,
+            pageMargin: settingPageMargin,
+          });
+        } else {
+          const base64 = await FileSystem.readAsStringAsync(absPath, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+          bridge.openBook({
+            base64,
+            fileName: book.filePath.split("/").pop() || "book.epub",
+            lastLocation,
+            pageMargin: settingPageMargin,
+          });
+        }
 
         // Set theme colors
         bridge.setThemeColors({
@@ -750,6 +775,12 @@ export function ReaderScreen({ route, navigation }: Props) {
   // Navigate to CFI when book is loaded (from NotesPage or AI citation navigation)
   useEffect(() => {
     if (!webViewReady || loading || !cfi || cfi === lastNavigatedCfiRef.current) return;
+    console.log("[ReaderScreen] goToCFI effect fired", {
+      routeCfi: cfi,
+      lastNavigated: lastNavigatedCfiRef.current,
+      webViewReady,
+      loading,
+    });
     bridge.goToCFI(cfi);
     lastNavigatedCfiRef.current = cfi;
 
@@ -1007,7 +1038,7 @@ export function ReaderScreen({ route, navigation }: Props) {
 
   const isPanelOpen = showTOC || showSettings || showSearch || showNotebook || showTranslation;
   const existingSelectionHighlight = selection
-    ? highlights.find((highlight) => highlight.cfi === selection.cfi) ?? null
+    ? (highlights.find((highlight) => highlight.cfi === selection.cfi) ?? null)
     : null;
 
   return (
@@ -1216,11 +1247,7 @@ export function ReaderScreen({ route, navigation }: Props) {
               >
                 <LanguagesIcon
                   size={18}
-                  color={
-                    chapterTranslation.state.status !== "idle"
-                      ? colors.primary
-                      : "#fff"
-                  }
+                  color={chapterTranslation.state.status !== "idle" ? colors.primary : "#fff"}
                 />
               </TouchableOpacity>
               <TouchableOpacity
@@ -1251,7 +1278,7 @@ export function ReaderScreen({ route, navigation }: Props) {
               </TouchableOpacity>
             </View>
             <View style={s.footerSliderRow}>
-              <TouchableOpacity style={s.footerNavBtn} onPress={bridge.goPrev}>
+              <TouchableOpacity style={s.footerNavBtn} onPress={bridge.goLeft}>
                 <ChevronLeftIcon size={18} color="rgba(255,255,255,0.7)" />
               </TouchableOpacity>
               <View style={s.sliderWrap}>
@@ -1259,7 +1286,7 @@ export function ReaderScreen({ route, navigation }: Props) {
                   <View style={[s.sliderFill, { width: `${percent}%` }]} />
                 </View>
               </View>
-              <TouchableOpacity style={s.footerNavBtn} onPress={bridge.goNext}>
+              <TouchableOpacity style={s.footerNavBtn} onPress={bridge.goRight}>
                 <ChevronRightIcon size={18} color="rgba(255,255,255,0.7)" />
               </TouchableOpacity>
             </View>

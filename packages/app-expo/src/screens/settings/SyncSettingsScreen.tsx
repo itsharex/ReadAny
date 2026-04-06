@@ -183,6 +183,12 @@ export default function SyncSettingsScreen() {
     try {
       let success = false;
       if (selectedBackend === "webdav") {
+        const isExpoGo =
+          Constants.executionEnvironment === "storeClient" || Constants.appOwnership === "expo";
+        const normalizedUrl = url.trim().toLowerCase();
+        if (Platform.OS === "android" && isExpoGo && normalizedUrl.startsWith("http://")) {
+          throw new Error(t("settings.syncAndroidExpoGoHttpUnsupported"));
+        }
         success = await testWebDavConnection(url, username, password, allowInsecure);
       } else if (selectedBackend === "s3") {
         success = await testS3Connection(

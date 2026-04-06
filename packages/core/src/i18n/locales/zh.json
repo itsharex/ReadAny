@@ -704,6 +704,8 @@
     "syncLANImportProgressFiles": "正在导入文件 {{completed}}/{{total}}",
     "syncLANImportComplete": "导入完成",
     "syncLANImportedFiles": "已导入 {{count}} 个文件",
+    "syncLANExpoGoUnsupported": "Expo Go 不支持局域网发送端，因为它依赖原生 TCP 模块。请使用自定义 Dev Client（expo run）或桌面版进行互传。",
+    "syncAndroidExpoGoHttpUnsupported": "Android 版 Expo Go 不支持当前这种明文 HTTP WebDAV 测试。请改用 HTTPS，或使用自定义 Dev Client / 正式构建包再测试。",
     "cameraPermission": "相机权限",
     "cameraPermissionDesc": "同步功能需要相机权限来扫描二维码",
     "syncClose": "关闭",

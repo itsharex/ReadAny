@@ -1,6 +1,7 @@
 import { extractBookMetadata } from "@/lib/book/metadata-extractor";
 import { queueBook as queueAutoVectorize } from "@/lib/rag/auto-vectorize-service";
 import * as db from "@readany/core/db/database";
+import { runWithDbRetry } from "@readany/core/db/write-retry";
 import { getPlatformService } from "@readany/core/services";
 import type { Book, LibraryFilter, SortField, SortOrder } from "@readany/core/types";
 import { generateId } from "@readany/core/utils";
@@ -198,6 +199,10 @@ async function copyBookToAppData(
   return { relativePath, fileBytes };
 }
 
+async function persistBookUpdate(bookId: string, updates: Partial<Book>): Promise<void> {
+  await runWithDbRetry(() => db.updateBook(bookId, updates));
+}
+
 export const useLibraryStore = create<LibraryState>((set, get) => ({
   books: [],
   filter: {
@@ -306,7 +311,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     set((state) => ({
       books: state.books.map((b) => (b.id === bookId ? { ...b, ...updates } : b)),
     }));
-    db.updateBook(bookId, updates).catch((err) =>
+    persistBookUpdate(bookId, updates).catch((err) =>
       console.error("Failed to update book in database:", err),
     );
     debouncedSave("library-books", get().books);

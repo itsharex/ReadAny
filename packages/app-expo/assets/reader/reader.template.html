@@ -106,12 +106,24 @@
       if (RN) RN.postMessage(JSON.stringify({ type, ...data }));
     }
 
+    function debugLog(message, data) {
+      postToRN('debug', {
+        message: data ? `${message} ${JSON.stringify(data)}` : message,
+      });
+    }
+
     // State
     let view = null;
     let currentBook = null;
     let searchGenerator = null;
     let searchResults = [];
     let searchIndex = 0;
+    let currentSectionIndex = 0;
+    let totalSections = 0;
+    let currentThemeColors = { bg: '#1c1c1e', fg: '#e8e8ed', muted: '#7c7c82', primary: '#3b82f6' };
+    let lastRendererStyles = '';
+    let tapNavigationLockUntil = 0;
+    let tapNavigationInFlight = false;
 
     // Store user annotations for re-rendering on page change
     const userAnnotations = new Map();
@@ -333,6 +345,7 @@
           attachTapListener(doc);
           attachSelectionListener(doc);
           attachNoteLongPress(doc);
+          attachContinuousScrollListener(doc);
           // Re-add all user annotations for this page
           // foliate-view will only render those that belong to current section
           for (const [cfi, annotation] of userAnnotations) {
@@ -346,10 +359,41 @@
         var snippetTimer = null;
         el.addEventListener('relocate', (e) => {
           const detail = e.detail;
+          debugLog('[relocate]', {
+            cfi: detail.cfi,
+            section: detail.section,
+            fraction: detail.fraction,
+            lockRemaining: Math.max(0, tapNavigationLockUntil - Date.now()),
+            inFlight: tapNavigationInFlight,
+          });
+          if (tapNavigationInFlight) {
+            setTimeout(() => {
+              tapNavigationInFlight = false;
+              debugLog('[tap] inFlight cleared after relocate');
+            }, 80);
+          }
+          if (detail.section != null) {
+            currentSectionIndex = typeof detail.section === 'number'
+              ? detail.section
+              : detail.section.current;
+          }
+          const rendererPage = view && view.renderer && typeof view.renderer.page === 'number'
+            ? view.renderer.page
+            : null;
+          const rendererPages = view && view.renderer && typeof view.renderer.pages === 'number'
+            ? view.renderer.pages
+            : null;
+          const actualPage = rendererPage != null && rendererPages != null && rendererPages > 2
+            ? {
+                current: Math.max(1, Math.min(rendererPage, rendererPages - 2)),
+                total: Math.max(1, rendererPages - 2),
+              }
+            : null;
           postToRN('relocate', {
             fraction: detail.fraction,
             section: detail.section,
             location: detail.location,
+            page: actualPage,
             tocItem: detail.tocItem,
             pageItem: detail.pageItem,
             cfi: detail.cfi,
@@ -419,6 +463,12 @@
         view = el;
 
         await el.open(book);
+
+        if (book.sections) {
+          totalSections = book.sections.length;
+        } else if (book.toc) {
+          totalSections = book.toc.length;
+        }
 
         // Set search indicator color (use primary theme color instead of red)
         if (el.setSearchIndicator) {
@@ -527,7 +577,7 @@
         const lh = settings.lineHeight || 1.6;
         const ps = settings.paragraphSpacing || 8;
 
-        renderer.setStyles(`
+        const baseStyles = `
           html, body {
             font-family: ${fontFamily} !important;
             font-size: ${fSize}px !important;
@@ -539,8 +589,15 @@
           }
           p { margin-top: ${ps}px !important; margin-bottom: ${ps}px !important; }
           img, svg { max-width: 100% !important; height: auto !important; }
-          ::selection { background: rgba(59, 130, 246, 0.3) !important; }
-        `);
+        `;
+        lastRendererStyles = baseStyles;
+        const themedStyles = injectThemeIntoStyles(
+          baseStyles,
+          currentThemeColors.bg,
+          currentThemeColors.fg,
+          currentThemeColors.primary,
+        );
+        renderer.setStyles(themedStyles);
       }
 
       if (settings.pageMargin != null) {
@@ -562,16 +619,48 @@
     }
 
     function setThemeColors(colors) {
-      document.documentElement.style.setProperty('--bg', colors.background || '#1c1c1e');
-      document.documentElement.style.setProperty('--fg', colors.foreground || '#e8e8ed');
-      document.documentElement.style.setProperty('--muted', colors.muted || '#7c7c82');
-      document.documentElement.style.setProperty('--primary', colors.primary || '#3b82f6');
-      document.body.style.backgroundColor = colors.background || '#1c1c1e';
-      document.body.style.color = colors.foreground || '#e8e8ed';
-      // Update search indicator color if view is ready
-      if (view && view.setSearchIndicator) {
-        view.setSearchIndicator('outline', { color: colors.primary || '#3b82f6' });
+      const bg = colors.background || '#1c1c1e';
+      const fg = colors.foreground || '#e8e8ed';
+      const muted = colors.muted || '#7c7c82';
+      const primary = colors.primary || '#3b82f6';
+
+      currentThemeColors = { bg, fg, muted, primary };
+
+      document.documentElement.style.setProperty('--bg', bg);
+      document.documentElement.style.setProperty('--fg', fg);
+      document.documentElement.style.setProperty('--muted', muted);
+      document.documentElement.style.setProperty('--primary', primary);
+      document.body.style.backgroundColor = bg;
+      document.body.style.color = fg;
+
+      if (view && view.renderer && view.renderer.setStyles) {
+        const currentStyles = lastRendererStyles || '';
+        const themedStyles = injectThemeIntoStyles(currentStyles, bg, fg, primary);
+        view.renderer.setStyles(themedStyles);
       }
+
+      if (view && view.setSearchIndicator) {
+        view.setSearchIndicator('outline', { color: primary });
+      }
+    }
+
+    function injectThemeIntoStyles(baseStyles, bg, fg, primary) {
+      const cleaned = baseStyles.replace(
+        /\/\* __theme_colors__ \*\/[\s\S]*?\/\* __end_theme_colors__ \*\//g,
+        '',
+      );
+      const themeBlock = `/* __theme_colors__ */
+html, body {
+  background-color: ${bg} !important;
+  color: ${fg} !important;
+}
+p, div, span, blockquote, li, dd, dt, h1, h2, h3, h4, h5, h6, td, th, caption, figcaption, label, a {
+  color: inherit !important;
+}
+a { color: ${primary} !important; }
+::selection { background: rgba(59, 130, 246, 0.3) !important; }
+/* __end_theme_colors__ */`;
+      return themeBlock + '\n' + cleaned;
     }
 
     // ─── Document styles ───
@@ -581,8 +670,12 @@
         img.style.height = 'auto';
       }
       const style = doc.createElement('style');
+      const { bg, fg, primary } = currentThemeColors;
       style.textContent = `
         * { -webkit-touch-callout: none !important; -webkit-user-select: text !important; user-select: text !important; }
+        html, body { background-color: ${bg} !important; color: ${fg} !important; }
+        p, div, span, blockquote, li, dd, dt, h1, h2, h3, h4, h5, h6, td, th, caption, figcaption, label { color: inherit !important; }
+        a { color: ${primary} !important; }
         ::selection { background: rgba(250, 204, 21, 0.4) !important; }
       `;
       doc.head.appendChild(style);
@@ -594,34 +687,59 @@
       if (doc.__readany_tap) return;
       doc.__readany_tap = true;
 
-      let touchStartTime = 0;
-      let touchStartX = 0;
-      let touchStartY = 0;
+      const MAX_TAP_MS = 250;
+      const MOVE_THRESHOLD = 12;
+      let tapState = null;
 
       doc.addEventListener('touchstart', (e) => {
-        if (e.touches.length === 1) {
-          touchStartTime = Date.now();
-          touchStartX = e.touches[0].clientX;
-          touchStartY = e.touches[0].clientY;
+        if (e.touches.length !== 1) {
+          tapState = null;
+          return;
+        }
+        const touch = e.touches[0];
+        tapState = {
+          startedAt: Date.now(),
+          startX: touch.clientX,
+          startY: touch.clientY,
+          moved: false,
+          target: e.target,
+        };
+      }, { passive: true });
+
+      doc.addEventListener('touchmove', (e) => {
+        if (!tapState || e.touches.length !== 1) return;
+        const touch = e.touches[0];
+        if (
+          Math.abs(touch.clientX - tapState.startX) > MOVE_THRESHOLD ||
+          Math.abs(touch.clientY - tapState.startY) > MOVE_THRESHOLD
+        ) {
+          tapState.moved = true;
         }
       }, { passive: true });
 
+      doc.addEventListener('touchcancel', () => {
+        tapState = null;
+      }, { passive: true });
+
       doc.addEventListener('touchend', (e) => {
-        const touchEndTime = Date.now();
-        const touchDuration = touchEndTime - touchStartTime;
-        
-        // Ignore if touch duration > 800ms (long press)
-        if (touchDuration > 800) return;
-        
-        // Check if finger moved significantly
-        if (e.changedTouches.length === 1) {
-          const touch = e.changedTouches[0];
-          const dx = Math.abs(touch.clientX - touchStartX);
-          const dy = Math.abs(touch.clientY - touchStartY);
-          if (dx > 20 || dy > 20) return; // Moved too much, not a tap
+        if (Date.now() < tapNavigationLockUntil) {
+          debugLog('[tap] ignored by lock', { remainingMs: tapNavigationLockUntil - Date.now() });
+          tapState = null;
+          return;
+        }
+        if (tapNavigationInFlight) {
+          debugLog('[tap] ignored by inFlight');
+          tapState = null;
+          return;
         }
 
-        const target = e.target;
+        const state = tapState;
+        tapState = null;
+        if (!state || state.moved || e.changedTouches.length !== 1) return;
+        if (Date.now() - state.startedAt > MAX_TAP_MS) return;
+
+        const touch = e.changedTouches[0];
+        const target = e.target || state.target;
         if (target && target.closest && target.closest('a[href], audio, video, button, input, select, textarea')) return;
 
         const sel = doc.getSelection();
@@ -633,11 +751,53 @@
         const iframeLeft = iframe ? iframe.getBoundingClientRect().left : 0;
         const viewportX = e.changedTouches[0].clientX + iframeLeft;
         const normalizedX = ((viewportX % viewW) + viewW) % viewW;
+        e.preventDefault();
+        e.stopPropagation();
 
-        if (normalizedX >= viewW * 0.25 && normalizedX <= viewW * 0.75) {
+        const centerStart = viewW * 0.375;
+        const centerEnd = viewW * 0.625;
+
+        debugLog('[tap] touchend', {
+          startX: state.startX,
+          startY: state.startY,
+          viewportX,
+          normalizedX,
+          viewW,
+          centerStart,
+          centerEnd,
+          currentSectionIndex,
+          totalSections,
+        });
+
+        if (normalizedX >= centerStart && normalizedX <= centerEnd) {
+          debugLog('[tap] center -> controls', { normalizedX });
+          tapNavigationLockUntil = Date.now() + 250;
+          e.preventDefault();
+          e.stopPropagation();
           postToRN('tap', {});
+          return;
         }
-      }, { passive: true });
+
+        tapNavigationInFlight = true;
+        tapNavigationLockUntil = Date.now() + 450;
+        e.preventDefault();
+        e.stopPropagation();
+        const dir = currentBook && currentBook.dir === 'rtl' ? 'rtl' : 'ltr';
+
+        if (normalizedX < centerStart) {
+          debugLog('[tap] edge prev', { normalizedX, dir, currentSectionIndex });
+          if (view) {
+            if (dir === 'rtl') view.next();
+            else view.prev();
+          }
+        } else {
+          debugLog('[tap] edge next', { normalizedX, dir, currentSectionIndex });
+          if (view) {
+            if (dir === 'rtl') view.prev();
+            else view.next();
+          }
+        }
+      }, { passive: false, capture: true });
     }
 
     // ─── Selection detection ───
@@ -711,6 +871,47 @@
           selectionBottom: iframeRect.top + rect.bottom,
         },
       });
+    }
+
+    // ─── Continuous scroll listener ───
+    function attachContinuousScrollListener(doc) {
+      if (doc.__readany_continuous_scroll) return;
+      doc.__readany_continuous_scroll = true;
+
+      let touchStartY = 0;
+      let touchStartX = 0;
+
+      doc.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 1) {
+          touchStartY = e.touches[0].clientY;
+          touchStartX = e.touches[0].clientX;
+        }
+      }, { passive: true });
+
+      doc.addEventListener('touchend', (e) => {
+        if (!view || !view.renderer) return;
+        const renderer = view.renderer;
+        if (!renderer.scrolled) return;
+
+        if (e.changedTouches.length === 1) {
+          const touchEndY = e.changedTouches[0].clientY;
+          const touchEndX = e.changedTouches[0].clientX;
+          const deltaY = touchEndY - touchStartY;
+          const deltaX = touchEndX - touchStartX;
+
+          if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 30) {
+            postToRN('continuous-scroll', {
+              deltaY,
+              start: renderer.start,
+              end: renderer.end,
+              viewSize: renderer.viewSize,
+              size: renderer.size,
+              currentSectionIndex,
+              totalSections,
+            });
+          }
+        }
+      }, { passive: true });
     }
 
     // ─── TOC conversion ───
@@ -893,6 +1094,8 @@
     // ─── Expose global functions for injectJavaScript ───
     window.goNext = function () { if (view) view.next(); };
     window.goPrev = function () { if (view) view.prev(); };
+    window.goLeft = function () { if (view) view.goLeft(); };
+    window.goRight = function () { if (view) view.goRight(); };
     window.goToHref = function (href) { if (view) view.goTo(href); };
     window.goToCFI = function (cfi) { if (view) view.goTo(cfi); };
     window.goToProgress = function (p) { if (view) view.goToFraction(p); };

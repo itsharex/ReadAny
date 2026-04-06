@@ -25,7 +25,7 @@ if (typeof navigator !== "undefined" && !navigator.userAgent) {
 import { DarkTheme, DefaultTheme, NavigationContainer } from "@react-navigation/native";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, View } from "react-native";
+import { ActivityIndicator, Text, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
@@ -39,10 +39,10 @@ import { setPlatformService } from "@readany/core/services";
 import { setSyncAdapter } from "@readany/core/sync";
 import { I18nextProvider } from "react-i18next";
 
-import { ExpoPlatformService } from "@/lib/platform/expo-platform-service";
-import { MobileSyncAdapter } from "@/lib/sync/sync-adapter-mobile";
 import { UpdateDialog } from "@/components/update/UpdateDialog";
 import { useUpdateChecker } from "@/hooks/use-update-checker";
+import { ExpoPlatformService } from "@/lib/platform/expo-platform-service";
+import { MobileSyncAdapter } from "@/lib/sync/sync-adapter-mobile";
 import { RootNavigator } from "@/navigation/RootNavigator";
 import { useLibraryStore } from "@/stores/library-store";
 import { ThemeProvider, useTheme } from "@/styles/ThemeContext";
@@ -50,45 +50,71 @@ import { useAutoSync } from "@readany/core/hooks/use-auto-sync";
 
 export default function App() {
   const [ready, setReady] = useState(false);
+  const [bootError, setBootError] = useState<string | null>(null);
 
   useEffect(() => {
     async function bootstrap() {
-      // 1. Register platform service
-      const platform = new ExpoPlatformService();
-      setPlatformService(platform);
-
-      // 2. Register sync adapter
-      setSyncAdapter(new MobileSyncAdapter());
-
-      // 3. Initialize database (create tables)
-      await initDatabase();
-
-      // 4. Wait for i18n to be ready
       try {
+        console.log("[App] bootstrap: register platform service");
+        const platform = new ExpoPlatformService();
+        setPlatformService(platform);
+
+        console.log("[App] bootstrap: register sync adapter");
+        setSyncAdapter(new MobileSyncAdapter());
+
+        console.log("[App] bootstrap: init database");
+        await initDatabase();
+
+        console.log("[App] bootstrap: wait i18nReady");
         await i18nReady;
         console.log("[App] i18n initialized successfully");
+
+        console.log("[App] bootstrap: register RN session source");
+        setSessionEventSource(rnSessionEventSource);
+
+        console.log("[App] bootstrap: init language");
+        await initI18nLanguage();
+
+        console.log("[App] bootstrap: import expo/fetch");
+        const { fetch: expoFetch } = await import("expo/fetch");
+        setStreamingFetch(expoFetch as typeof globalThis.fetch);
+
+        console.log("[App] bootstrap: done");
+        setReady(true);
       } catch (error) {
-        console.error("[App] i18n initialization failed:", error);
-        // Continue anyway, i18n will use default language
+        console.error("[App] bootstrap failed:", error);
+        setBootError(error instanceof Error ? error.message : String(error));
       }
-
-      // 5. Register RN-specific adapters
-      setSessionEventSource(rnSessionEventSource);
-
-      // 6. Restore persisted language
-      await initI18nLanguage();
-
-      // 7. Inject streaming-compatible fetch for AI calls
-      const { fetch: expoFetch } = await import("expo/fetch");
-      setStreamingFetch(expoFetch as typeof globalThis.fetch);
-
-      // Note: Mobile app only supports remote embedding APIs (OpenAI, DeepSeek, etc.)
-      // Local embedding is not supported to reduce APK size by ~100MB
-
-      setReady(true);
     }
     bootstrap();
   }, []);
+
+  if (bootError) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          justifyContent: "center",
+          alignItems: "center",
+          backgroundColor: "#1c1c1e",
+          padding: 24,
+        }}
+      >
+        <Text
+          style={{
+            color: "#ffffff",
+            fontSize: 18,
+            fontWeight: "600",
+            marginBottom: 12,
+            textAlign: "center",
+          }}
+        >
+          App failed to start
+        </Text>
+        <Text style={{ color: "#fca5a5", fontSize: 14, textAlign: "center" }}>{bootError}</Text>
+      </View>
+    );
+  }
 
   if (!ready) {
     return (

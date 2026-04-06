@@ -229,7 +229,7 @@ export function LANSyncDialog({ open, onClose, mode }: LANSyncDialogProps) {
                     disabled={!manualServerIP}
                     className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
                   >
-                    启动服务
+                    {t("settings.syncLANServerStart")}
                   </button>
                 </div>
               </div>
@@ -280,14 +280,16 @@ export function LANSyncDialog({ open, onClose, mode }: LANSyncDialogProps) {
                     disabled={serverStatus === "starting"}
                     className="flex-1 rounded-md bg-primary px-3 py-2 text-sm text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
                   >
-                    {serverStatus === "starting" ? "启动中..." : "启动服务"}
+                    {serverStatus === "starting"
+                      ? t("settings.syncLANServerStarting")
+                      : t("settings.syncLANServerStart")}
                   </button>
                 ) : (
                   <button
                     onClick={handleStopServer}
                     className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground transition-colors hover:bg-muted"
                   >
-                    停止服务
+                    {t("settings.syncLANServerStop")}
                   </button>
                 )}
               </div>

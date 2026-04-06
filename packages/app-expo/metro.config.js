@@ -45,12 +45,12 @@ config.resolver.assetExts = config.resolver.assetExts.filter((ext) => ext !== "s
 config.resolver.sourceExts = [...config.resolver.sourceExts, "svg"];
 
 // 7. Force all packages to use the same React instance from the monorepo root
-// pnpm stores packages in node_modules/.pnpm/<package>@<version>/node_modules/<package>
-// IMPORTANT: react version must match react-native's renderer version (19.1.4)
-const reactPath = path.resolve(monorepoRoot, "node_modules/.pnpm/react@19.1.4/node_modules/react");
-const reactNativePath = path.resolve(
-  monorepoRoot,
-  "node_modules/.pnpm/react-native@0.81.6_@babel+core@7.29.0_@types+react@19.1.17_react@19.1.4/node_modules/react-native",
+// Use dynamic resolution instead of hard-coded pnpm store paths so upgrades do not break Metro.
+const reactPath = path.dirname(
+  require.resolve("react/package.json", { paths: [projectRoot, monorepoRoot] }),
+);
+const reactNativePath = path.dirname(
+  require.resolve("react-native/package.json", { paths: [projectRoot, monorepoRoot] }),
 );
 
 config.resolver.extraNodeModules = {
