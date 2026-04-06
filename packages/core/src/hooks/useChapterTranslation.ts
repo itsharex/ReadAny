@@ -8,6 +8,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { AIConfig } from "../types";
 import { useSettingsStore } from "../stores/settings-store";
 import {
   clearChapterCache,
@@ -21,6 +22,7 @@ import type {
   ChapterTranslationResult,
 } from "../translation/chapter-translator";
 import { translateChapter } from "../translation/chapter-translator";
+import type { TranslationConfig } from "../types/translation";
 
 // ---------------------------------------------------------------------------
 // State machine
@@ -36,6 +38,8 @@ export type ChapterTranslationState =
 export interface UseChapterTranslationOptions {
   bookId: string;
   sectionIndex: number;
+  aiConfig?: AIConfig;
+  translationConfig?: TranslationConfig;
   /** Whether the reader is ready (DOM loaded) — auto-restore waits for this */
   ready?: boolean;
   /** Extract paragraphs from the current section DOM */
@@ -52,7 +56,9 @@ export function useChapterTranslation(options: UseChapterTranslationOptions) {
   const {
     bookId,
     sectionIndex,
+    aiConfig: aiConfigOverride,
     ready = true,
+    translationConfig: translationConfigOverride,
     getParagraphs,
     injectTranslations,
     removeTranslations,
@@ -64,8 +70,10 @@ export function useChapterTranslation(options: UseChapterTranslationOptions) {
   const autoRestoreAttemptedRef = useRef<string>("");
   const startTranslationRef = useRef<() => void>(() => {});
 
-  const translationConfig = useSettingsStore((s) => s.translationConfig);
-  const aiConfig = useSettingsStore((s) => s.aiConfig);
+  const translationConfigFromStore = useSettingsStore((s) => s.translationConfig);
+  const aiConfigFromStore = useSettingsStore((s) => s.aiConfig);
+  const translationConfig = translationConfigOverride || translationConfigFromStore;
+  const aiConfig = aiConfigOverride || aiConfigFromStore;
 
   // ---- Start Translation ---------------------------------------------------
   /** @param overrideTargetLang — if provided, overrides the settings targetLang for this run */
@@ -92,6 +100,7 @@ export function useChapterTranslation(options: UseChapterTranslationOptions) {
             ...config.provider,
             apiKey: endpoint.apiKey,
             baseUrl: endpoint.baseUrl,
+            useExactRequestUrl: endpoint.useExactRequestUrl,
             model: config.provider.model || aiConfig.activeModel,
           };
         }

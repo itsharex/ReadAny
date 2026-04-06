@@ -2,8 +2,10 @@ import { CheckIcon, ChevronDownIcon, XIcon } from "@/components/ui/Icon";
 import { useSettingsStore } from "@/stores";
 import { type ThemeColors, fontSize, fontWeight, radius, useColors } from "@/styles/theme";
 import { TRANSLATOR_LANGS, type TranslationTargetLang } from "@readany/core/types/translation";
+import { providerRequiresApiKey } from "@readany/core/utils";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { buildOpenAICompatibleUrl } from "@readany/core/utils/api";
 import {
   ActivityIndicator,
   Modal,
@@ -47,7 +49,7 @@ export function TranslationPanel({ text, onClose }: TranslationPanelProps) {
       const endpointId = translationConfig.provider.endpointId || aiConfig.activeEndpointId;
       const endpoint = await getEndpointById(endpointId);
 
-      if (!endpoint?.apiKey) {
+      if (!endpoint || (providerRequiresApiKey(endpoint.provider) && !endpoint.apiKey)) {
         throw new Error(t("translation.noApiKey", "请先配置 AI 设置"));
       }
 
@@ -59,13 +61,22 @@ export function TranslationPanel({ text, onClose }: TranslationPanelProps) {
         }
       }
 
-      const baseUrl = endpoint.baseUrl.replace(/\/+$/, "");
-      const response = await fetch(`${baseUrl}/chat/completions`, {
+      const requestUrl = buildOpenAICompatibleUrl(
+        endpoint.baseUrl,
+        "chat/completions",
+        "https://api.openai.com",
+        endpoint.useExactRequestUrl || false,
+      );
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (endpoint.apiKey) {
+        headers.Authorization = `Bearer ${endpoint.apiKey}`;
+      }
+
+      const response = await fetch(requestUrl, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${endpoint.apiKey}`,
-        },
+        headers,
         body: JSON.stringify({
           model: model || "gpt-4o-mini",
           messages: [

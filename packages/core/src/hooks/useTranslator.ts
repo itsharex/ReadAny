@@ -5,20 +5,26 @@
  */
 
 import { useCallback, useState } from "react";
+import type { AIConfig } from "../types";
 import { useSettingsStore } from "../stores/settings-store";
 import { getFromCache, storeInCache } from "../translation/cache";
 import { aiTranslate, deeplTranslate } from "../translation/providers";
-import type { TranslationTargetLang } from "../types/translation";
+import type { TranslationConfig, TranslationTargetLang } from "../types/translation";
+import { providerRequiresApiKey } from "../utils";
 
 export interface UseTranslatorOptions {
   sourceLang?: string;
   targetLang?: TranslationTargetLang;
+  aiConfig?: AIConfig;
+  translationConfig?: TranslationConfig;
 }
 
 export function useTranslator(options: UseTranslatorOptions = {}) {
-  const { sourceLang = "AUTO", targetLang } = options;
-  const translationConfig = useSettingsStore((s) => s.translationConfig);
-  const aiConfig = useSettingsStore((s) => s.aiConfig);
+  const { sourceLang = "AUTO", targetLang, aiConfig: aiConfigOverride, translationConfig: translationConfigOverride } = options;
+  const translationConfigFromStore = useSettingsStore((s) => s.translationConfig);
+  const aiConfigFromStore = useSettingsStore((s) => s.aiConfig);
+  const translationConfig = translationConfigOverride || translationConfigFromStore;
+  const aiConfig = aiConfigOverride || aiConfigFromStore;
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -61,7 +67,7 @@ export function useTranslator(options: UseTranslatorOptions = {}) {
           const endpoint = aiConfig.endpoints.find((e) => e.id === endpointId);
           const model = translationConfig.provider.model || aiConfig.activeModel;
 
-          if (!endpoint?.apiKey) {
+          if (!endpoint || (providerRequiresApiKey(endpoint.provider) && !endpoint.apiKey)) {
             throw new Error("AI endpoint not configured. Please set up AI settings first.");
           }
 
@@ -72,6 +78,7 @@ export function useTranslator(options: UseTranslatorOptions = {}) {
             endpoint.apiKey,
             endpoint.baseUrl,
             model,
+            endpoint.useExactRequestUrl || false,
           );
         } else if (providerId === "deepl") {
           const apiKey = translationConfig.provider.apiKey;

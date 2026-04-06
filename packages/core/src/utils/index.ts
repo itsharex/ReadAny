@@ -17,9 +17,15 @@ export {
 export type { TimeGroup, GroupedThreads } from "./time-group";
 export {
   formatApiHost,
+  trimApiUrl,
+  providerSupportsExactRequestUrl,
+  resolveProviderBaseUrl,
+  buildProviderModelsUrl,
+  buildOpenAICompatibleUrl,
   getProviderConfig,
   getDefaultBaseUrl,
   detectProviderFromUrl,
+  providerRequiresApiKey,
   PROVIDER_CONFIGS,
 } from "./api";
 export type { ProviderConfig } from "./api";

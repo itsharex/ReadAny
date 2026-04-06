@@ -16,6 +16,8 @@ export type { OperationType } from "./semantic-context";
 
 export { StreamingChat, createMessageId, createThreadId } from "./streaming";
 export type { StreamingOptions } from "./streaming";
+export { getAIEndpointRequestPreview, testAIEndpoint } from "./test-endpoint";
+export type { EndpointTestResult } from "./test-endpoint";
 
 export { buildSystemPrompt } from "./system-prompt";
 

@@ -3,6 +3,7 @@
  * Supports AI (using existing AI config) and DeepL
  */
 
+import { buildOpenAICompatibleUrl } from "../utils/api";
 import type { TranslationProvider, TranslatorName } from "./types";
 
 /** Get language display name */
@@ -39,22 +40,27 @@ export async function aiTranslate(
   apiKey: string,
   baseUrl: string,
   model: string,
+  useExactRequestUrl = false,
 ): Promise<string[]> {
-  if (!apiKey) {
-    throw new Error("AI API key is required. Please configure in AI settings.");
-  }
-
   const targetLangName = getLanguageName(targetLang);
-  const apiUrl = baseUrl || "https://api.openai.com/v1";
+  const requestUrl = buildOpenAICompatibleUrl(
+    baseUrl,
+    "chat/completions",
+    "https://api.openai.com",
+    useExactRequestUrl,
+  );
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (apiKey) {
+    headers.Authorization = `Bearer ${apiKey}`;
+  }
 
   // For single text, use simple translation
   if (texts.length === 1) {
-    const response = await fetch(`${apiUrl}/chat/completions`, {
+    const response = await fetch(requestUrl, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
+      headers,
       body: JSON.stringify({
         model: model || "gpt-4o-mini",
         messages: [
@@ -82,12 +88,9 @@ export async function aiTranslate(
   return Promise.all(
     texts.map(async (text) => {
       try {
-        const response = await fetch(`${apiUrl}/chat/completions`, {
+        const response = await fetch(requestUrl, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${apiKey}`,
-          },
+          headers,
           body: JSON.stringify({
             model: model || "gpt-4o-mini",
             messages: [
@@ -128,29 +131,42 @@ export async function aiTranslateBatch(
   apiKey: string,
   baseUrl: string,
   model: string,
+  useExactRequestUrl = false,
 ): Promise<string[]> {
-  if (!apiKey) {
-    throw new Error("AI API key is required. Please configure in AI settings.");
-  }
-
   // Single text — just delegate
   if (texts.length <= 1) {
-    return aiTranslate(texts, _sourceLang, targetLang, apiKey, baseUrl, model);
+    return aiTranslate(
+      texts,
+      _sourceLang,
+      targetLang,
+      apiKey,
+      baseUrl,
+      model,
+      useExactRequestUrl,
+    );
   }
 
   const targetLangName = getLanguageName(targetLang);
-  const apiUrl = baseUrl || "https://api.openai.com/v1";
+  const requestUrl = buildOpenAICompatibleUrl(
+    baseUrl,
+    "chat/completions",
+    "https://api.openai.com",
+    useExactRequestUrl,
+  );
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (apiKey) {
+    headers.Authorization = `Bearer ${apiKey}`;
+  }
 
   // Build numbered input
   const numberedInput = texts.map((t, i) => `${i + 1}. ${t}`).join("\n");
 
   try {
-    const response = await fetch(`${apiUrl}/chat/completions`, {
+    const response = await fetch(requestUrl, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
+      headers,
       body: JSON.stringify({
         model: model || "gpt-4o-mini",
         messages: [
@@ -184,7 +200,15 @@ export async function aiTranslateBatch(
   }
 
   // Fallback to individual
-  return aiTranslate(texts, _sourceLang, targetLang, apiKey, baseUrl, model);
+  return aiTranslate(
+    texts,
+    _sourceLang,
+    targetLang,
+    apiKey,
+    baseUrl,
+    model,
+    useExactRequestUrl,
+  );
 }
 
 /** Parse "1. xxx\n2. yyy\n..." format into an array */
@@ -473,12 +497,21 @@ export const aiProvider: TranslationProvider = {
   name: "ai",
   label: "AI",
   translate: async (texts, sourceLang, targetLang, config) => {
-    const { apiKey, baseUrl, model } = config as {
+    const { apiKey, baseUrl, model, useExactRequestUrl } = config as {
       apiKey?: string;
       baseUrl?: string;
       model?: string;
+      useExactRequestUrl?: boolean;
     };
-    return aiTranslate(texts, sourceLang, targetLang, apiKey || "", baseUrl || "", model || "");
+    return aiTranslate(
+      texts,
+      sourceLang,
+      targetLang,
+      apiKey || "",
+      baseUrl || "",
+      model || "",
+      useExactRequestUrl || false,
+    );
   },
 };
 

@@ -3,7 +3,6 @@ import { useVectorModelStore } from "@/stores/vector-model-store";
 import { useTheme } from "@/styles/theme";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { useSettingsStore } from "@readany/core/stores/settings-store";
 import type { VectorModelConfig } from "@readany/core/types";
 import { Check, Cloud, Plus, Trash2, X } from "lucide-react-native";
 import { useCallback, useState } from "react";

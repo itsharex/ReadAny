@@ -1,5 +1,6 @@
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import type { AIConfig, AIEndpoint } from "../types";
+import { providerRequiresApiKey } from "../utils";
 import { formatApiHost } from "../utils/api";
 
 /**
@@ -10,6 +11,26 @@ let _streamingFetch: typeof globalThis.fetch | undefined;
 
 export function setStreamingFetch(fetchImpl: typeof globalThis.fetch) {
   _streamingFetch = fetchImpl;
+}
+
+function getEndpointFetch(endpoint: AIEndpoint): typeof globalThis.fetch | undefined {
+  const exactUrl = endpoint.useExactRequestUrl ? endpoint.baseUrl?.trim() : "";
+  if (!exactUrl) {
+    return _streamingFetch;
+  }
+
+  const baseFetch = (_streamingFetch ?? globalThis.fetch).bind(globalThis);
+  return ((input: RequestInfo | URL, init?: RequestInit) => {
+    if (input instanceof Request) {
+      return baseFetch(new Request(exactUrl, input), init);
+    }
+    return baseFetch(exactUrl, init);
+  }) as typeof globalThis.fetch;
+}
+
+function getEndpointBaseUrl(endpoint: AIEndpoint): string | undefined {
+  if (!endpoint.baseUrl) return undefined;
+  return endpoint.useExactRequestUrl ? endpoint.baseUrl.trim() : formatApiHost(endpoint.baseUrl);
 }
 
 export interface LLMOptions {
@@ -27,7 +48,7 @@ export function resolveActiveEndpoint(config: AIConfig): {
   if (!endpoint) {
     throw new Error("No active AI endpoint configured. Go to Settings → AI to add one.");
   }
-  if (!endpoint.apiKey) {
+  if (providerRequiresApiKey(endpoint.provider) && !endpoint.apiKey) {
     throw new Error(`API key not set for endpoint "${endpoint.name}".`);
   }
   let model = config.activeModel;
@@ -35,7 +56,7 @@ export function resolveActiveEndpoint(config: AIConfig): {
     // Try to auto-select first available model from endpoint
     if (endpoint.models && endpoint.models.length > 0) {
       model = endpoint.models[0];
-    } else if (!endpoint.apiKey) {
+    } else if (providerRequiresApiKey(endpoint.provider) && !endpoint.apiKey) {
       throw new Error("API key not configured. Go to Settings → AI to set up your API key.");
     } else {
       throw new Error(
@@ -64,12 +85,14 @@ export async function createChatModelFromEndpoint(
   model: string,
   options: LLMOptions = {},
 ): Promise<BaseChatModel> {
-  if (!endpoint.apiKey) {
+  if (providerRequiresApiKey(endpoint.provider) && !endpoint.apiKey) {
     throw new Error(`API key not set for endpoint "${endpoint.name}".`);
   }
   if (!model) {
     throw new Error("No model specified. Go to Settings → AI to choose a model.");
   }
+
+  const apiKey = endpoint.apiKey || "local-model";
 
   const temperature = options.temperature ?? 0.7;
   const maxTokens = options.maxTokens ?? 4096;
@@ -81,7 +104,7 @@ export async function createChatModelFromEndpoint(
 
       const anthropicConfig: Record<string, unknown> = {
         model,
-        apiKey: endpoint.apiKey,
+        apiKey,
         temperature: options.deepThinking ? 1 : temperature,
         maxTokens,
         streaming,
@@ -107,7 +130,7 @@ export async function createChatModelFromEndpoint(
 
       return new ChatGoogleGenerativeAI({
         model,
-        apiKey: endpoint.apiKey,
+        apiKey,
         temperature,
         maxOutputTokens: maxTokens,
         streaming,
@@ -178,10 +201,10 @@ export async function createChatModelFromEndpoint(
 
       return new ChatDeepSeekFixed({
         model,
-        apiKey: endpoint.apiKey,
+        apiKey,
         configuration: {
-          ...(endpoint.baseUrl ? { baseURL: formatApiHost(endpoint.baseUrl) } : {}),
-          ...(_streamingFetch ? { fetch: _streamingFetch } : {}),
+          ...(endpoint.baseUrl ? { baseURL: getEndpointBaseUrl(endpoint) } : {}),
+          ...(getEndpointFetch(endpoint) ? { fetch: getEndpointFetch(endpoint) } : {}),
         },
         temperature,
         maxTokens,
@@ -253,10 +276,10 @@ export async function createChatModelFromEndpoint(
 
         return new ChatDeepSeekFixed({
           model,
-          apiKey: endpoint.apiKey,
+          apiKey,
           configuration: {
-            ...(endpoint.baseUrl ? { baseURL: formatApiHost(endpoint.baseUrl) } : {}),
-            ...(_streamingFetch ? { fetch: _streamingFetch } : {}),
+            ...(endpoint.baseUrl ? { baseURL: getEndpointBaseUrl(endpoint) } : {}),
+            ...(getEndpointFetch(endpoint) ? { fetch: getEndpointFetch(endpoint) } : {}),
           },
           temperature,
           maxTokens,
@@ -268,10 +291,10 @@ export async function createChatModelFromEndpoint(
 
       return new ChatOpenAI({
         model,
-        apiKey: endpoint.apiKey,
+        apiKey,
         configuration: {
-          baseURL: endpoint.baseUrl ? formatApiHost(endpoint.baseUrl) : undefined,
-          ...(_streamingFetch ? { fetch: _streamingFetch } : {}),
+          baseURL: getEndpointBaseUrl(endpoint),
+          ...(getEndpointFetch(endpoint) ? { fetch: getEndpointFetch(endpoint) } : {}),
         },
         temperature,
         maxTokens,

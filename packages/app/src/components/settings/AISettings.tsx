@@ -9,12 +9,21 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
+import { Switch } from "@/components/ui/switch";
 import { useSettingsStore } from "@/stores/settings-store";
+import { getAIEndpointRequestPreview, testAIEndpoint } from "@readany/core/ai";
+import { getPlatformService } from "@readany/core/services";
 import type { AIEndpoint, AIProviderType } from "@readany/core/types";
-import { getDefaultBaseUrl, PROVIDER_CONFIGS } from "@readany/core/utils";
-import { Loader2, Plus, RefreshCw, Trash2, X } from "lucide-react";
-import { useCallback, useState } from "react";
+import {
+  getDefaultBaseUrl,
+  PROVIDER_CONFIGS,
+  providerSupportsExactRequestUrl,
+  providerRequiresApiKey,
+} from "@readany/core/utils";
+import { AlertCircle, CheckCircle2, Copy, Loader2, Plus, RefreshCw, Trash2, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 
 function createEndpointId(): string {
   return `ep-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
@@ -56,6 +65,35 @@ function EndpointCard({
 }) {
   const { t } = useTranslation();
   const [newModelName, setNewModelName] = useState("");
+  const [testModel, setTestModel] = useState("__auto__");
+  const [testState, setTestState] = useState<"idle" | "testing" | "success" | "error">("idle");
+  const [testMessage, setTestMessage] = useState("");
+
+  useEffect(() => {
+    if (testModel !== "__auto__" && !endpoint.models.includes(testModel)) {
+      setTestModel("__auto__");
+    }
+  }, [endpoint.models, testModel]);
+
+  const requestPreview = useMemo(
+    () =>
+      getAIEndpointRequestPreview(endpoint, testModel === "__auto__" ? undefined : testModel),
+    [endpoint, testModel],
+  );
+  const supportsExactRequestUrl = providerSupportsExactRequestUrl(endpoint.provider);
+  const exactRequestUrlEnabled = supportsExactRequestUrl && !!endpoint.useExactRequestUrl;
+
+  const handleCopyRequestPreview = useCallback(async () => {
+    if (!requestPreview) return;
+    try {
+      await getPlatformService().copyToClipboard(requestPreview);
+      toast.success(t("notes.copiedToClipboard"));
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : t("common.failed", "失败");
+      toast.error(message);
+    }
+  }, [requestPreview, t]);
 
   const handleAddModel = useCallback(() => {
     const name = newModelName.trim();
@@ -82,6 +120,27 @@ function EndpointCard({
     },
     [handleAddModel],
   );
+
+  const handleTestEndpoint = useCallback(async () => {
+    setTestState("testing");
+    setTestMessage("");
+    try {
+      const result = await testAIEndpoint(endpoint, {
+        model: testModel === "__auto__" ? undefined : testModel,
+      });
+      setTestState("success");
+      setTestMessage(
+        result.testedModel
+          ? t("settings.ai_testSuccessWithModel", { model: result.testedModel })
+          : result.modelCount && result.modelCount > 0
+            ? t("settings.ai_testSuccessWithModels", { count: result.modelCount })
+            : t("settings.ai_testSuccess"),
+      );
+    } catch (err) {
+      setTestState("error");
+      setTestMessage(err instanceof Error ? err.message : t("settings.ai_testFailed"));
+    }
+  }, [endpoint, t, testModel]);
 
   return (
     <div
@@ -183,6 +242,7 @@ function EndpointCard({
                   provider,
                   name: config?.name || provider,
                   baseUrl: defaultBaseUrl,
+                  useExactRequestUrl: false,
                   models: [],
                   modelsFetched: false,
                 });
@@ -224,9 +284,11 @@ function EndpointCard({
               htmlFor={`baseUrl-${endpoint.id}`}
               className="mb-1 block text-xs text-muted-foreground"
             >
-              {endpoint.provider === "openai"
-                ? t("settings.ai_baseUrl")
-                : t("settings.ai_baseUrlOptional")}
+              {exactRequestUrlEnabled
+                ? t("settings.ai_exactRequestUrlLabel", "完整请求地址")
+                : endpoint.provider === "openai"
+                  ? t("settings.ai_baseUrl")
+                  : t("settings.ai_baseUrlOptional")}
             </label>
             <Input
               id={`baseUrl-${endpoint.id}`}
@@ -235,15 +297,93 @@ function EndpointCard({
               placeholder={PROVIDER_CONFIGS[endpoint.provider || "openai"]?.placeholder || "https://api.example.com"}
               className="h-8 text-sm"
             />
+            {supportsExactRequestUrl && (
+              <div className="mt-2 flex items-center justify-between gap-3 rounded-md border border-border/60 bg-background/50 px-3 py-2">
+                <div className="space-y-0.5">
+                  <div className="text-xs font-medium text-foreground">
+                    {t("settings.ai_exactRequestUrl", "完全自定义请求地址")}
+                  </div>
+                  <div className="text-[11px] text-muted-foreground">
+                    {t(
+                      "settings.ai_exactRequestUrlDesc",
+                      "启用后将按你填写的地址原样请求，不再自动追加 /v1、/chat/completions 或 /models。",
+                    )}
+                  </div>
+                </div>
+                <Switch
+                  checked={exactRequestUrlEnabled}
+                  onCheckedChange={(checked) =>
+                    onUpdate(endpoint.id, { useExactRequestUrl: checked })
+                  }
+                />
+              </div>
+            )}
+            {!exactRequestUrlEnabled &&
+              PROVIDER_CONFIGS[endpoint.provider || "openai"]?.needsV1Suffix && (
+              <div className="mt-1 text-[11px] text-muted-foreground">
+                {t(
+                  "settings.ai_baseUrlHint",
+                  "OpenAI-compatible endpoints append /v1 by default. End the URL with / to use your custom path as-is.",
+                )}
+              </div>
+            )}
+            <div className="mt-2 space-y-2 rounded-md border border-border/60 bg-background/60 p-2">
+              <div>
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  <div className="text-[11px] text-muted-foreground">
+                    {t("settings.ai_requestUrlPreview", "最终请求地址")}
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 gap-1 px-2 text-[11px] text-muted-foreground"
+                    onClick={handleCopyRequestPreview}
+                    disabled={!requestPreview}
+                  >
+                    <Copy className="h-3 w-3" />
+                    {t("common.copy", "复制")}
+                  </Button>
+                </div>
+                <div className="break-all font-mono text-[11px] text-foreground/80">
+                  {requestPreview || "—"}
+                </div>
+              </div>
+              <div>
+                <div className="mb-1 text-[11px] text-muted-foreground">
+                  {t("settings.ai_testModel", "测试模型")}
+                </div>
+                <Select value={testModel} onValueChange={setTestModel}>
+                  <SelectTrigger className="h-8 text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__auto__">
+                      {t("settings.ai_testModelAuto", "自动选择首个可用模型")}
+                    </SelectItem>
+                    {endpoint.models.map((model) => (
+                      <SelectItem key={model} value={model}>
+                        {model}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
           </div>
 
           {/* Fetch models */}
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 text-xs gap-1"
-              disabled={!endpoint.apiKey || endpoint.modelsFetching}
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs gap-1"
+              disabled={
+                exactRequestUrlEnabled ||
+                (providerRequiresApiKey(endpoint.provider) && !endpoint.apiKey) ||
+                endpoint.modelsFetching
+              }
               onClick={() => onFetchModels(endpoint.id)}
             >
               {endpoint.modelsFetching ? (
@@ -255,12 +395,51 @@ function EndpointCard({
                 ? t("settings.ai_fetchingModels")
                 : t("settings.ai_fetchModels")}
             </Button>
-            <span className="text-xs text-muted-foreground">
-              {endpoint.models.length > 0
-                ? t("settings.ai_modelsLoaded", { count: endpoint.models.length })
-                : ""}
-            </span>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs gap-1"
+                disabled={testState === "testing"}
+                onClick={handleTestEndpoint}
+              >
+                {testState === "testing" ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="h-3 w-3" />
+                )}
+                {testState === "testing"
+                  ? t("settings.ai_testingConnection")
+                  : t("settings.ai_testConnection")}
+              </Button>
+            </div>
+            {exactRequestUrlEnabled && (
+              <div className="pl-1 text-[11px] text-muted-foreground/85">
+                {t(
+                  "settings.ai_exactRequestUrlFetchHint",
+                  "完全自定义请求地址模式下无法自动推断模型列表地址，请手动添加模型后再测试。",
+                )}
+              </div>
+            )}
+            {endpoint.models.length > 0 && (
+              <div className="pl-1 text-[11px] text-muted-foreground/85">
+                {t("settings.ai_modelsLoaded", { count: endpoint.models.length })}
+              </div>
+            )}
           </div>
+          {testState !== "idle" && testMessage && (
+            <div
+              className={`flex items-center gap-1 text-xs ${
+                testState === "success" ? "text-emerald-600" : "text-destructive"
+              }`}
+            >
+              {testState === "success" ? (
+                <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+              ) : (
+                <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+              )}
+              <span>{testMessage}</span>
+            </div>
+          )}
 
           {/* Models list + manual add */}
           <div>
@@ -350,6 +529,7 @@ export function AISettings() {
       provider: defaultProvider,
       apiKey: "",
       baseUrl: getDefaultBaseUrl(defaultProvider),
+      useExactRequestUrl: false,
       models: [],
       modelsFetched: false,
     };

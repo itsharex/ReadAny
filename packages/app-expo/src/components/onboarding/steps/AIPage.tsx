@@ -2,9 +2,10 @@ import { DarkModeSvg } from "@/components/DarkModeSvg";
 import { useTheme } from "@/styles/theme";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { useSettingsStore } from "@readany/core/stores/settings-store";
+import { testAIEndpoint } from "@readany/core/ai";
+import { useSettingsStore } from "@/stores";
 import type { AIProviderType } from "@readany/core/types";
-import { getDefaultBaseUrl, PROVIDER_CONFIGS } from "@readany/core/utils";
+import { getDefaultBaseUrl, PROVIDER_CONFIGS, providerRequiresApiKey } from "@readany/core/utils";
 import { AlertCircle, CheckCircle2, Eye, EyeOff } from "lucide-react-native";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -124,23 +125,16 @@ export function AIPage() {
   const testConnection = async () => {
     setStatus("testing");
     try {
-      let urlToTest = baseUrl.replace(/\/+$/, "");
-      if (provider === "openai" || provider === "deepseek") urlToTest += "/models";
-      else if (provider === "anthropic") urlToTest += "/v1/models";
-      else if (provider === "google") urlToTest += `/v1beta/models?key=${apiKey}`;
-      else if (provider === "ollama") urlToTest += "/api/tags";
-
-      const headers: Record<string, string> = {};
-      if (provider === "openai" || provider === "deepseek")
-        headers["Authorization"] = `Bearer ${apiKey}`;
-      if (provider === "anthropic") {
-        headers["x-api-key"] = apiKey;
-        headers["anthropic-version"] = "2023-06-01";
-      }
-
-      const res = await fetch(urlToTest, { headers });
-      if (res.ok) setStatus("success");
-      else throw new Error("Failed");
+      await testAIEndpoint({
+        id: ONBOARDING_ENDPOINT_ID,
+        name: PROVIDER_CONFIGS[provider]?.name || provider,
+        provider,
+        apiKey,
+        baseUrl,
+        models: [],
+        modelsFetched: false,
+      });
+      setStatus("success");
     } catch {
       setStatus("error");
     }
@@ -214,7 +208,7 @@ export function AIPage() {
             </View>
           </View>
 
-          {provider !== "ollama" && (
+          {providerRequiresApiKey(provider) && (
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>{t("settings.apiKey", "API Key")}</Text>
               <View
@@ -257,11 +251,19 @@ export function AIPage() {
               ]}
               value={baseUrl}
               onChangeText={handleBaseUrlChange}
-              placeholder="https://api.example.com/v1"
+              placeholder={PROVIDER_CONFIGS[provider]?.placeholder || "https://api.example.com"}
               placeholderTextColor={colors.mutedForeground}
               autoCapitalize="none"
               autoCorrect={false}
             />
+            {PROVIDER_CONFIGS[provider]?.needsV1Suffix && (
+              <Text style={[styles.baseUrlHint, { color: colors.mutedForeground }]}>
+                {t(
+                  "settings.ai_baseUrlHint",
+                  "OpenAI-compatible endpoints append /v1 by default. End the URL with / to use your custom path as-is.",
+                )}
+              </Text>
+            )}
           </View>
 
           {status !== "idle" && (
@@ -384,6 +386,11 @@ const styles = StyleSheet.create({
   },
   providerText: { fontSize: 14, fontWeight: "600" },
   input: { padding: 16, borderRadius: 12, borderWidth: 2, fontSize: 16 },
+  baseUrlHint: {
+    marginTop: 8,
+    fontSize: 12,
+    lineHeight: 18,
+  },
   inputContainer: {
     flexDirection: "row",
     alignItems: "center",

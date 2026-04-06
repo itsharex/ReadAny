@@ -7,9 +7,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { testAIEndpoint } from "@readany/core/ai";
 import { useSettingsStore } from "@readany/core/stores/settings-store";
 import type { AIProviderType } from "@readany/core/types";
-import { getDefaultBaseUrl, PROVIDER_CONFIGS } from "@readany/core/utils";
+import { getDefaultBaseUrl, PROVIDER_CONFIGS, providerRequiresApiKey } from "@readany/core/utils";
 import { AlertCircle, CheckCircle2, Eye, EyeOff, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -114,28 +115,17 @@ export function AIPage({ onNext, onPrev, step, totalSteps }: any) {
   const testConnection = async () => {
     setStatus("testing");
     try {
-      let urlToTest = baseUrl.replace(/\/+$/, "");
-      if (provider === "openai" || provider === "deepseek") urlToTest += "/models";
-      else if (provider === "anthropic") urlToTest += "/v1/models";
-      else if (provider === "google") urlToTest += `/v1beta/models?key=${apiKey}`;
-      else if (provider === "ollama") urlToTest += "/api/tags";
-
-      const headers: Record<string, string> = {};
-      if (provider === "openai" || provider === "deepseek")
-        headers["Authorization"] = `Bearer ${apiKey}`;
-      if (provider === "anthropic") {
-        headers["x-api-key"] = apiKey;
-        headers["anthropic-version"] = "2023-06-01";
-      }
-
-      const res = await fetch(urlToTest, { headers });
-
-      if (res.ok || res.status === 403 || res.status === 404) {
-        setStatus("success");
-      } else {
-        throw new Error("Failed");
-      }
-    } catch (e) {
+      await testAIEndpoint({
+        id: ONBOARDING_ENDPOINT_ID,
+        name: PROVIDER_CONFIGS[provider]?.name || provider,
+        provider,
+        apiKey,
+        baseUrl,
+        models: [],
+        modelsFetched: false,
+      });
+      setStatus("success");
+    } catch {
       setStatus("error");
     }
   };
@@ -238,8 +228,17 @@ export function AIPage({ onNext, onPrev, step, totalSteps }: any) {
           <Input
             value={baseUrl}
             onChange={(e) => handleBaseUrlChange(e.target.value)}
+            placeholder={PROVIDER_CONFIGS[provider]?.placeholder || "https://api.example.com"}
             className="h-9 text-sm"
           />
+          {PROVIDER_CONFIGS[provider]?.needsV1Suffix && (
+            <p className="text-[11px] text-muted-foreground">
+              {t(
+                "settings.ai_baseUrlHint",
+                "OpenAI-compatible endpoints append /v1 by default. End the URL with / to use your custom path as-is.",
+              )}
+            </p>
+          )}
         </div>
 
         <div className="mt-4 flex items-center gap-4">
@@ -247,7 +246,7 @@ export function AIPage({ onNext, onPrev, step, totalSteps }: any) {
             variant="outline"
             size="sm"
             onClick={testConnection}
-            disabled={status === "testing" || (provider !== "ollama" && !apiKey)}
+            disabled={status === "testing" || (providerRequiresApiKey(provider) && !apiKey)}
             className="relative overflow-hidden"
           >
             {status === "testing" && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}

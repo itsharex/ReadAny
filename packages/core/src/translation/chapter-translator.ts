@@ -175,6 +175,7 @@ export async function translateChapter(
             config.provider.apiKey || "",
             config.provider.baseUrl || "",
             config.provider.model || "",
+            config.provider.useExactRequestUrl || false,
           );
         } else {
           // DeepL — natively supports batch

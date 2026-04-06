@@ -1,14 +1,23 @@
 import { useSettingsStore } from "@/stores";
+import { getAIEndpointRequestPreview, testAIEndpoint } from "@readany/core/ai";
+import { getPlatformService } from "@readany/core/services";
 import type { AIEndpoint, AIProviderType } from "@readany/core/types";
-import { getDefaultBaseUrl, PROVIDER_CONFIGS } from "@readany/core/utils";
+import {
+  getDefaultBaseUrl,
+  PROVIDER_CONFIGS,
+  providerSupportsExactRequestUrl,
+  providerRequiresApiKey,
+} from "@readany/core/utils";
 import type { TFunction } from "i18next";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -73,15 +82,19 @@ function EndpointEditor({
   const [name, setName] = useState(ep.name);
   const [apiKey, setApiKey] = useState(ep.apiKey);
   const [baseUrl, setBaseUrl] = useState(ep.baseUrl);
+  const [useExactRequestUrl, setUseExactRequestUrl] = useState(!!ep.useExactRequestUrl);
   const [newModelInput, setNewModelInput] = useState("");
+  const [testModel, setTestModel] = useState("__auto__");
+  const [testState, setTestState] = useState<"idle" | "testing" | "success" | "error">("idle");
+  const [testMessage, setTestMessage] = useState("");
 
   // Refs to track latest values for unmount save
   const epRef = useRef(ep);
   epRef.current = ep;
   const onUpdateRef = useRef(onUpdate);
   onUpdateRef.current = onUpdate;
-  const stateRef = useRef({ name, apiKey, baseUrl });
-  stateRef.current = { name, apiKey, baseUrl };
+  const stateRef = useRef({ name, apiKey, baseUrl, useExactRequestUrl });
+  stateRef.current = { name, apiKey, baseUrl, useExactRequestUrl };
 
   // Save on unmount if there are unsaved changes
   useEffect(() => {
@@ -92,16 +105,62 @@ function EndpointEditor({
       if (
         state.name !== current.name ||
         state.apiKey !== current.apiKey ||
-        state.baseUrl !== current.baseUrl
+        state.baseUrl !== current.baseUrl ||
+        state.useExactRequestUrl !== !!current.useExactRequestUrl
       ) {
         update(current.id, {
           name: state.name,
           apiKey: state.apiKey,
           baseUrl: state.baseUrl,
+          useExactRequestUrl: state.useExactRequestUrl,
         }).catch(console.error);
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (testModel !== "__auto__" && !ep.models.includes(testModel)) {
+      setTestModel("__auto__");
+    }
+  }, [ep.models, testModel]);
+
+  const currentEndpoint = useMemo(
+    () => ({
+      ...ep,
+      name,
+      apiKey,
+      baseUrl,
+      useExactRequestUrl,
+    }),
+    [apiKey, baseUrl, ep, name, useExactRequestUrl],
+  );
+
+  const supportsExactRequestUrl = providerSupportsExactRequestUrl(ep.provider);
+  const exactRequestUrlEnabled = supportsExactRequestUrl && useExactRequestUrl;
+
+  const requestPreview = useMemo(
+    () =>
+      getAIEndpointRequestPreview(
+        currentEndpoint,
+        testModel === "__auto__" ? undefined : testModel,
+      ),
+    [currentEndpoint, testModel],
+  );
+
+  const handleCopyRequestPreview = useCallback(async () => {
+    if (!requestPreview) return;
+    try {
+      await getPlatformService().copyToClipboard(requestPreview);
+      Alert.alert(
+        t("common.success", "成功！"),
+        t("notes.copiedToClipboard", "已复制到剪贴板"),
+      );
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : t("common.failed", "失败");
+      Alert.alert(t("common.failed", "失败"), message);
+    }
+  }, [requestPreview, t]);
 
   const handleAddModel = useCallback(() => {
     const trimmed = newModelInput.trim();
@@ -109,6 +168,28 @@ function EndpointEditor({
     onUpdate(ep.id, { models: [...ep.models, trimmed] }).catch(console.error);
     setNewModelInput("");
   }, [newModelInput, ep.models, ep.id, onUpdate]);
+
+  const handleTestConnection = useCallback(async () => {
+    setTestState("testing");
+    setTestMessage("");
+    try {
+      await onUpdate(ep.id, { name, apiKey, baseUrl, useExactRequestUrl });
+      const result = await testAIEndpoint(currentEndpoint, {
+        model: testModel === "__auto__" ? undefined : testModel,
+      });
+      setTestState("success");
+      setTestMessage(
+        result.testedModel
+          ? t("settings.ai_testSuccessWithModel", { model: result.testedModel })
+          : result.modelCount && result.modelCount > 0
+            ? t("settings.ai_testSuccessWithModels", { count: result.modelCount })
+            : t("settings.ai_testSuccess"),
+      );
+    } catch (err) {
+      setTestState("error");
+      setTestMessage(err instanceof Error ? err.message : t("settings.ai_testFailed"));
+    }
+  }, [apiKey, baseUrl, currentEndpoint, ep.id, name, onUpdate, t, testModel, useExactRequestUrl]);
 
   return (
     <View style={styles.expandedContent}>
@@ -148,11 +229,13 @@ function EndpointEditor({
                 onUpdate(ep.id, {
                   provider: p.id,
                   baseUrl: defaultBaseUrl,
+                  useExactRequestUrl: false,
                   name: config?.name || p.label,
                   models: [],
                   modelsFetched: false,
                 }).catch(console.error);
                 setBaseUrl(defaultBaseUrl);
+                setUseExactRequestUrl(false);
                 setName(config?.name || p.label);
               }}
               activeOpacity={0.7}
@@ -187,7 +270,11 @@ function EndpointEditor({
 
       {/* Base URL */}
       <View style={styles.fieldGroup}>
-        <Text style={styles.fieldLabel}>{t("settings.ai_baseUrl", "Base URL")}</Text>
+        <Text style={styles.fieldLabel}>
+          {exactRequestUrlEnabled
+            ? t("settings.ai_exactRequestUrlLabel", "完整请求地址")
+            : t("settings.ai_baseUrl", "Base URL")}
+        </Text>
         <TextInput
           style={styles.input}
           value={baseUrl}
@@ -196,26 +283,153 @@ function EndpointEditor({
             if (baseUrl !== ep.baseUrl) onUpdate(ep.id, { baseUrl }).catch(console.error);
           }}
           placeholderTextColor={colors.mutedForeground}
+          placeholder={PROVIDER_CONFIGS[ep.provider || "openai"]?.placeholder || "https://api.example.com"}
           autoCapitalize="none"
         />
+        {supportsExactRequestUrl && (
+          <View style={styles.exactUrlCard}>
+            <View style={styles.exactUrlInfo}>
+              <Text style={styles.fieldLabel}>
+                {t("settings.ai_exactRequestUrl", "完全自定义请求地址")}
+              </Text>
+              <Text style={styles.baseUrlHint}>
+                {t(
+                  "settings.ai_exactRequestUrlDesc",
+                  "启用后将按你填写的地址原样请求，不再自动追加 /v1、/chat/completions 或 /models。",
+                )}
+              </Text>
+            </View>
+            <Switch
+              value={exactRequestUrlEnabled}
+              onValueChange={(value) => {
+                setUseExactRequestUrl(value);
+                onUpdate(ep.id, { useExactRequestUrl: value }).catch(console.error);
+              }}
+              trackColor={{ false: colors.muted, true: colors.primary }}
+              thumbColor={colors.card}
+            />
+          </View>
+        )}
+        {!exactRequestUrlEnabled && PROVIDER_CONFIGS[ep.provider]?.needsV1Suffix && (
+          <Text style={styles.baseUrlHint}>
+            {t(
+              "settings.ai_baseUrlHint",
+              "OpenAI-compatible endpoints append /v1 by default. End the URL with / to use your custom path as-is.",
+            )}
+          </Text>
+        )}
+        <View style={styles.previewCard}>
+          <View style={styles.previewHeader}>
+            <Text style={styles.previewLabel}>
+              {t("settings.ai_requestUrlPreview", "最终请求地址")}
+            </Text>
+            <TouchableOpacity
+              style={styles.previewCopyButton}
+              onPress={handleCopyRequestPreview}
+              activeOpacity={0.8}
+              disabled={!requestPreview}
+            >
+              <Text style={styles.previewCopyButtonText}>
+                {t("common.copy", "复制")}
+              </Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.previewValue}>{requestPreview || "—"}</Text>
+          <Text style={styles.previewLabel}>{t("settings.ai_testModel", "测试模型")}</Text>
+          <View style={styles.testModelChips}>
+            <TouchableOpacity
+              style={[
+                styles.testModelChip,
+                testModel === "__auto__" && styles.testModelChipActive,
+              ]}
+              onPress={() => setTestModel("__auto__")}
+              activeOpacity={0.8}
+            >
+              <Text
+                style={[
+                  styles.testModelChipText,
+                  testModel === "__auto__" && styles.testModelChipTextActive,
+                ]}
+              >
+                {t("settings.ai_testModelAuto", "自动选择首个可用模型")}
+              </Text>
+            </TouchableOpacity>
+            {ep.models.map((model) => {
+              const active = testModel === model;
+              return (
+                <TouchableOpacity
+                  key={model}
+                  style={[styles.testModelChip, active && styles.testModelChipActive]}
+                  onPress={() => setTestModel(model)}
+                  activeOpacity={0.8}
+                >
+                  <Text
+                    style={[styles.testModelChipText, active && styles.testModelChipTextActive]}
+                  >
+                    {model}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
       </View>
 
       {/* Models */}
       <View style={styles.fieldGroup}>
         <View style={styles.modelsHeader}>
           <Text style={styles.fieldLabel}>{t("settings.ai_modelsList", "模型列表")}</Text>
-          <TouchableOpacity
-            style={styles.fetchBtn}
-            onPress={() => onFetchModels(ep)}
-            disabled={!!ep.modelsFetching}
-          >
-            {ep.modelsFetching ? (
-              <LoaderIcon size={12} color={colors.primary} />
-            ) : (
-              <Text style={styles.fetchBtnText}>{t("settings.ai_fetchModels", "获取模型")}</Text>
-            )}
-          </TouchableOpacity>
+          <View style={styles.modelsActions}>
+            <TouchableOpacity
+              style={styles.fetchBtn}
+              onPress={() =>
+                onFetchModels({ ...ep, name, apiKey, baseUrl, useExactRequestUrl })
+              }
+              disabled={
+                exactRequestUrlEnabled ||
+                !!ep.modelsFetching ||
+                (providerRequiresApiKey(ep.provider) && !apiKey.trim())
+              }
+            >
+              {ep.modelsFetching ? (
+                <LoaderIcon size={12} color={colors.primary} />
+              ) : (
+                <Text style={styles.fetchBtnText}>{t("settings.ai_fetchModels", "获取模型")}</Text>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.fetchBtn}
+              onPress={handleTestConnection}
+              disabled={testState === "testing"}
+            >
+              {testState === "testing" ? (
+                <LoaderIcon size={12} color={colors.primary} />
+              ) : (
+                <Text style={styles.fetchBtnText}>
+                  {t("settings.ai_testConnection", "测试连接")}
+                </Text>
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
+        {exactRequestUrlEnabled && (
+          <Text style={styles.endpointTestResult}>
+            {t(
+              "settings.ai_exactRequestUrlFetchHint",
+              "完全自定义请求地址模式下无法自动推断模型列表地址，请手动添加模型后再测试。",
+            )}
+          </Text>
+        )}
+        {testState !== "idle" && !!testMessage && (
+          <Text
+            style={[
+              styles.endpointTestResult,
+              testState === "success" ? styles.endpointTestSuccess : styles.endpointTestError,
+            ]}
+          >
+            {testMessage}
+          </Text>
+        )}
 
         {/* Model tags */}
         <View style={styles.modelTags}>
@@ -312,6 +526,7 @@ export default function AISettingsScreen() {
       provider: defaultProvider,
       apiKey: "",
       baseUrl: defaultBaseUrl,
+      useExactRequestUrl: false,
       models: [],
       modelsFetched: false,
     });
@@ -319,7 +534,13 @@ export default function AISettingsScreen() {
 
   const handleFetchModels = useCallback(
     async (ep: AIEndpoint) => {
-      await updateEndpoint(ep.id, { modelsFetching: true });
+      await updateEndpoint(ep.id, {
+        name: ep.name,
+        apiKey: ep.apiKey,
+        baseUrl: ep.baseUrl,
+        useExactRequestUrl: ep.useExactRequestUrl,
+        modelsFetching: true,
+      });
       try {
         const models = await fetchModels(ep.id);
         // 自动选中第一个模型（如果当前没有选中任何模型）
@@ -669,6 +890,88 @@ const makeStyles = (colors: ThemeColors) =>
       color: colors.foreground,
       textAlignVertical: "center",
     },
+    baseUrlHint: {
+      fontSize: fontSize.xs,
+      lineHeight: 18,
+      color: colors.mutedForeground,
+    },
+    exactUrlCard: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: spacing.md,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: withOpacity(colors.border, 0.8),
+      backgroundColor: withOpacity(colors.background, 0.6),
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.sm,
+    },
+    exactUrlInfo: {
+      flex: 1,
+      gap: 2,
+    },
+    previewCard: {
+      gap: spacing.xs,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: withOpacity(colors.border, 0.8),
+      backgroundColor: withOpacity(colors.background, 0.7),
+      padding: spacing.sm,
+    },
+    previewHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: spacing.sm,
+    },
+    previewLabel: {
+      fontSize: fontSize.xs,
+      color: colors.mutedForeground,
+    },
+    previewValue: {
+      fontSize: fontSize.xs,
+      color: colors.foreground,
+      fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+    },
+    previewCopyButton: {
+      paddingHorizontal: spacing.sm,
+      paddingVertical: 4,
+      borderRadius: radius.sm,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.background,
+    },
+    previewCopyButtonText: {
+      fontSize: fontSize.xs,
+      color: colors.mutedForeground,
+      fontWeight: fontWeight.medium,
+    },
+    testModelChips: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: spacing.xs,
+    },
+    testModelChip: {
+      paddingHorizontal: spacing.sm,
+      paddingVertical: 4,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.background,
+    },
+    testModelChipActive: {
+      borderColor: colors.primary,
+      backgroundColor: withOpacity(colors.primary, 0.1),
+    },
+    testModelChipText: {
+      fontSize: fontSize.xs,
+      color: colors.foreground,
+    },
+    testModelChipTextActive: {
+      color: colors.primary,
+      fontWeight: fontWeight.medium,
+    },
 
     providerGrid: {
       flexDirection: "row",
@@ -701,6 +1004,11 @@ const makeStyles = (colors: ThemeColors) =>
       alignItems: "center",
       justifyContent: "space-between",
     },
+    modelsActions: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing.xs,
+    },
     fetchBtn: {
       paddingHorizontal: spacing.sm,
       paddingVertical: spacing.xs,
@@ -711,6 +1019,16 @@ const makeStyles = (colors: ThemeColors) =>
     fetchBtnText: {
       fontSize: fontSize.xs,
       color: colors.foreground,
+    },
+    endpointTestResult: {
+      fontSize: fontSize.xs,
+      marginTop: spacing.xs,
+    },
+    endpointTestSuccess: {
+      color: "#16a34a",
+    },
+    endpointTestError: {
+      color: colors.destructive,
     },
     modelTags: {
       flexDirection: "row",

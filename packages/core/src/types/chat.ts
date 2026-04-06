@@ -141,6 +141,7 @@ export interface AIEndpoint {
   provider: AIProviderType;
   apiKey: string;
   baseUrl: string;
+  useExactRequestUrl?: boolean;
   models: string[];
   modelsFetched: boolean;
   modelsFetching?: boolean;

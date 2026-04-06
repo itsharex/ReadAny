@@ -101,14 +101,24 @@ export function withPersist<T extends object>(
     const state = creator(wrappedSet, get, api);
 
     // Load persisted data and notify when done
-    loadFromFS<T>(key).then((persisted) => {
+    loadFromFS<T>(key).then(async (persisted) => {
       if (persisted) {
         // Merge persisted data with current state (don't replace methods)
         const currentState = get();
-        const mergedState = { ...currentState, ...persisted };
+        const mergedState = { ...currentState, ...persisted, _hasHydrated: true };
         (set as (state: T, replace: true) => void)(mergedState as T, true);
+      } else {
+        (set as (partial: T | Partial<T> | ((state: T) => T | Partial<T>)) => void)(
+          { _hasHydrated: true } as unknown as Partial<T>,
+        );
       }
       persistLoaded = true;
+
+      const hydratedState = (api as StoreApi<T & { loadApiKeys?: () => Promise<void> }>).getState();
+      if (typeof hydratedState.loadApiKeys === "function") {
+        await hydratedState.loadApiKeys();
+      }
+
       // Dispatch event to notify that persist is loaded
       if (typeof window !== "undefined") {
         window.dispatchEvent(new CustomEvent("persist:loaded", { detail: { key } }));

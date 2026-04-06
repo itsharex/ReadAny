@@ -20,6 +20,8 @@ export interface ProviderConfig {
   keyPlaceholder: string;
 }
 
+const OPTIONAL_API_KEY_PROVIDERS = new Set(["ollama", "lmstudio"]);
+
 export const PROVIDER_CONFIGS: Record<string, ProviderConfig> = {
   openai: {
     id: "openai",
@@ -229,6 +231,77 @@ export function formatApiHost(host: string): string {
   return `${host}/v1/`;
 }
 
+export function trimApiUrl(url: string): string {
+  return url.replace(/\/+$/, "");
+}
+
+export function providerSupportsExactRequestUrl(providerId: string): boolean {
+  return providerId !== "anthropic" && providerId !== "google";
+}
+
+export function resolveProviderBaseUrl(
+  providerId: string,
+  baseUrl?: string,
+  exactRequestUrl = false,
+): string {
+  const rawBaseUrl = (baseUrl || getDefaultBaseUrl(providerId) || "").trim();
+  if (!rawBaseUrl) return "";
+
+  if (exactRequestUrl && providerSupportsExactRequestUrl(providerId)) {
+    return rawBaseUrl;
+  }
+
+  if (!getProviderConfig(providerId).needsV1Suffix) {
+    return trimApiUrl(rawBaseUrl);
+  }
+
+  return trimApiUrl(formatApiHost(rawBaseUrl));
+}
+
+export function buildProviderModelsUrl(
+  providerId: string,
+  baseUrl?: string,
+  apiKey?: string,
+  exactRequestUrl = false,
+): string {
+  const rawBaseUrl = (baseUrl || getDefaultBaseUrl(providerId) || "").trim();
+  if (!rawBaseUrl) return "";
+
+  if (exactRequestUrl && providerSupportsExactRequestUrl(providerId)) {
+    return "";
+  }
+
+  switch (providerId) {
+    case "google": {
+      const resolvedBaseUrl = resolveProviderBaseUrl(providerId, baseUrl, exactRequestUrl);
+      const keyQuery = apiKey ? `?key=${encodeURIComponent(apiKey)}` : "";
+      return `${resolvedBaseUrl}/v1beta/models${keyQuery}`;
+    }
+    case "ollama":
+      return `${trimApiUrl(rawBaseUrl)}/api/tags`;
+    default: {
+      const resolvedBaseUrl = resolveProviderBaseUrl(providerId, baseUrl, exactRequestUrl);
+      return `${resolvedBaseUrl}/models`;
+    }
+  }
+}
+
+export function buildOpenAICompatibleUrl(
+  baseUrl?: string,
+  path = "chat/completions",
+  fallbackBaseUrl = "https://api.openai.com",
+  exactRequestUrl = false,
+): string {
+  const resolvedBaseUrl = resolveProviderBaseUrl(
+    "custom",
+    baseUrl || fallbackBaseUrl,
+    exactRequestUrl,
+  );
+  if (!resolvedBaseUrl) return "";
+  if (exactRequestUrl) return resolvedBaseUrl;
+  return `${resolvedBaseUrl}/${path.replace(/^\/+/, "")}`;
+}
+
 export function getProviderConfig(providerId: string): ProviderConfig {
   return PROVIDER_CONFIGS[providerId] || PROVIDER_CONFIGS.custom;
 }
@@ -265,4 +338,8 @@ export function detectProviderFromUrl(url: string): string {
   if (urlLower.includes("aihubmix.com")) return "aihubmix";
 
   return "custom";
+}
+
+export function providerRequiresApiKey(providerId: string): boolean {
+  return !OPTIONAL_API_KEY_PROVIDERS.has(providerId);
 }

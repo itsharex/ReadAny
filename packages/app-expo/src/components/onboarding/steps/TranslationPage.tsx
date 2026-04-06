@@ -2,7 +2,7 @@ import { DarkModeSvg } from "@/components/DarkModeSvg";
 import { useTheme } from "@/styles/theme";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { useSettingsStore } from "@readany/core/stores/settings-store";
+import { useSettingsStore } from "@/stores";
 import { testDeepLConnection } from "@readany/core/translation/providers";
 import { AlertCircle, Check, CheckCircle2 } from "lucide-react-native";
 import { useState } from "react";

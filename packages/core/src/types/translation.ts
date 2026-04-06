@@ -9,6 +9,7 @@ export interface TranslationProvider {
   name: string;
   apiKey?: string;
   baseUrl?: string;
+  useExactRequestUrl?: boolean;
   model?: string;
   endpointId?: string; // For AI translation, which endpoint to use
 }

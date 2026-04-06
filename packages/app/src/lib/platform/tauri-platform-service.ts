@@ -17,11 +17,49 @@ import type {
 } from "@readany/core/services";
 
 /** Adapter: wraps Tauri SQL plugin instance as IDatabase */
-function wrapTauriDatabase(tauriDb: any): IDatabase {
+function isClosedPoolError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes("closed pool") || message.includes("attempted to acquire a connection");
+}
+
+/** Adapter: wraps Tauri SQL plugin instance as IDatabase */
+function wrapTauriDatabase(tauriDb: any, normalizedPath: string): IDatabase {
+  let currentDb = tauriDb;
+  let reopenPromise: Promise<void> | null = null;
+
+  const reopenIfNeeded = async (): Promise<void> => {
+    if (!reopenPromise) {
+      reopenPromise = (async () => {
+        const Database = (await import("@tauri-apps/plugin-sql")).default;
+        currentDb = await Database.load(normalizedPath);
+      })().finally(() => {
+        reopenPromise = null;
+      });
+    }
+
+    await reopenPromise;
+  };
+
+  const withRecovery = async <T>(operation: (db: any) => Promise<T>): Promise<T> => {
+    try {
+      return await operation(currentDb);
+    } catch (error) {
+      if (!isClosedPoolError(error)) {
+        throw error;
+      }
+
+      console.warn(`[TauriPlatformService] Reopening closed SQL pool for ${normalizedPath}`);
+      await reopenIfNeeded();
+      return operation(currentDb);
+    }
+  };
+
   return {
-    execute: (sql: string, params?: unknown[]) => tauriDb.execute(sql, params ?? []),
-    select: <T>(sql: string, params?: unknown[]): Promise<T[]> => tauriDb.select(sql, params ?? []),
-    close: () => tauriDb.close(),
+    execute: (sql: string, params?: unknown[]) =>
+      withRecovery((db) => db.execute(sql, params ?? [])),
+    select: <T>(sql: string, params?: unknown[]): Promise<T[]> =>
+      withRecovery((db) => db.select(sql, params ?? [])),
+    close: () => currentDb.close(),
   };
 }
 
@@ -123,7 +161,7 @@ export class TauriPlatformService implements IPlatformService {
       ? path
       : `sqlite:${path.replace(/^file:\/\//, "")}`;
     const tauriDb = await Database.load(normalizedPath);
-    return wrapTauriDatabase(tauriDb);
+    return wrapTauriDatabase(tauriDb, normalizedPath);
   }
 
   // ---- Network ----

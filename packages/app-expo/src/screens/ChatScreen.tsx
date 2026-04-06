@@ -25,6 +25,7 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 
 import { useChatStore } from "@/stores/chat-store";
 import { useSettingsStore } from "@/stores/settings-store";
+import { resolveActiveAIConfig } from "@/lib/ai/resolve-active-ai-config";
 import { useStreamingChat } from "@/hooks";
 import type { AttachedQuote } from "@readany/core/types";
 import {
@@ -172,26 +173,9 @@ export function ChatScreen() {
     async (text: string, deepThinking: boolean, spoilerFree: boolean, quotes?: AttachedQuote[]) => {
       // Validate AI config before sending
       const state = useSettingsStore.getState();
-      const { aiConfig, getActiveEndpoint, getEndpointById } = state;
-      let endpoint = await getActiveEndpoint();
-      let model = aiConfig.activeModel;
+      const resolvedAIConfig = await resolveActiveAIConfig(state);
 
-      // 如果当前端点无 apiKey 或无 activeModel，尝试自动选择一个可用的
-      if (!endpoint?.apiKey || !model) {
-        // 遍历所有端点，找到第一个有 apiKey 的
-        for (const ep of aiConfig.endpoints) {
-          const epWithKey = await getEndpointById(ep.id);
-          if (epWithKey?.apiKey && ep.models.length > 0) {
-            state.setActiveEndpoint(ep.id);
-            state.setActiveModel(ep.models[0]);
-            endpoint = epWithKey;
-            model = ep.models[0];
-            break;
-          }
-        }
-      }
-
-      if (!endpoint?.apiKey || !model) {
+      if (!resolvedAIConfig) {
         Alert.alert(
           t("chat.configRequired", "需要配置 AI"),
           t("chat.configRequiredMessage", "请先在设置中配置 AI 端点和模型"),
@@ -206,7 +190,14 @@ export function ChatScreen() {
         return;
       }
 
-      await sendMessage(text, undefined, deepThinking, spoilerFree, quotes);
+      await sendMessage(
+        text,
+        undefined,
+        deepThinking,
+        spoilerFree,
+        quotes,
+        resolvedAIConfig,
+      );
     },
     [sendMessage, navigation, t],
   );

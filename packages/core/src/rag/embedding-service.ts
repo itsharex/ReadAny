@@ -3,6 +3,8 @@
  */
 import type { EmbeddingModel } from "../types";
 
+import { buildOpenAICompatibleUrl } from "../utils/api";
+
 export interface EmbeddingConfig {
   model: EmbeddingModel;
   apiKey: string;
@@ -90,8 +92,7 @@ export class EmbeddingService {
   }
 
   private async callOpenAI(texts: string[]): Promise<number[][]> {
-    const baseUrl = this.config.baseUrl || "https://api.openai.com/v1";
-    const url = `${baseUrl}/embeddings`;
+    const url = buildOpenAICompatibleUrl(this.config.baseUrl, "embeddings");
 
     const response = await this.fetchWithRetry(url, {
       method: "POST",

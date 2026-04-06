@@ -3,7 +3,7 @@
  */
 import type { AIConfig, AIEndpoint, ReadSettings } from "@readany/core/types";
 import type { TranslationConfig, TranslationTargetLang } from "@readany/core/types/translation";
-import { formatApiHost } from "@readany/core/utils/api";
+import { buildProviderModelsUrl, providerSupportsExactRequestUrl } from "@readany/core/utils/api";
 import { create } from "zustand";
 import { deleteSecure, loadSecure, saveSecure, withPersist } from "./persist";
 
@@ -12,8 +12,13 @@ export interface SettingsState {
   translationConfig: TranslationConfig;
   aiConfig: AIConfig;
   settingsUpdatedAt: number;
+  hasCompletedOnboarding: boolean;
+  showOnboardingGuide: boolean;
+  _hasHydrated: boolean;
   _apiKeysLoaded: boolean;
 
+  completeOnboarding: () => void;
+  setShowOnboardingGuide: (show: boolean) => void;
   updateReadSettings: (updates: Partial<ReadSettings>) => void;
   updateTranslationConfig: (updates: Partial<TranslationConfig>) => void;
   updateAIConfig: (
@@ -52,7 +57,8 @@ const defaultEndpoint: AIEndpoint = {
   name: "OpenAI",
   provider: "openai",
   apiKey: "",
-  baseUrl: "https://api.openai.com/v1",
+  baseUrl: "https://api.openai.com",
+  useExactRequestUrl: false,
   models: [],
   modelsFetched: false,
 };
@@ -69,6 +75,11 @@ const defaultAIConfig: AIConfig = {
 async function fetchModelsFromEndpoint(endpoint: AIEndpoint): Promise<string[]> {
   if (!endpoint.apiKey && endpoint.provider !== "ollama" && endpoint.provider !== "lmstudio") {
     return [];
+  }
+  if (endpoint.useExactRequestUrl && providerSupportsExactRequestUrl(endpoint.provider)) {
+    throw new Error(
+      "Exact request URL mode cannot infer the model list automatically. Add models manually.",
+    );
   }
 
   try {
@@ -93,9 +104,14 @@ async function fetchModelsFromEndpoint(endpoint: AIEndpoint): Promise<string[]> 
 }
 
 async function fetchOpenAIModels(endpoint: AIEndpoint): Promise<string[]> {
-  if (!endpoint.baseUrl) return [];
-  const baseUrl = formatApiHost(endpoint.baseUrl).replace(/\/+$/, "");
-  const response = await fetch(`${baseUrl}/models`, {
+  const requestUrl = buildProviderModelsUrl(
+    endpoint.provider,
+    endpoint.baseUrl,
+    endpoint.apiKey,
+    endpoint.useExactRequestUrl,
+  );
+  if (!requestUrl) return [];
+  const response = await fetch(requestUrl, {
     headers: { Authorization: `Bearer ${endpoint.apiKey}` },
   });
   if (!response.ok) {
@@ -108,8 +124,13 @@ async function fetchOpenAIModels(endpoint: AIEndpoint): Promise<string[]> {
 }
 
 async function fetchAnthropicModels(endpoint: AIEndpoint): Promise<string[]> {
-  const baseUrl = formatApiHost(endpoint.baseUrl || "https://api.anthropic.com").replace(/\/+$/, "");
-  const response = await fetch(`${baseUrl}/models`, {
+  const requestUrl = buildProviderModelsUrl(
+    "anthropic",
+    endpoint.baseUrl,
+    endpoint.apiKey,
+    endpoint.useExactRequestUrl,
+  );
+  const response = await fetch(requestUrl, {
     headers: {
       "x-api-key": endpoint.apiKey,
       "anthropic-version": "2023-06-01",
@@ -137,11 +158,13 @@ async function fetchAnthropicModels(endpoint: AIEndpoint): Promise<string[]> {
 }
 
 async function fetchGoogleModels(endpoint: AIEndpoint): Promise<string[]> {
-  const baseUrl = (endpoint.baseUrl || "https://generativelanguage.googleapis.com").replace(
-    /\/+$/,
-    "",
+  const requestUrl = buildProviderModelsUrl(
+    "google",
+    endpoint.baseUrl,
+    endpoint.apiKey,
+    endpoint.useExactRequestUrl,
   );
-  const response = await fetch(`${baseUrl}/v1beta/models?key=${endpoint.apiKey}`);
+  const response = await fetch(requestUrl);
   if (!response.ok) {
     if (response.status === 404 || response.status === 403) {
       return [
@@ -165,9 +188,14 @@ async function fetchGoogleModels(endpoint: AIEndpoint): Promise<string[]> {
 }
 
 async function fetchDeepSeekModels(endpoint: AIEndpoint): Promise<string[]> {
-  const baseUrl = formatApiHost(endpoint.baseUrl || "https://api.deepseek.com").replace(/\/+$/, "");
+  const requestUrl = buildProviderModelsUrl(
+    "deepseek",
+    endpoint.baseUrl,
+    endpoint.apiKey,
+    endpoint.useExactRequestUrl,
+  );
   try {
-    const response = await fetch(`${baseUrl}/models`, {
+    const response = await fetch(requestUrl, {
       headers: { Authorization: `Bearer ${endpoint.apiKey}` },
     });
     if (response.ok) {
@@ -184,9 +212,15 @@ async function fetchDeepSeekModels(endpoint: AIEndpoint): Promise<string[]> {
 }
 
 async function fetchOllamaModels(endpoint: AIEndpoint): Promise<string[]> {
-  const baseUrl = (endpoint.baseUrl || "http://localhost:11434").replace(/\/+$/, "");
   try {
-    const response = await fetch(`${baseUrl}/api/tags`);
+    const response = await fetch(
+      buildProviderModelsUrl(
+        "ollama",
+        endpoint.baseUrl,
+        endpoint.apiKey,
+        endpoint.useExactRequestUrl,
+      ),
+    );
     if (response.ok) {
       const data = await response.json();
       return (data.models || [])
@@ -200,9 +234,15 @@ async function fetchOllamaModels(endpoint: AIEndpoint): Promise<string[]> {
 }
 
 async function fetchLMStudioModels(endpoint: AIEndpoint): Promise<string[]> {
-  const baseUrl = (endpoint.baseUrl || "http://localhost:1234").replace(/\/+$/, "");
   try {
-    const response = await fetch(`${baseUrl}/v1/models`);
+    const response = await fetch(
+      buildProviderModelsUrl(
+        "lmstudio",
+        endpoint.baseUrl,
+        endpoint.apiKey,
+        endpoint.useExactRequestUrl,
+      ),
+    );
     if (response.ok) {
       const data = await response.json();
       return (data.data || [])
@@ -247,9 +287,15 @@ export const useSettingsStore = create<SettingsState>()(
       translationConfig: defaultTranslationConfig,
       aiConfig: defaultAIConfig,
       settingsUpdatedAt: 0,
+      hasCompletedOnboarding: false,
+      showOnboardingGuide: true,
+      _hasHydrated: false,
       _apiKeysLoaded: false,
 
       loadApiKeys,
+
+      completeOnboarding: () => set({ hasCompletedOnboarding: true }),
+      setShowOnboardingGuide: (show: boolean) => set({ showOnboardingGuide: show }),
 
       updateReadSettings: (updates) =>
         set((state) => ({
@@ -420,5 +466,7 @@ export const useSettingsStore = create<SettingsState>()(
 
 // 在应用启动时加载 API keys
 setTimeout(() => {
-  useSettingsStore.getState().loadApiKeys();
+  if (useSettingsStore.getState()._hasHydrated) {
+    void useSettingsStore.getState().loadApiKeys();
+  }
 }, 500);

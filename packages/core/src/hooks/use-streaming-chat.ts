@@ -7,6 +7,7 @@ import i18n from "../i18n";
 import { useChatStore } from "../stores/chat-store";
 import { useSettingsStore } from "../stores/settings-store";
 import type {
+  AIConfig,
   AttachedQuote,
   Book,
   CitationPart,
@@ -111,6 +112,7 @@ export function useStreamingChat(options?: StreamingChatOptions) {
       deepThinking = false,
       spoilerFree = false,
       quotes?: AttachedQuote[],
+      aiConfigOverride?: AIConfig,
     ) => {
       if ((!content.trim() && (!quotes || quotes.length === 0)) || state.isStreaming) return;
 
@@ -198,7 +200,7 @@ export function useStreamingChat(options?: StreamingChatOptions) {
           semanticContext: options?.semanticContext || null,
           enabledSkills,
           isVectorized: options?.book?.isVectorized || false,
-          aiConfig,
+          aiConfig: aiConfigOverride || aiConfig,
           deepThinking,
           spoilerFree,
           getAvailableTools,

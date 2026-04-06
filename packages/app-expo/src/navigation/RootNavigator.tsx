@@ -15,7 +15,7 @@ import VectorModelSettingsScreen from "@/screens/settings/VectorModelSettingsScr
  * RootNavigator — top-level stack matching Tauri mobile App.tsx routes exactly.
  */
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
-import { useSettingsStore } from "@readany/core/stores/settings-store";
+import { useSettingsStore } from "@/stores";
 import { TabNavigator } from "./TabNavigator";
 
 export type RootStackParamList = {

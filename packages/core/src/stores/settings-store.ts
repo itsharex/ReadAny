@@ -1,7 +1,11 @@
 import { create } from "zustand";
 import type { AIConfig, AIEndpoint, ReadSettings } from "../types";
 import type { TranslationConfig, TranslationTargetLang } from "../types/translation";
-import { formatApiHost } from "../utils/api";
+import {
+  buildProviderModelsUrl,
+  providerSupportsExactRequestUrl,
+  providerRequiresApiKey,
+} from "../utils";
 import { withPersist } from "./persist";
 
 export interface SettingsState {
@@ -57,7 +61,8 @@ const defaultEndpoint: AIEndpoint = {
   name: "OpenAI",
   provider: "openai",
   apiKey: "",
-  baseUrl: "https://api.openai.com/v1",
+  baseUrl: "https://api.openai.com",
+  useExactRequestUrl: false,
   models: [],
   modelsFetched: false,
 };
@@ -76,7 +81,12 @@ const defaultAIConfig: AIConfig = {
  * Supports OpenAI-compatible (/v1/models), Anthropic, and Google Gemini.
  */
 async function fetchModelsFromEndpoint(endpoint: AIEndpoint): Promise<string[]> {
-  if (!endpoint.apiKey) return [];
+  if (providerRequiresApiKey(endpoint.provider) && !endpoint.apiKey) return [];
+  if (endpoint.useExactRequestUrl && providerSupportsExactRequestUrl(endpoint.provider)) {
+    throw new Error(
+      "Exact request URL mode cannot infer the model list automatically. Add models manually.",
+    );
+  }
 
   switch (endpoint.provider) {
     case "anthropic":
@@ -85,6 +95,10 @@ async function fetchModelsFromEndpoint(endpoint: AIEndpoint): Promise<string[]> 
       return fetchGoogleModels(endpoint);
     case "deepseek":
       return fetchDeepSeekModels(endpoint);
+    case "ollama":
+      return fetchOllamaModels(endpoint);
+    case "lmstudio":
+      return fetchLMStudioModels(endpoint);
     case "openai":
     default:
       return fetchOpenAIModels(endpoint);
@@ -93,9 +107,14 @@ async function fetchModelsFromEndpoint(endpoint: AIEndpoint): Promise<string[]> 
 
 /** OpenAI-compatible /v1/models */
 async function fetchOpenAIModels(endpoint: AIEndpoint): Promise<string[]> {
-  if (!endpoint.baseUrl) return [];
-  const baseUrl = formatApiHost(endpoint.baseUrl).replace(/\/+$/, "");
-  const response = await fetch(`${baseUrl}/models`, {
+  const requestUrl = buildProviderModelsUrl(
+    endpoint.provider,
+    endpoint.baseUrl,
+    endpoint.apiKey,
+    endpoint.useExactRequestUrl,
+  );
+  if (!requestUrl) return [];
+  const response = await fetch(requestUrl, {
     headers: { Authorization: `Bearer ${endpoint.apiKey}` },
   });
   if (!response.ok) {
@@ -107,10 +126,15 @@ async function fetchOpenAIModels(endpoint: AIEndpoint): Promise<string[]> {
     .sort((a: string, b: string) => a.localeCompare(b));
 }
 
-/** Anthropic — list models via /v1/models API */
+/** Anthropic — list models via /models API */
 async function fetchAnthropicModels(endpoint: AIEndpoint): Promise<string[]> {
-  const baseUrl = formatApiHost(endpoint.baseUrl || "https://api.anthropic.com").replace(/\/+$/, "");
-  const response = await fetch(`${baseUrl}/models`, {
+  const requestUrl = buildProviderModelsUrl(
+    "anthropic",
+    endpoint.baseUrl,
+    endpoint.apiKey,
+    endpoint.useExactRequestUrl,
+  );
+  const response = await fetch(requestUrl, {
     headers: {
       "x-api-key": endpoint.apiKey,
       "anthropic-version": "2023-06-01",
@@ -139,11 +163,13 @@ async function fetchAnthropicModels(endpoint: AIEndpoint): Promise<string[]> {
 
 /** Google Gemini — list models via generativelanguage API */
 async function fetchGoogleModels(endpoint: AIEndpoint): Promise<string[]> {
-  const baseUrl = (endpoint.baseUrl || "https://generativelanguage.googleapis.com").replace(
-    /\/+$/,
-    "",
+  const requestUrl = buildProviderModelsUrl(
+    "google",
+    endpoint.baseUrl,
+    endpoint.apiKey,
+    endpoint.useExactRequestUrl,
   );
-  const response = await fetch(`${baseUrl}/v1beta/models?key=${endpoint.apiKey}`);
+  const response = await fetch(requestUrl);
   if (!response.ok) {
     if (response.status === 404 || response.status === 403) {
       return [
@@ -168,9 +194,14 @@ async function fetchGoogleModels(endpoint: AIEndpoint): Promise<string[]> {
 
 /** DeepSeek — uses OpenAI-compatible /models endpoint with fallback */
 async function fetchDeepSeekModels(endpoint: AIEndpoint): Promise<string[]> {
-  const baseUrl = formatApiHost(endpoint.baseUrl || "https://api.deepseek.com").replace(/\/+$/, "");
+  const requestUrl = buildProviderModelsUrl(
+    "deepseek",
+    endpoint.baseUrl,
+    endpoint.apiKey,
+    endpoint.useExactRequestUrl,
+  );
   try {
-    const response = await fetch(`${baseUrl}/models`, {
+    const response = await fetch(requestUrl, {
       headers: { Authorization: `Bearer ${endpoint.apiKey}` },
     });
     if (response.ok) {
@@ -184,6 +215,42 @@ async function fetchDeepSeekModels(endpoint: AIEndpoint): Promise<string[]> {
     // Fall through to fallback
   }
   return ["deepseek-chat", "deepseek-reasoner"];
+}
+
+async function fetchOllamaModels(endpoint: AIEndpoint): Promise<string[]> {
+  const requestUrl = buildProviderModelsUrl(
+    "ollama",
+    endpoint.baseUrl,
+    endpoint.apiKey,
+    endpoint.useExactRequestUrl,
+  );
+  const response = await fetch(requestUrl);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch Ollama models: ${response.status} ${response.statusText}`);
+  }
+  const data = await response.json();
+  return (data.models || [])
+    .map((m: { name: string }) => m.name)
+    .sort((a: string, b: string) => a.localeCompare(b));
+}
+
+async function fetchLMStudioModels(endpoint: AIEndpoint): Promise<string[]> {
+  const requestUrl = buildProviderModelsUrl(
+    "lmstudio",
+    endpoint.baseUrl,
+    endpoint.apiKey,
+    endpoint.useExactRequestUrl,
+  );
+  const response = await fetch(requestUrl);
+  if (!response.ok) {
+    throw new Error(
+      `Failed to fetch LM Studio models: ${response.status} ${response.statusText}`,
+    );
+  }
+  const data = await response.json();
+  return (data.data || [])
+    .map((m: { id: string }) => m.id)
+    .sort((a: string, b: string) => a.localeCompare(b));
 }
 
 export const useSettingsStore = create<SettingsState>()(

@@ -286,6 +286,8 @@ export function ReaderScreen({ route, navigation }: Props) {
 
   const readSettings = useSettingsStore((s) => s.readSettings);
   const updateReadSettings = useSettingsStore((s) => s.updateReadSettings);
+  const translationConfig = useSettingsStore((s) => s.translationConfig);
+  const aiConfig = useSettingsStore((s) => s.aiConfig);
   const settingFontSize = readSettings.fontSize;
   const settingLineHeight = readSettings.lineHeight;
   const settingParagraphSpacing = readSettings.paragraphSpacing;
@@ -334,7 +336,9 @@ export function ReaderScreen({ route, navigation }: Props) {
   const chapterTranslation = useChapterTranslation({
     bookId,
     sectionIndex: currentSectionIndex,
+    aiConfig,
     ready: translationReady,
+    translationConfig,
     getParagraphs: async () => {
       if (!chapterTranslationBridgeRef.current) return [];
       return chapterTranslationBridgeRef.current.getChapterParagraphs();
