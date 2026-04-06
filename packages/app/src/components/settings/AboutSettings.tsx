@@ -54,6 +54,7 @@ export function AboutSettings() {
   const [error, setError] = useState(getErrorMessage());
   const [dialogType, setDialogType] = useState<DialogType>("none");
   const [isChecking, setIsChecking] = useState(false);
+  const [isRelaunching, setIsRelaunching] = useState(false);
   const [appVersion, setAppVersion] = useState<string>("");
 
   useEffect(() => {
@@ -90,8 +91,21 @@ export function AboutSettings() {
     downloadAndInstall();
   };
 
-  const handleRelaunch = () => {
-    relaunchApp();
+  const handleRelaunch = async () => {
+    setIsRelaunching(true);
+    try {
+      await relaunchApp();
+    } catch (error) {
+      console.error("[AboutSettings] Relaunch failed:", error);
+      setError(
+        error instanceof Error && error.message
+          ? error.message
+          : t("settings.updaterRelaunchFailed"),
+      );
+      setDialogType("error");
+    } finally {
+      setIsRelaunching(false);
+    }
   };
 
   const closeDialog = () => {
@@ -152,8 +166,13 @@ export function AboutSettings() {
           <div className="rounded-lg bg-primary/10 p-3 text-center text-sm text-foreground">
             {t("settings.updateReadyMessage")}
           </div>
-          <Button variant="default" className="w-full" onClick={handleRelaunch}>
-            {t("settings.relaunch")}
+          <Button
+            variant="default"
+            className="w-full"
+            onClick={() => void handleRelaunch()}
+            disabled={isRelaunching}
+          >
+            {isRelaunching ? t("settings.relaunching") : t("settings.relaunch")}
           </Button>
         </div>
       )}

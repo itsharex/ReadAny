@@ -39,6 +39,7 @@
     "dialog:default",
     "dialog:allow-open",
     "updater:default",
+    "process:default",
     "http:default",
     {
       "identifier": "http:allow-fetch",

@@ -155,7 +155,12 @@ export async function installUpdate(): Promise<void> {
 }
 
 export async function relaunchApp(): Promise<void> {
-  await relaunch();
+  try {
+    await relaunch();
+  } catch (error) {
+    console.error("[Updater] Relaunch failed:", error);
+    throw error instanceof Error ? error : new Error(i18n.t("settings.updaterRelaunchFailed"));
+  }
 }
 
 export function resetStatus(): void {
