@@ -36,7 +36,7 @@ const downloads = [
   {
     label: t("download.android"),
     icon: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5"><path d="M17.523 2.246l1.453-1.453-.707-.707-1.568 1.568A7.957 7.957 0 0 0 12 .5a7.957 7.957 0 0 0-4.701 1.554L5.73.486l-.707.707 1.453 1.453A7.948 7.948 0 0 0 4 9v10a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V9a7.948 7.948 0 0 0-2.477-6.754zM9.5 7a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm5 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zM6 15v-2h2v2H6zm10 0v-2h2v2h-2z"/></svg>`,
-    urlTemplate: `${MIRROR_BASE}/https://github.com/${GITHUB_REPO}/releases/download/v{VERSION}/ReadAny.apk`,
+    urlTemplate: `${MIRROR_BASE}/https://github.com/${GITHUB_REPO}/releases/download/v{VERSION}/ReadAny-{VERSION}.apk`,
     available: true,
   },
   {
