@@ -4,6 +4,7 @@ export { DEFAULT_TTS_CONFIG, DASHSCOPE_VOICES } from "./types";
 
 // Text utilities
 export { cleanText, countChars, splitIntoChunks } from "./text-utils";
+export { buildNarrationPreview, getTTSVoiceLabel, splitNarrationText } from "./display";
 
 // Edge TTS
 export { fetchEdgeTTSAudio, EDGE_TTS_VOICES } from "./edge-tts";

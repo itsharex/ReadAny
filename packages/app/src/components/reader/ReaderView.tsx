@@ -15,6 +15,7 @@ import { ChatPanel } from "@/components/chat/ChatPanel";
  */
 import { ReadSettingsPanel } from "@/components/settings/ReadSettings";
 import { useReadingSession } from "@/hooks/use-reading-session";
+import { useResolvedSrc } from "@/hooks/use-resolved-src";
 import { useResizablePanel } from "@/hooks/use-resizable-panel";
 import { DocumentLoader } from "@/lib/reader/document-loader";
 import type { BookDoc, BookFormat } from "@/lib/reader/document-loader";
@@ -44,6 +45,7 @@ import { SearchBar } from "./SearchBar";
 import { SelectionPopover } from "./SelectionPopover";
 import { TOCPanel } from "./TOCPanel";
 import { TranslationPopover } from "./TranslationPopover";
+import { TTSPage } from "./TTSPage";
 import { useChapterTranslation } from "@readany/core/hooks";
 
 // --- Tauri file loading ---
@@ -405,6 +407,9 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
   const [showChat, setShowChat] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showTTS, setShowTTS] = useState(false);
+  const [ttsSourceKind, setTtsSourceKind] = useState<"page" | "selection">("page");
+  const [ttsContinuousEnabled, setTtsContinuousEnabled] = useState(true);
+  const [ttsLastText, setTtsLastText] = useState("");
   const [isToolbarPinned, setIsToolbarPinned] = useState(() => {
     if (typeof window === "undefined") return false;
     return window.localStorage.getItem(TOOLBAR_PIN_STORAGE_KEY) === "true";
@@ -426,7 +431,12 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
 
   const ttsPlayState = useTTSStore((s) => s.playState);
   const ttsPlay = useTTSStore((s) => s.play);
+  const ttsPause = useTTSStore((s) => s.pause);
+  const ttsResume = useTTSStore((s) => s.resume);
   const ttsStop = useTTSStore((s) => s.stop);
+  const ttsCurrentText = useTTSStore((s) => s.currentText);
+  const ttsConfig = useTTSStore((s) => s.config);
+  const ttsUpdateConfig = useTTSStore((s) => s.updateConfig);
   const ttsSetOnEnd = useTTSStore((s) => s.setOnEnd);
 
   /** Whether TTS is in continuous reading mode (auto page-turn) */
@@ -435,6 +445,7 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
   const { t } = useTranslation();
   const isInitializedRef = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const ttsCoverSrc = useResolvedSrc(book?.meta.coverUrl);
 
   // Auto-hide controls
   const keepControlsVisible = showSearch || showToc || showSettings;
@@ -965,44 +976,151 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
       if (!ttsContinuousRef.current) return;
       const text = foliateRef.current?.getVisibleText();
       if (text?.trim()) {
+        setTtsLastText(text);
         ttsPlay(text);
       } else {
         // No more text (end of book) — stop TTS
         ttsContinuousRef.current = false;
+        ttsSetOnEnd(null);
         ttsStop();
-        setShowTTS(false);
       }
     }, 600);
-  }, [ttsPlay, ttsStop]);
+  }, [ttsPlay, ttsSetOnEnd, ttsStop]);
+
+  const startSelectionTTS = useCallback(
+    (text: string) => {
+      const normalized = text.trim();
+      if (!normalized) return;
+      setTtsSourceKind("selection");
+      setTtsContinuousEnabled(false);
+      setTtsLastText(normalized);
+      ttsContinuousRef.current = false;
+      ttsSetOnEnd(null);
+      setShowTTS(true);
+      ttsPlay(normalized);
+    },
+    [ttsPlay, ttsSetOnEnd],
+  );
+
+  const startPageTTS = useCallback(
+    (continuous = ttsContinuousEnabled) => {
+      const text = foliateRef.current?.getVisibleText();
+      const normalized = text?.trim();
+      if (!normalized) return;
+      setTtsSourceKind("page");
+      setTtsContinuousEnabled(continuous);
+      setTtsLastText(normalized);
+      ttsContinuousRef.current = continuous;
+      ttsSetOnEnd(continuous ? handleTTSPageEnd : null);
+      setShowTTS(true);
+      ttsPlay(normalized);
+    },
+    [handleTTSPageEnd, ttsContinuousEnabled, ttsPlay, ttsSetOnEnd],
+  );
 
   // TTS: toggle reading from current page with auto page-turn
   const handleToggleTTS = useCallback(() => {
     if (showTTS) {
-      ttsContinuousRef.current = false;
-      ttsSetOnEnd(null);
-      ttsStop();
       setShowTTS(false);
-    } else {
-      const text = foliateRef.current?.getVisibleText();
-      if (text) {
-        ttsContinuousRef.current = true;
-        ttsSetOnEnd(handleTTSPageEnd);
-        setShowTTS(true);
-        ttsPlay(text);
-      }
+      return;
     }
-  }, [showTTS, ttsPlay, ttsStop, ttsSetOnEnd, handleTTSPageEnd]);
+
+    const hasActiveSession = ttsPlayState !== "stopped" || !!(ttsCurrentText || ttsLastText).trim();
+    if (hasActiveSession) {
+      setShowTTS(true);
+      return;
+    }
+
+    startPageTTS(ttsContinuousEnabled);
+  }, [
+    showTTS,
+    startPageTTS,
+    ttsContinuousEnabled,
+    ttsCurrentText,
+    ttsLastText,
+    ttsPlayState,
+  ]);
 
   // TTS: speak selected text (no auto page-turn)
   const handleSpeakSelection = useCallback(() => {
     if (selection?.text) {
-      ttsContinuousRef.current = false;
-      ttsSetOnEnd(null);
-      setShowTTS(true);
-      ttsPlay(selection.text);
+      startSelectionTTS(selection.text);
     }
     setSelection(null);
-  }, [selection, ttsPlay, ttsSetOnEnd]);
+  }, [selection, startSelectionTTS]);
+
+  const handleTTSReplay = useCallback(() => {
+    if (ttsSourceKind === "selection") {
+      const text = (ttsCurrentText || ttsLastText).trim();
+      if (text) {
+        startSelectionTTS(text);
+      }
+      return;
+    }
+
+    startPageTTS(ttsContinuousEnabled);
+  }, [startPageTTS, startSelectionTTS, ttsContinuousEnabled, ttsCurrentText, ttsLastText, ttsSourceKind]);
+
+  const handleTTSPlayPause = useCallback(() => {
+    if (ttsPlayState === "loading") return;
+    if (ttsPlayState === "playing") {
+      ttsPause();
+      return;
+    }
+    if (ttsPlayState === "paused") {
+      ttsResume();
+      return;
+    }
+
+    if (ttsSourceKind === "selection") {
+      const text = (ttsCurrentText || ttsLastText).trim();
+      if (text) {
+        startSelectionTTS(text);
+      }
+      return;
+    }
+
+    startPageTTS(ttsContinuousEnabled);
+  }, [
+    startPageTTS,
+    startSelectionTTS,
+    ttsContinuousEnabled,
+    ttsCurrentText,
+    ttsLastText,
+    ttsPause,
+    ttsPlayState,
+    ttsResume,
+    ttsSourceKind,
+  ]);
+
+  const handleAdjustTTSRate = useCallback(
+    (delta: number) => {
+      const nextRate = Math.max(0.5, Math.min(2, Math.round((ttsConfig.rate + delta) * 10) / 10));
+      ttsUpdateConfig({ rate: nextRate });
+    },
+    [ttsConfig.rate, ttsUpdateConfig],
+  );
+
+  const handleAdjustTTSPitch = useCallback(
+    (delta: number) => {
+      const nextPitch = Math.max(
+        0.5,
+        Math.min(2, Math.round((ttsConfig.pitch + delta) * 10) / 10),
+      );
+      ttsUpdateConfig({ pitch: nextPitch });
+    },
+    [ttsConfig.pitch, ttsUpdateConfig],
+  );
+
+  const handleToggleTTSContinuous = useCallback(() => {
+    setTtsContinuousEnabled((prev) => {
+      const next = !prev;
+      const shouldContinue = next && ttsSourceKind === "page";
+      ttsContinuousRef.current = shouldContinue;
+      ttsSetOnEnd(shouldContinue ? handleTTSPageEnd : null);
+      return next;
+    });
+  }, [handleTTSPageEnd, ttsSetOnEnd, ttsSourceKind]);
 
   // Stop TTS when leaving the reader
   useEffect(() => {
@@ -1359,13 +1477,36 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
             onNext={handleNavNext}
             onMouseEnter={handleMouseEnter}
             onMouseLeave={handleMouseLeave}
-            showTTS={showTTS}
-            onTTSClose={() => {
+          />
+
+          <TTSPage
+            visible={showTTS}
+            bookTitle={book?.meta.title || ""}
+            chapterTitle={readerTab?.chapterTitle || ""}
+            coverSrc={ttsCoverSrc}
+            playState={ttsPlayState}
+            currentText={ttsCurrentText || ttsLastText}
+            config={ttsConfig}
+            readingProgress={readerTab?.progress ?? 0}
+            currentPage={currentPage}
+            totalPages={totalPages}
+            sourceLabel={
+              ttsSourceKind === "selection"
+                ? t("tts.fromSelection")
+                : t("tts.fromCurrentPage")
+            }
+            continuousEnabled={ttsContinuousEnabled}
+            onClose={() => setShowTTS(false)}
+            onReplay={handleTTSReplay}
+            onPlayPause={handleTTSPlayPause}
+            onStop={() => {
               ttsContinuousRef.current = false;
               ttsSetOnEnd(null);
               ttsStop();
-              setShowTTS(false);
             }}
+            onAdjustRate={handleAdjustTTSRate}
+            onAdjustPitch={handleAdjustTTSPitch}
+            onToggleContinuous={handleToggleTTSContinuous}
           />
 
           {/* Always-visible thin progress bar at the very bottom */}

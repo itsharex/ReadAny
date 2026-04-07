@@ -2,7 +2,7 @@ import { MarkdownRenderer } from "@/components/chat/MarkdownRenderer";
 import { BookmarkRibbon } from "@/components/reader/BookmarkRibbon";
 import { ChapterTranslationSheet } from "@/components/reader/ChapterTranslationSheet";
 import { SelectionPopover } from "@/components/reader/SelectionPopover";
-import { TTSControls } from "@/components/reader/TTSControls";
+import { TTSPage } from "@/components/reader/TTSPage";
 import { TranslationPanel } from "@/components/reader/TranslationPanel";
 import {
   BotIcon,
@@ -261,6 +261,8 @@ export function ReaderScreen({ route, navigation }: Props) {
   const [webViewReady, setWebViewReady] = useState(false);
   const [translationReady, setTranslationReady] = useState(false);
   const [readerHtmlUri, setReaderHtmlUri] = useState<string | null>(null);
+  const [ttsCoverUri, setTtsCoverUri] = useState<string | undefined>(undefined);
+  const [ttsLastText, setTtsLastText] = useState("");
   const [currentCfi, setCurrentCfi] = useState("");
   const [pageSnippet, setPageSnippet] = useState("");
   const [selection, setSelection] = useState<SelectionEvent | null>(null);
@@ -276,6 +278,8 @@ export function ReaderScreen({ route, navigation }: Props) {
   } | null>(null);
   const [noteViewEditing, setNoteViewEditing] = useState(false);
   const [noteViewContent, setNoteViewContent] = useState("");
+  const [ttsSourceKind, setTtsSourceKind] = useState<"page" | "selection">("page");
+  const [ttsContinuousEnabled, setTtsContinuousEnabled] = useState(true);
   const [noteTooltip, setNoteTooltip] = useState<{
     note: string;
     cfi: string;
@@ -347,10 +351,52 @@ const TOOLBAR_HIDE_OFFSET = 100;
     removeBookmark,
   } = useAnnotationStore();
   const ttsPlay = useTTSStore((s) => s.play);
+  const ttsPause = useTTSStore((s) => s.pause);
+  const ttsResume = useTTSStore((s) => s.resume);
   const ttsStop = useTTSStore((s) => s.stop);
+  const ttsPlayState = useTTSStore((s) => s.playState);
+  const ttsCurrentText = useTTSStore((s) => s.currentText);
+  const ttsConfig = useTTSStore((s) => s.config);
+  const ttsUpdateConfig = useTTSStore((s) => s.updateConfig);
   const ttsSetOnEnd = useTTSStore((s) => s.setOnEnd);
 
   const book = useMemo(() => books.find((b) => b.id === bookId), [books, bookId]);
+  const ttsSourceLabel =
+    ttsSourceKind === "selection"
+      ? t("tts.fromSelection", "来自选中文本")
+      : t("tts.fromCurrentPage", "从当前页开始");
+
+  useEffect(() => {
+    const raw = book?.meta.coverUrl;
+    if (!raw) {
+      setTtsCoverUri(undefined);
+      return;
+    }
+    if (raw.startsWith("http") || raw.startsWith("blob") || raw.startsWith("file")) {
+      setTtsCoverUri(raw);
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const platform = getPlatformService();
+        const appData = await platform.getAppDataDir();
+        const absPath = await platform.joinPath(appData, raw);
+        if (!cancelled) {
+          setTtsCoverUri(absPath);
+        }
+      } catch {
+        if (!cancelled) {
+          setTtsCoverUri(undefined);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [book?.meta.coverUrl]);
 
   // Chapter translation hook
   const chapterTranslation = useChapterTranslation({
@@ -995,13 +1041,6 @@ const TOOLBAR_HIDE_OFFSET = 100;
     setSelection(null);
   }, []);
 
-  const handleSpeak = useCallback(() => {
-    if (!selection) return;
-    ttsPlay(selection.text);
-    setSelection(null);
-    setShowTTS(true);
-  }, [selection, ttsPlay]);
-
   // TTS auto page-turn handler
   const ttsContinuousRef = useRef(false);
   const handleTTSPageEnd = useCallback(() => {
@@ -1011,41 +1050,157 @@ const TOOLBAR_HIDE_OFFSET = 100;
     setTimeout(async () => {
       const text = await bridgeRef.current?.getVisibleText();
       if (text && ttsContinuousRef.current) {
+        setTtsLastText(text);
         ttsPlay(text);
       } else {
         ttsContinuousRef.current = false;
         ttsSetOnEnd(null);
         ttsStop();
-        setShowTTS(false);
       }
     }, 500);
   }, [ttsPlay, ttsSetOnEnd, ttsStop]);
 
-  const handleToggleTTS = useCallback(async () => {
-    if (showTTS) {
+  const startSelectionTTS = useCallback(
+    (text: string) => {
+      const normalized = text.trim();
+      if (!normalized) return;
+      setTtsSourceKind("selection");
+      setTtsContinuousEnabled(false);
+      setTtsLastText(normalized);
       ttsContinuousRef.current = false;
       ttsSetOnEnd(null);
-      ttsStop();
-      setShowTTS(false);
-    } else {
+      setShowControls(false);
       setShowTTS(true);
+      ttsPlay(normalized);
+    },
+    [ttsPlay, ttsSetOnEnd],
+  );
+
+  const startPageTTS = useCallback(
+    async (continuous = ttsContinuousEnabled) => {
       const text = await bridgeRef.current?.getVisibleText();
-      if (text) {
-        ttsContinuousRef.current = true;
-        ttsSetOnEnd(handleTTSPageEnd);
-        ttsPlay(text);
-      }
+      const normalized = text?.trim();
+      if (!normalized) return;
+      setTtsSourceKind("page");
+      setTtsContinuousEnabled(continuous);
+      setTtsLastText(normalized);
+      ttsContinuousRef.current = continuous;
+      ttsSetOnEnd(continuous ? handleTTSPageEnd : null);
+      setShowControls(false);
+      setShowTTS(true);
+      ttsPlay(normalized);
+    },
+    [handleTTSPageEnd, ttsContinuousEnabled, ttsPlay, ttsSetOnEnd],
+  );
+
+  const handleSpeak = useCallback(() => {
+    if (!selection) return;
+    startSelectionTTS(selection.text);
+    setSelection(null);
+  }, [selection, startSelectionTTS]);
+
+  const handleToggleTTS = useCallback(async () => {
+    if (showTTS) {
+      setShowTTS(false);
+      return;
     }
-  }, [showTTS, ttsPlay, ttsStop, ttsSetOnEnd, handleTTSPageEnd]);
+
+    const hasActiveSession = ttsPlayState !== "stopped" || !!(ttsCurrentText || ttsLastText).trim();
+    if (hasActiveSession) {
+      setShowControls(false);
+      setShowTTS(true);
+      return;
+    }
+
+    await startPageTTS(ttsContinuousEnabled);
+  }, [
+    showTTS,
+    startPageTTS,
+    ttsContinuousEnabled,
+    ttsCurrentText,
+    ttsLastText,
+    ttsPlayState,
+  ]);
 
   const handleTTSReplay = useCallback(async () => {
-    const text = await bridgeRef.current?.getVisibleText();
-    if (text && text.trim()) {
-      ttsContinuousRef.current = true;
-      ttsSetOnEnd(handleTTSPageEnd);
-      ttsPlay(text);
+    if (ttsSourceKind === "selection") {
+      const text = (ttsCurrentText || ttsLastText).trim();
+      if (text) {
+        startSelectionTTS(text);
+      }
+      return;
     }
-  }, [ttsPlay, ttsSetOnEnd, handleTTSPageEnd]);
+
+    await startPageTTS(ttsContinuousEnabled);
+  }, [
+    startPageTTS,
+    startSelectionTTS,
+    ttsContinuousEnabled,
+    ttsCurrentText,
+    ttsLastText,
+    ttsSourceKind,
+  ]);
+
+  const handleTTSPlayPause = useCallback(async () => {
+    if (ttsPlayState === "loading") return;
+    if (ttsPlayState === "playing") {
+      ttsPause();
+      return;
+    }
+    if (ttsPlayState === "paused") {
+      ttsResume();
+      return;
+    }
+
+    if (ttsSourceKind === "selection") {
+      const text = (ttsCurrentText || ttsLastText).trim();
+      if (text) {
+        startSelectionTTS(text);
+      }
+      return;
+    }
+
+    await startPageTTS(ttsContinuousEnabled);
+  }, [
+    startPageTTS,
+    startSelectionTTS,
+    ttsContinuousEnabled,
+    ttsCurrentText,
+    ttsLastText,
+    ttsPause,
+    ttsPlayState,
+    ttsResume,
+    ttsSourceKind,
+  ]);
+
+  const handleAdjustTTSRate = useCallback(
+    (delta: number) => {
+      const nextRate = Math.max(0.5, Math.min(2, Math.round((ttsConfig.rate + delta) * 10) / 10));
+      ttsUpdateConfig({ rate: nextRate });
+    },
+    [ttsConfig.rate, ttsUpdateConfig],
+  );
+
+  const handleAdjustTTSPitch = useCallback(
+    (delta: number) => {
+      const nextPitch = Math.max(
+        0.5,
+        Math.min(2, Math.round((ttsConfig.pitch + delta) * 10) / 10),
+      );
+      ttsUpdateConfig({ pitch: nextPitch });
+    },
+    [ttsConfig.pitch, ttsUpdateConfig],
+  );
+
+  const handleToggleTTSContinuous = useCallback(() => {
+    setTtsContinuousEnabled((prev) => {
+      const next = !prev;
+      const shouldContinue = next && ttsSourceKind === "page";
+      ttsContinuousRef.current = shouldContinue;
+      ttsSetOnEnd(shouldContinue ? handleTTSPageEnd : null);
+      return next;
+    });
+  }, [handleTTSPageEnd, ttsSetOnEnd, ttsSourceKind]);
 
   useEffect(() => {
     return () => {
@@ -1377,7 +1532,10 @@ const TOOLBAR_HIDE_OFFSET = 100;
             <LanguagesIcon size={18} color="#fff" />
           </TouchableOpacity>
           <TouchableOpacity
-            style={[s.floatingToolBtn, showTTS && s.floatingToolBtnActive]}
+            style={[
+              s.floatingToolBtn,
+              (showTTS || ttsPlayState !== "stopped") && s.floatingToolBtnActive,
+            ]}
             onPress={handleToggleTTS}
           >
             <HeadphonesIcon size={20} color="#fff" />
@@ -2084,18 +2242,31 @@ const TOOLBAR_HIDE_OFFSET = 100;
         onReset={chapterTranslation.reset}
       />
 
-      {/* ─── TTS Controls ─── */}
-      {showTTS && (
-        <TTSControls
-          onClose={() => {
-            ttsContinuousRef.current = false;
-            ttsSetOnEnd(null);
-            ttsStop();
-            setShowTTS(false);
-          }}
-          onReplay={handleTTSReplay}
-        />
-      )}
+      <TTSPage
+        visible={showTTS}
+        bookTitle={bookTitle || book?.meta.title || ""}
+        chapterTitle={currentChapter}
+        coverUri={ttsCoverUri}
+        playState={ttsPlayState}
+        currentText={ttsCurrentText || ttsLastText}
+        config={ttsConfig}
+        readingProgress={progress}
+        currentPage={currentPage}
+        totalPages={totalPages}
+        sourceLabel={ttsSourceLabel}
+        continuousEnabled={ttsContinuousEnabled}
+        onClose={() => setShowTTS(false)}
+        onReplay={handleTTSReplay}
+        onPlayPause={handleTTSPlayPause}
+        onStop={() => {
+          ttsContinuousRef.current = false;
+          ttsSetOnEnd(null);
+          ttsStop();
+        }}
+        onAdjustRate={handleAdjustTTSRate}
+        onAdjustPitch={handleAdjustTTSPitch}
+        onToggleContinuous={handleToggleTTSContinuous}
+      />
     </View>
   );
 }
