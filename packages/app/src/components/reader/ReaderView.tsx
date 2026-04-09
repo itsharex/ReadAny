@@ -499,6 +499,9 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
 
   /** Whether TTS is in continuous reading mode (auto page-turn) */
   const ttsContinuousRef = useRef(false);
+  /** Stores the callback to resume TTS after a page turn; triggered by handleRelocate */
+  const pendingTTSContinueCallbackRef = useRef<(() => void) | null>(null);
+  const pendingTTSContinueSafetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { t } = useTranslation();
   const isInitializedRef = useRef(false);
@@ -622,6 +625,13 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
 
       // Mark translation ready after first successful relocate (CFI navigation done)
       if (!translationReady) setTranslationReady(true);
+
+      // If TTS is waiting for a page turn to complete, fire the continuation callback now
+      // that the renderer has fully updated its position (renderer.start reflects new page).
+      if (pendingTTSContinueCallbackRef.current) {
+        const cb = pendingTTSContinueCallbackRef.current;
+        void cb();
+      }
     },
     [tabId, bookId, bookFormat, setProgress, setChapter, throttledSaveProgress, translationReady],
   );
@@ -1083,60 +1093,70 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
     const previousFirstCfi = previousSegments[0]?.cfi || currentTTSSegment?.cfi || readerTab?.currentCfi;
     const previousText = ttsLastTextRef.current;
 
-    // Turn to next page
+    // Clear any lingering safety timer from a previous page turn
+    if (pendingTTSContinueSafetyTimerRef.current) {
+      clearTimeout(pendingTTSContinueSafetyTimerRef.current);
+      pendingTTSContinueSafetyTimerRef.current = null;
+    }
+
+    // Store the continuation logic — will be triggered by handleRelocate once the renderer
+    // has fully updated to the new page position (renderer.start reflects new page).
+    const continuationCallback = async () => {
+      pendingTTSContinueCallbackRef.current = null;
+      if (pendingTTSContinueSafetyTimerRef.current) {
+        clearTimeout(pendingTTSContinueSafetyTimerRef.current);
+        pendingTTSContinueSafetyTimerRef.current = null;
+      }
+      if (!ttsContinuousRef.current) return;
+
+      const tryContinue = async (attempt = 0) => {
+        if (!ttsContinuousRef.current) return;
+        const segments =
+          (await foliateRef.current?.getVisibleTTSSegments())?.map((segment) => ({
+            text: segment.text.trim(),
+            cfi: segment.cfi,
+          })) ?? [];
+        const normalizedSegments = segments.filter((segment) => segment.text.length > 0);
+        const dedupedSegments = trimLeadingTTSOverlap(previousSegments, normalizedSegments);
+        const text = dedupedSegments.map((segment) => segment.text).join(" ").trim();
+        const firstCfi = dedupedSegments[0]?.cfi || null;
+        const isSamePage = !!text && text === previousText && firstCfi === previousFirstCfi;
+
+        if ((!text || isSamePage) && ttsContinuousRef.current && attempt < 5) {
+          setTimeout(() => { void tryContinue(attempt + 1); }, 200);
+          return;
+        }
+
+        if (text && ttsContinuousRef.current) {
+          setTtsSegments(dedupedSegments);
+          setTtsLastText(text);
+          ttsSegmentsRef.current = dedupedSegments;
+          ttsLastTextRef.current = text;
+          ttsPlay(dedupedSegments.length > 0 ? dedupedSegments.map((segment) => segment.text) : text);
+        } else {
+          // No more text (end of book) — stop TTS
+          ttsContinuousRef.current = false;
+          ttsSetOnEnd(null);
+          ttsStop();
+        }
+      };
+
+      void tryContinue(0);
+    };
+
+    pendingTTSContinueCallbackRef.current = continuationCallback;
+
+    // Turn to next page — handleRelocate will fire after the renderer has fully updated
     foliateRef.current?.goNext();
 
-    // Wait for the new page content to load, then read it
-    setTimeout(async () => {
-      if (!ttsContinuousRef.current) return;
-      const segments =
-        (await foliateRef.current?.getVisibleTTSSegments())?.map((segment) => ({
-          text: segment.text.trim(),
-          cfi: segment.cfi,
-        })) ?? [];
-      const normalizedSegments = segments.filter((segment) => segment.text.length > 0);
-      const dedupedSegments = trimLeadingTTSOverlap(previousSegments, normalizedSegments);
-      const text = dedupedSegments.map((segment) => segment.text).join(" ").trim();
-      const firstCfi = dedupedSegments[0]?.cfi || null;
-      const isSamePage = !!text && text === previousText && firstCfi === previousFirstCfi;
-      if ((!text || isSamePage) && ttsContinuousRef.current) {
-        setTimeout(async () => {
-          if (!ttsContinuousRef.current) return;
-          const retrySegments =
-            (await foliateRef.current?.getVisibleTTSSegments())?.map((segment) => ({
-              text: segment.text.trim(),
-              cfi: segment.cfi,
-            })) ?? [];
-          const retryNormalized = retrySegments.filter((segment) => segment.text.length > 0);
-          const retryDeduped = trimLeadingTTSOverlap(previousSegments, retryNormalized);
-          const retryText = retryDeduped.map((segment) => segment.text).join(" ").trim();
-          if (retryText) {
-            setTtsSegments(retryDeduped);
-            setTtsLastText(retryText);
-            ttsSegmentsRef.current = retryDeduped;
-            ttsLastTextRef.current = retryText;
-            ttsPlay(retryDeduped.length > 0 ? retryDeduped.map((segment) => segment.text) : retryText);
-          } else {
-            ttsContinuousRef.current = false;
-            ttsSetOnEnd(null);
-            ttsStop();
-          }
-        }, 240);
-        return;
+    // Safety fallback: if handleRelocate never fires within 3s, run the callback anyway
+    pendingTTSContinueSafetyTimerRef.current = setTimeout(() => {
+      const cb = pendingTTSContinueCallbackRef.current;
+      if (cb) {
+        console.log("[ReaderView][TTS] safety timeout — relocate didn't fire, running continuation");
+        void cb();
       }
-      if (text) {
-        setTtsSegments(dedupedSegments);
-        setTtsLastText(text);
-        ttsSegmentsRef.current = dedupedSegments;
-        ttsLastTextRef.current = text;
-        ttsPlay(dedupedSegments.length > 0 ? dedupedSegments.map((segment) => segment.text) : text);
-      } else {
-        // No more text (end of book) — stop TTS
-        ttsContinuousRef.current = false;
-        ttsSetOnEnd(null);
-        ttsStop();
-      }
-    }, 600);
+    }, 3000);
   }, [currentTTSSegment?.cfi, readerTab?.currentCfi, trimLeadingTTSOverlap, ttsPlay, ttsSetOnEnd, ttsStop]);
 
   useEffect(() => {

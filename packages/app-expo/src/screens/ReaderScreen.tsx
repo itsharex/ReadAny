@@ -268,6 +268,7 @@ export function ReaderScreen({ route, navigation }: Props) {
   const [ttsCoverUri, setTtsCoverUri] = useState<string | undefined>(undefined);
   const [ttsLastText, setTtsLastText] = useState("");
   const [ttsSegments, setTtsSegments] = useState<TTSSegment[]>([]);
+  const [ttsPrevPageSegments, setTtsPrevPageSegments] = useState<TTSSegment[]>([]);
   const [currentCfi, setCurrentCfi] = useState("");
   const [pageSnippet, setPageSnippet] = useState("");
   const [selection, setSelection] = useState<SelectionEvent | null>(null);
@@ -310,7 +311,6 @@ export function ReaderScreen({ route, navigation }: Props) {
   const [currentSectionIndex, setCurrentSectionIndex] = useState(0);
   const webViewRefForVisibility = useRef<WebView | null>(null);
   const chapterTranslationBridgeRef = useRef<{
-    getChapterParagraphs: () => Promise<Array<{ id: string; text: string; tagName: string }>>;
     injectChapterTranslations: (
       results: Array<{ paragraphId: string; originalText: string; translatedText: string }>,
     ) => void;
@@ -388,7 +388,7 @@ const TOOLBAR_HIDE_OFFSET = 100;
         : null,
     [ttsCurrentChunkIndex, ttsSegments],
   );
-  const ttsHighlightColor = "#808080";
+  const ttsHighlightColor = "#FFC800";
   const ttsSourceLabel =
     ttsSourceKind === "selection"
       ? t("tts.fromSelection", "来自选中文本")
@@ -633,6 +633,15 @@ const TOOLBAR_HIDE_OFFSET = 100;
 
       // Mark translation ready after first successful relocate (CFI navigation done)
       if (!translationReady) setTranslationReady(true);
+
+      // If TTS is waiting for a page turn to complete, fire the continuation callback now
+      // that the renderer has fully updated its position (renderer.start reflects new page).
+      if (pendingTTSContinueCallbackRef.current) {
+        console.log("[ReaderScreen][TTS] onRelocate triggered pending TTS continuation");
+        const cb = pendingTTSContinueCallbackRef.current;
+        pendingTTSContinueCallbackRef.current = null; // clear before calling to prevent double-fire
+        void cb();
+      }
 
       // Sync reading context for AI tools
       readingContextService.updateContext({
@@ -1192,6 +1201,10 @@ const TOOLBAR_HIDE_OFFSET = 100;
 
   // TTS auto page-turn handler
   const ttsContinuousRef = useRef(false);
+  // Stores the callback to resume TTS after a page turn; triggered by onRelocate
+  const pendingTTSContinueCallbackRef = useRef<(() => void) | null>(null);
+  const pendingTTSContinueSafetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const handleTTSPageEnd = useCallback(() => {
     if (!ttsContinuousRef.current) return;
     const previousSegments = ttsSegmentsRef.current;
@@ -1202,45 +1215,81 @@ const TOOLBAR_HIDE_OFFSET = 100;
       previousTextLength: previousText.length,
       previousSegmentCount: previousSegments.length,
     });
-    // Go to next page and continue reading
-    bridgeRef.current?.goNext();
-    const tryContinue = async (attempt = 0) => {
-      const normalizedSegments = await getNormalizedVisibleTTSSegments();
-      const dedupedSegments = trimLeadingTTSOverlap(previousSegments, normalizedSegments);
-      const text = dedupedSegments.map((segment) => segment.text).join(" ").trim();
-      const firstCfi = dedupedSegments[0]?.cfi || null;
-      const isSamePage = !!text && text === previousText && firstCfi === previousFirstCfi;
-      console.log("[ReaderScreen][TTS] continue check", {
-        attempt,
-        firstCfi,
-        textLength: text.length,
-        segmentCount: dedupedSegments.length,
-        isSamePage,
-      });
 
-      if (ttsContinuousRef.current && (!text || isSamePage) && attempt < 5) {
-        setTimeout(() => {
-          void tryContinue(attempt + 1);
-        }, 220);
-        return;
-      }
+    // Accumulate ALL previous pages so the lyric list is infinitely scrollable upward
+    if (previousSegments.length > 0) {
+      setTtsPrevPageSegments((prev) => [...prev, ...previousSegments]);
+    }
 
-      if (text && ttsContinuousRef.current) {
-        setTtsSegments(dedupedSegments);
-        setTtsLastText(text);
-        ttsSegmentsRef.current = dedupedSegments;
-        ttsLastTextRef.current = text;
-        ttsPlay(dedupedSegments.length > 0 ? dedupedSegments.map((segment) => segment.text) : text);
-      } else {
-        ttsContinuousRef.current = false;
-        ttsSetOnEnd(null);
-        ttsStop();
+    // Clear any lingering safety timer from a previous page turn
+    if (pendingTTSContinueSafetyTimerRef.current) {
+      clearTimeout(pendingTTSContinueSafetyTimerRef.current);
+      pendingTTSContinueSafetyTimerRef.current = null;
+    }
+
+    // Store the continuation logic — will be triggered by onRelocate once the renderer
+    // has fully updated to the new page position (renderer.start reflects new page).
+    const continuationCallback = async () => {
+      pendingTTSContinueCallbackRef.current = null;
+      if (pendingTTSContinueSafetyTimerRef.current) {
+        clearTimeout(pendingTTSContinueSafetyTimerRef.current);
+        pendingTTSContinueSafetyTimerRef.current = null;
       }
+      if (!ttsContinuousRef.current) return;
+
+      const tryContinue = async (attempt = 0) => {
+        const normalizedSegments = await getNormalizedVisibleTTSSegments();
+        const dedupedSegments = trimLeadingTTSOverlap(previousSegments, normalizedSegments);
+        const text = dedupedSegments.map((segment) => segment.text).join(" ").trim();
+        const firstCfi = dedupedSegments[0]?.cfi || null;
+        const isSamePage = !!text && text === previousText && firstCfi === previousFirstCfi;
+        console.log("[ReaderScreen][TTS] continue check (post-relocate)", {
+          attempt,
+          firstCfi,
+          textLength: text.length,
+          segmentCount: dedupedSegments.length,
+          isSamePage,
+        });
+
+        // The WebView already polls internally for up to 3s waiting for renderer to settle.
+        // If we still get nothing or same page, wait before the next attempt to avoid
+        // concurrent requests conflicting on the single-slot pendingVisibleTTSSegmentsResolveRef.
+        if (ttsContinuousRef.current && (!text || isSamePage) && attempt < 2) {
+          setTimeout(() => {
+            void tryContinue(attempt + 1);
+          }, 1000);
+          return;
+        }
+
+        if (text && ttsContinuousRef.current) {
+          setTtsSegments(dedupedSegments);
+          setTtsLastText(text);
+          ttsSegmentsRef.current = dedupedSegments;
+          ttsLastTextRef.current = text;
+          ttsPlay(dedupedSegments.length > 0 ? dedupedSegments.map((segment) => segment.text) : text);
+        } else {
+          ttsContinuousRef.current = false;
+          ttsSetOnEnd(null);
+          ttsStop();
+        }
+      };
+
+      void tryContinue(0);
     };
 
-    setTimeout(() => {
-      void tryContinue(0);
-    }, 420);
+    pendingTTSContinueCallbackRef.current = continuationCallback;
+
+    // Go to next page — onRelocate will fire after the renderer has fully updated
+    bridgeRef.current?.goNext();
+
+    // Safety fallback: if onRelocate never fires within 8s, run the callback anyway
+    pendingTTSContinueSafetyTimerRef.current = setTimeout(() => {
+      const cb = pendingTTSContinueCallbackRef.current;
+      if (cb) {
+        console.log("[ReaderScreen][TTS] safety timeout — onRelocate didn't fire, running continuation");
+        void cb();
+      }
+    }, 8000);
   }, [currentCfi, currentTTSSegment?.cfi, getNormalizedVisibleTTSSegments, trimLeadingTTSOverlap, ttsPlay, ttsSetOnEnd, ttsStop]);
 
   useEffect(() => {
@@ -1312,6 +1361,7 @@ const TOOLBAR_HIDE_OFFSET = 100;
       setTtsContinuousEnabled(continuous);
       setTtsLastText(normalized);
       setTtsSegments(normalizedSegments);
+      setTtsPrevPageSegments([]); // fresh start — no prev page
       ttsLastTextRef.current = normalized;
       ttsSegmentsRef.current = normalizedSegments;
       ttsContinuousRef.current = continuous;
@@ -1448,16 +1498,35 @@ const TOOLBAR_HIDE_OFFSET = 100;
   }, [handleTTSPageEnd, ttsSetOnEnd, ttsSourceKind]);
 
   const handleJumpToTTSSegment = useCallback(
-    (index = ttsCurrentChunkIndex) => {
-      const segment =
-        ttsSegments.length > 0 ? ttsSegments[Math.max(0, Math.min(index, ttsSegments.length - 1))] : null;
-      if (!segment?.cfi) return;
-      bridge.goToCFI(segment.cfi);
-      bridge.flashHighlight(segment.cfi, colors.primary, 1200);
-      setShowTTS(false);
-      setShowControls(false);
+    (offsetFromCurrent = 0) => {
+      // Play from the tapped sentence — keep TTS page open
+      if (offsetFromCurrent < 0) {
+        // Tapped a prev-page segment — compute absolute index in prevPageSegments
+        const prevIndex = ttsPrevPageSegments.length + offsetFromCurrent;
+        const safeIdx = Math.max(0, prevIndex);
+        const fromPrev = ttsPrevPageSegments.slice(safeIdx);
+        const allSegments = [...fromPrev, ...ttsSegments];
+        if (allSegments.length === 0) return;
+        // Update UI state first, then play after React re-renders so safeChunkIndex is correct
+        const newPrev = ttsPrevPageSegments.slice(0, safeIdx);
+        setTtsPrevPageSegments(newPrev);
+        setTtsSegments(allSegments);
+        ttsSegmentsRef.current = allSegments;
+        setTimeout(() => ttsPlay(allSegments.map((s) => s.text)), 0);
+      } else {
+        // Tapped a current-page segment — slice from that offset
+        const safeIdx = Math.max(0, Math.min(offsetFromCurrent, ttsSegments.length - 1));
+        const sliced = ttsSegments.slice(safeIdx);
+        if (sliced.length === 0) return;
+        // Update UI state first, then play after React re-renders so safeChunkIndex is correct
+        const newPrev = [...ttsPrevPageSegments, ...ttsSegments.slice(0, safeIdx)];
+        setTtsPrevPageSegments(newPrev);
+        setTtsSegments(sliced);
+        ttsSegmentsRef.current = sliced;
+        setTimeout(() => ttsPlay(sliced.map((s) => s.text)), 0);
+      }
     },
-    [bridge, colors.primary, ttsCurrentChunkIndex, ttsSegments],
+    [ttsPrevPageSegments, ttsSegments, ttsPlay, setTtsPrevPageSegments, setTtsSegments],
   );
 
   useEffect(() => {
@@ -2522,6 +2591,7 @@ const TOOLBAR_HIDE_OFFSET = 100;
         sourceLabel={ttsSourceLabel}
         continuousEnabled={ttsContinuousEnabled}
         narrationSegments={ttsSegments.map((segment) => segment.text)}
+        prevNarrationSegments={ttsPrevPageSegments.map((segment) => segment.text)}
         currentChunkIndex={ttsCurrentChunkIndex}
         totalChunks={ttsTotalChunks}
         onClose={() => setShowTTS(false)}
@@ -2538,6 +2608,7 @@ const TOOLBAR_HIDE_OFFSET = 100;
           }
           setTtsSegments([]);
           ttsSegmentsRef.current = [];
+          setTtsPrevPageSegments([]);
           setTtsLastText("");
           ttsLastTextRef.current = "";
           ttsStop();

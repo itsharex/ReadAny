@@ -342,6 +342,21 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
         }
       };
 
+      // Require the START of the sentence range to be visible on the current page,
+      // preventing sentences that began on the previous page from appearing as the
+      // first TTS segment.
+      const isRangeStartVisibleInReader = (range: Range) => {
+        try {
+          const rects = Array.from(range.getClientRects());
+          if (!rects.length) {
+            return isRectVisibleInReader(range.getBoundingClientRect());
+          }
+          return isRectVisibleInReader(rects[0]);
+        } catch {
+          return false;
+        }
+      };
+
       const blockSelector =
         "p, h1, h2, h3, h4, h5, h6, li, blockquote, dd, dt, figcaption, pre, td, th";
       const visibleBlocks = Array.from(doc.querySelectorAll(blockSelector)).filter((block) => {
@@ -439,7 +454,7 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
           const range = doc.createRange();
           range.setStart(startPos.node, startPos.offset);
           range.setEnd(endPos.node, endPos.offset);
-          if (!isRangeVisibleInReader(range)) continue;
+          if (!isRangeStartVisibleInReader(range)) continue;
 
           const text = absoluteText.slice(start, end).replace(/\s+/g, " ").trim();
           if (!text) continue;

@@ -290,7 +290,7 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
           pendingVisibleTTSSegmentsResolveRef.current = null;
           resolve([]);
         }
-      }, 2000);
+      }, 4000);
     });
   }, []);
 
