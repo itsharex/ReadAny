@@ -61,6 +61,8 @@ let _edgeTTS: ITTSPlayer | null = null;
 let _dashscopeTTS: ITTSPlayer | null = null;
 let _sessionSegments: string[] = [];
 let _sessionCurrentIndex = 0;
+/** Generation counter — incremented on every play/jumpToChunk to invalidate stale callbacks */
+let _sessionGeneration = 0;
 
 function getBrowserTTS(): ITTSPlayer {
   if (!_browserTTS) _browserTTS = _factories.createBrowserTTS();
@@ -111,6 +113,8 @@ export interface TTSState {
   setCurrentBook: (title: string, chapter: string, bookId?: string) => void;
   setCurrentLocation: (cfi?: string | null) => void;
   setChunkProgress: (index: number, total: number) => void;
+  /** Jump to a specific chunk index within the current session, restarting speech from that point */
+  jumpToChunk: (index: number) => void;
 }
 
 export const useTTSStore = create<TTSState>()(
@@ -132,6 +136,8 @@ export const useTTSStore = create<TTSState>()(
       const sessionSegments = segments.length > 0 ? segments : [Array.isArray(text) ? text.join(" ").trim() : text.trim()].filter(Boolean);
       _sessionSegments = sessionSegments;
       _sessionCurrentIndex = 0;
+      _sessionGeneration += 1;
+      const gen = _sessionGeneration;
       set({
         playState: "loading",
         currentText: sessionSegments.join(" "),
@@ -140,15 +146,18 @@ export const useTTSStore = create<TTSState>()(
       });
 
       const onState = (state: "playing" | "paused" | "stopped") => {
+        if (gen !== _sessionGeneration) return;
         set({ playState: state });
       };
 
       const onChunk = (index: number, total: number) => {
+        if (gen !== _sessionGeneration) return;
         _sessionCurrentIndex = index;
         set({ currentChunkIndex: index, totalChunks: total });
       };
 
       const handleEnd = () => {
+        if (gen !== _sessionGeneration) return;
         const currentOnEnd = get().onEnd;
         currentOnEnd?.();
       };
@@ -195,15 +204,20 @@ export const useTTSStore = create<TTSState>()(
         const nextIndex = Math.max(0, Math.min(_sessionCurrentIndex, _sessionSegments.length - 1));
         const remainingSegments = _sessionSegments.slice(nextIndex);
         if (remainingSegments.length > 0) {
+          _sessionGeneration += 1;
+          const gen = _sessionGeneration;
           const onState = (state: "playing" | "paused" | "stopped") => {
+            if (gen !== _sessionGeneration) return;
             set({ playState: state });
           };
           const onChunk = (index: number) => {
+            if (gen !== _sessionGeneration) return;
             const absoluteIndex = nextIndex + index;
             _sessionCurrentIndex = absoluteIndex;
             set({ currentChunkIndex: absoluteIndex, totalChunks: _sessionSegments.length });
           };
           const handleEnd = () => {
+            if (gen !== _sessionGeneration) return;
             const currentOnEnd = get().onEnd;
             currentOnEnd?.();
           };
@@ -286,6 +300,60 @@ export const useTTSStore = create<TTSState>()(
     setCurrentLocation: (cfi) => set({ currentLocationCfi: cfi ?? "" }),
 
     setChunkProgress: (index, total) => set({ currentChunkIndex: index, totalChunks: total }),
+
+    jumpToChunk: (index: number) => {
+      if (index < 0 || index >= _sessionSegments.length) return;
+      const { config } = get();
+      getBrowserTTS().stop();
+      getEdgeTTS().stop();
+      getDashScopeTTS().stop();
+
+      _sessionCurrentIndex = index;
+      _sessionGeneration += 1;
+      const gen = _sessionGeneration;
+      set({ playState: "loading", currentChunkIndex: index });
+
+      const remainingSegments = _sessionSegments.slice(index);
+      if (remainingSegments.length === 0) {
+        set({ playState: "stopped" });
+        return;
+      }
+
+      const onState = (state: "playing" | "paused" | "stopped") => {
+        if (gen !== _sessionGeneration) return;
+        set({ playState: state });
+      };
+      const onChunk = (chunkIdx: number) => {
+        if (gen !== _sessionGeneration) return;
+        const absoluteIndex = index + chunkIdx;
+        _sessionCurrentIndex = absoluteIndex;
+        set({ currentChunkIndex: absoluteIndex, totalChunks: _sessionSegments.length });
+      };
+      const handleEnd = () => {
+        if (gen !== _sessionGeneration) return;
+        get().onEnd?.();
+      };
+
+      if (config.engine === "dashscope" && config.dashscopeApiKey) {
+        const player = getDashScopeTTS();
+        player.onStateChange = onState;
+        player.onChunkChange = onChunk;
+        player.onEnd = handleEnd;
+        player.speak(remainingSegments, config);
+      } else if (config.engine === "edge") {
+        const player = getEdgeTTS();
+        player.onStateChange = onState;
+        player.onChunkChange = onChunk;
+        player.onEnd = handleEnd;
+        player.speak(remainingSegments, config);
+      } else {
+        const player = getBrowserTTS();
+        player.onStateChange = onState;
+        player.onChunkChange = onChunk;
+        player.onEnd = handleEnd;
+        player.speak(remainingSegments, config);
+      }
+    },
   }), {
     playState: "stopped" as const,
     currentText: "",

@@ -98,13 +98,24 @@ export function TTSPage({
   onLoadMoreAbove,
   onLoadMoreBelow,
   onUpdateConfig,
-  onPrevChapter,
-  onNextChapter,
+  onPrevChapter: _onPrevChapter,
+  onNextChapter: _onNextChapter,
 }: TTSPageProps) {
   const { t } = useTranslation();
   const [voicePickerOpen, setVoicePickerOpen] = useState(false);
   const voiceAnchorRef = useRef<HTMLButtonElement>(null);
   const activeLyricRef = useRef<HTMLButtonElement | null>(null);
+  const pendingScrollRef = useRef(false);
+
+  const setActiveLyricRef = useCallback((el: HTMLButtonElement | null) => {
+    activeLyricRef.current = el;
+    if (el && pendingScrollRef.current) {
+      pendingScrollRef.current = false;
+      requestAnimationFrame(() => {
+        el.scrollIntoView({ block: "center", behavior: "smooth" });
+      });
+    }
+  }, []);
   const loadMoreAboveLockRef = useRef(false);
   const loadMoreBelowLockRef = useRef(false);
 
@@ -147,10 +158,14 @@ export function TTSPage({
     lyricSegments[safeChunkIndex - 1]?.text || fallbackPreview.supportingExcerpt;
 
   useEffect(() => {
-    activeLyricRef.current?.scrollIntoView({
-      block: "center",
-      behavior: "smooth",
-    });
+    if (!visible) return;
+    const el = activeLyricRef.current;
+    if (el) {
+      el.scrollIntoView({ block: "center", behavior: "smooth" });
+    } else {
+      // Element not mounted yet — flag so setActiveLyricRef scrolls when it mounts
+      pendingScrollRef.current = true;
+    }
   }, [safeChunkIndex, visible]);
 
   const handleLyricPress = useCallback(
@@ -182,6 +197,20 @@ export function TTSPage({
       loadMoreBelowLockRef.current = false;
     }, 350);
   }, [onLoadMoreBelow]);
+
+  // Proactive load-more: when the active segment is near the end of the list,
+  // trigger below-load even if the list isn't scrollable (too few items to scroll).
+  const proactiveLoadBelowFiredRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!onLoadMoreBelow) return;
+    if (!lyricSegments.length) return;
+    const nearEnd = safeChunkIndex >= lyricSegments.length - 2;
+    if (!nearEnd) return;
+    const dedupeKey = lyricSegments[lyricSegments.length - 1]?.id ?? "";
+    if (proactiveLoadBelowFiredRef.current === dedupeKey) return;
+    proactiveLoadBelowFiredRef.current = dedupeKey;
+    triggerLoadMoreBelow();
+  }, [safeChunkIndex, lyricSegments, onLoadMoreBelow, triggerLoadMoreBelow]);
 
   const progressPct = clampProgress(readingProgress);
   const voiceLabel = getTTSVoiceLabel(config);
@@ -480,7 +509,7 @@ export function TTSPage({
                     return (
                       <button
                         key={segment.id}
-                        ref={active ? activeLyricRef : undefined}
+                        ref={active ? setActiveLyricRef : undefined}
                         type="button"
                         onClick={() => handleLyricPress(segment, index)}
                         className={`block w-full rounded-xl px-4 py-2 text-center transition-colors ${
@@ -531,12 +560,16 @@ export function TTSPage({
 
         {/* ── Transport controls ── */}
         <div className="flex shrink-0 items-center justify-center gap-3 pb-5">
-          {/* Prev chapter */}
+          {/* Prev segment */}
           <button
             type="button"
-            className={`inline-flex h-10 w-10 items-center justify-center rounded-full border border-border/60 bg-background text-foreground transition-colors hover:bg-muted ${!onPrevChapter ? "cursor-not-allowed opacity-30" : ""}`}
-            onClick={onPrevChapter}
-            disabled={!onPrevChapter}
+            className={`inline-flex h-10 w-10 items-center justify-center rounded-full border border-border/60 bg-background text-foreground transition-colors hover:bg-muted ${safeChunkIndex <= 0 ? "cursor-not-allowed opacity-30" : ""}`}
+            onClick={() => {
+              if (safeChunkIndex > 0) {
+                handleLyricPress(lyricSegments[safeChunkIndex - 1], safeChunkIndex - 1);
+              }
+            }}
+            disabled={safeChunkIndex <= 0}
             aria-label={t("tts.prevChapter")}
           >
             <SkipBack className="h-4 w-4" />
@@ -578,12 +611,16 @@ export function TTSPage({
             <Square className="h-4 w-4 fill-current" />
           </button>
 
-          {/* Next chapter */}
+          {/* Next segment */}
           <button
             type="button"
-            className={`inline-flex h-10 w-10 items-center justify-center rounded-full border border-border/60 bg-background text-foreground transition-colors hover:bg-muted ${!onNextChapter ? "cursor-not-allowed opacity-30" : ""}`}
-            onClick={onNextChapter}
-            disabled={!onNextChapter}
+            className={`inline-flex h-10 w-10 items-center justify-center rounded-full border border-border/60 bg-background text-foreground transition-colors hover:bg-muted ${safeChunkIndex >= lyricSegments.length - 1 ? "cursor-not-allowed opacity-30" : ""}`}
+            onClick={() => {
+              if (safeChunkIndex < lyricSegments.length - 1) {
+                handleLyricPress(lyricSegments[safeChunkIndex + 1], safeChunkIndex + 1);
+              }
+            }}
+            disabled={safeChunkIndex >= lyricSegments.length - 1}
             aria-label={t("tts.nextChapter")}
           >
             <SkipForward className="h-4 w-4" />

@@ -165,18 +165,47 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
 
   const addAnnotation = useCallback(
     (annotation: { value: string; type?: string; color?: string; note?: string }) => {
-      const msg = JSON.stringify({ type: "addAnnotation", annotation });
-      inject(`handleCommand(${msg})`);
+      const annotationStr = JSON.stringify(annotation);
+      // Direct view.addAnnotation for immediate render + handleCommand to maintain userAnnotations map
+      webViewRef.current?.injectJavaScript(`
+        (function() {
+          try {
+            if (!window.__view && document.querySelector('foliate-view')) {
+              window.__view = document.querySelector('foliate-view');
+            }
+            var v = window.__view;
+            if (v) v.addAnnotation(${annotationStr}).catch(function(){});
+            if (typeof handleCommand === 'function') {
+              handleCommand(${JSON.stringify({ type: "addAnnotation", annotation })});
+            }
+          } catch(e) {}
+        })();
+        true;
+      `);
     },
-    [inject],
+    [],
   );
 
   const removeAnnotation = useCallback(
     (annotation: { value: string; type?: string }) => {
-      const msg = JSON.stringify({ type: "removeAnnotation", annotation });
-      inject(`handleCommand(${msg})`);
+      const annotationStr = JSON.stringify(annotation);
+      webViewRef.current?.injectJavaScript(`
+        (function() {
+          try {
+            if (!window.__view && document.querySelector('foliate-view')) {
+              window.__view = document.querySelector('foliate-view');
+            }
+            var v = window.__view;
+            if (v) v.deleteAnnotation(${annotationStr}).catch(function(){});
+            if (typeof handleCommand === 'function') {
+              handleCommand(${JSON.stringify({ type: "removeAnnotation", annotation })});
+            }
+          } catch(e) {}
+        })();
+        true;
+      `);
     },
-    [inject],
+    [],
   );
 
   const highlightCFITemporarily = useCallback(
@@ -331,12 +360,45 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
   const setTTSHighlight = useCallback(
     (cfi: string | null, color?: string) => {
       if (!cfi) {
-        inject("window.clearTTSHighlight()");
+        webViewRef.current?.injectJavaScript(`
+          (function() {
+            try {
+              var prev = window.__ttsHighlightKey;
+              window.__ttsHighlightKey = null;
+              if (prev && window.__view) {
+                window.__view.deleteAnnotation({ value: prev }).catch(function(){});
+              }
+            } catch(e) {}
+          })();
+          true;
+        `);
         return;
       }
-      inject(`window.setTTSHighlight(${JSON.stringify(cfi)}, ${JSON.stringify(color || null)})`);
+      // "foliate-tts:" prefix is natively supported by foliate-js:
+      // - resolveNavigation strips the prefix to get the CFI for positioning
+      // - overlayer key uses the prefixed value, so it never collides with user annotations
+      const keyStr = JSON.stringify("foliate-tts:" + cfi);
+      const colorStr = JSON.stringify(color || null);
+      webViewRef.current?.injectJavaScript(`
+        (function() {
+          try {
+            if (!window.__view && document.querySelector('foliate-view')) {
+              window.__view = document.querySelector('foliate-view');
+            }
+            var v = window.__view;
+            if (!v) return;
+            var prev = window.__ttsHighlightKey;
+            window.__ttsHighlightKey = ${keyStr};
+            if (prev && prev !== ${keyStr}) {
+              v.deleteAnnotation({ value: prev }).catch(function(){});
+            }
+            v.addAnnotation({ value: ${keyStr}, type: 'tts-highlight', color: ${colorStr} }).catch(function(){});
+          } catch(e) {}
+        })();
+        true;
+      `);
     },
-    [inject],
+    [],
   );
 
   const flashHighlight = useCallback(

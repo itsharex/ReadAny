@@ -399,7 +399,7 @@ export function TTSPage({
   const { t } = useTranslation();
   const [voicePickerVisible, setVoicePickerVisible] = useState(false);
   const lyricScrollRef = useRef<ScrollView>(null);
-  const lyricLayoutRef = useRef(new Map<number, { y: number; height: number }>());
+  const lyricLayoutRef = useRef(new Map<string, { y: number; height: number }>());
   const userScrollingRef = useRef(false);
   const userScrollUnlockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadMoreAboveLockRef = useRef(false);
@@ -495,7 +495,8 @@ export function TTSPage({
   const currentExcerpt = lyricSegments[safeChunkIndex]?.text || fallbackPreview.currentExcerpt;
   const centerLyricIndex = useCallback(
     (index: number, animated = true) => {
-      const layout = lyricLayoutRef.current.get(index);
+      const id = lyricSegments[index]?.id;
+      const layout = id ? lyricLayoutRef.current.get(id) : undefined;
       if (layout) {
         const targetOffset = Math.max(
           0,
@@ -540,7 +541,7 @@ export function TTSPage({
         animated,
       });
     },
-    [lyricAreaHeight, lyricCenterPadding],
+    [lyricAreaHeight, lyricCenterPadding, lyricSegments],
   );
 
   const pct = clampPct(readingProgress);
@@ -575,6 +576,17 @@ export function TTSPage({
   const pendingCenterRef = useRef<number | null>(null);
 
   useEffect(() => {
+    // Keep layout entries that still exist in the current segment list; evict stale ones.
+    const currentIds = new Set(lyricSegments.map((s) => s.id));
+    for (const key of lyricLayoutRef.current.keys()) {
+      if (!currentIds.has(key)) {
+        lyricLayoutRef.current.delete(key);
+      }
+    }
+    pendingCenterRef.current = null;
+  }, [lyricSegmentIdsKey]);
+
+  useEffect(() => {
     if (!visible || lyricSegments.length <= 1) return;
     if (userScrollingRef.current) return;
     const targetIndex = Math.max(0, Math.min(safeChunkIndex, lyricSegments.length - 1));
@@ -586,7 +598,8 @@ export function TTSPage({
         lyricSegmentsLength: lyricSegments.length,
       });
     }
-    if (lyricLayoutRef.current.has(targetIndex)) {
+    const targetId = lyricSegments[targetIndex]?.id;
+    if (targetId && lyricLayoutRef.current.has(targetId)) {
       const timer = setTimeout(() => {
         centerLyricIndex(targetIndex, true);
       }, 80);
@@ -594,12 +607,7 @@ export function TTSPage({
     } else {
       pendingCenterRef.current = targetIndex;
     }
-  }, [centerLyricIndex, lyricSegments.length, safeChunkIndex, visible]);
-
-  useEffect(() => {
-    lyricLayoutRef.current.clear();
-    pendingCenterRef.current = null;
-  }, [lyricSegmentIdsKey]);
+  }, [centerLyricIndex, lyricSegments, safeChunkIndex, visible]);
 
   useEffect(() => {
     return () => {
@@ -656,6 +664,26 @@ export function TTSPage({
     }, 350);
   }, [onLoadMoreBelow]);
 
+  // Proactive load-more: when the active segment is near the end of the list
+  // (and we haven't locked), trigger below-load even if the list isn't scrollable.
+  const proactiveLoadBelowFiredRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!onLoadMoreBelow) return;
+    if (!lyricSegments.length) return;
+    const nearEnd = safeChunkIndex >= lyricSegments.length - 2;
+    if (!nearEnd) return;
+    const dedupeKey = lyricSegments[lyricSegments.length - 1]?.id ?? "";
+    if (proactiveLoadBelowFiredRef.current === dedupeKey) return;
+    proactiveLoadBelowFiredRef.current = dedupeKey;
+    if (__DEV__) {
+      console.log("[TTSPage][lyrics] proactive load-more-below", {
+        safeChunkIndex,
+        lyricSegmentsLength: lyricSegments.length,
+      });
+    }
+    triggerLoadMoreBelow();
+  }, [safeChunkIndex, lyricSegments, onLoadMoreBelow, triggerLoadMoreBelow]);
+
   // ── PanResponder listener removed — replaced by native ScrollView paging ──
 
   const s = makeStyles(colors);
@@ -678,15 +706,19 @@ export function TTSPage({
 
   const controlsJSX = (
     <View style={s.controls}>
-      {/* Prev chapter */}
+      {/* Prev segment */}
       <Pressable
-        style={({ pressed }) => [s.ctrlBtnSm, pressed && { opacity: 0.5 }, !onPrevChapter && s.ctrlBtnDisabled]}
-        onPress={onPrevChapter}
+        style={({ pressed }) => [s.ctrlBtnSm, pressed && { opacity: 0.5 }, safeChunkIndex <= 0 && s.ctrlBtnDisabled]}
+        onPress={() => {
+          if (safeChunkIndex > 0) {
+            handleLyricPress(lyricSegments[safeChunkIndex - 1], safeChunkIndex - 1);
+          }
+        }}
         hitSlop={12}
-        disabled={!onPrevChapter}
+        disabled={safeChunkIndex <= 0}
         accessibilityLabel={t("tts.prevChapter")}
       >
-        <SkipBackIcon size={18} color={onPrevChapter ? colors.foreground : colors.mutedForeground} />
+        <SkipBackIcon size={18} color={safeChunkIndex > 0 ? colors.foreground : colors.mutedForeground} />
       </Pressable>
 
       <Pressable
@@ -722,15 +754,19 @@ export function TTSPage({
         <StopIcon size={20} color={colors.foreground} />
       </Pressable>
 
-      {/* Next chapter */}
+      {/* Next segment */}
       <Pressable
-        style={({ pressed }) => [s.ctrlBtnSm, pressed && { opacity: 0.5 }, !onNextChapter && s.ctrlBtnDisabled]}
-        onPress={onNextChapter}
+        style={({ pressed }) => [s.ctrlBtnSm, pressed && { opacity: 0.5 }, safeChunkIndex >= lyricSegments.length - 1 && s.ctrlBtnDisabled]}
+        onPress={() => {
+          if (safeChunkIndex < lyricSegments.length - 1) {
+            handleLyricPress(lyricSegments[safeChunkIndex + 1], safeChunkIndex + 1);
+          }
+        }}
         hitSlop={12}
-        disabled={!onNextChapter}
+        disabled={safeChunkIndex >= lyricSegments.length - 1}
         accessibilityLabel={t("tts.nextChapter")}
       >
-        <SkipForwardIcon size={18} color={onNextChapter ? colors.foreground : colors.mutedForeground} />
+        <SkipForwardIcon size={18} color={safeChunkIndex < lyricSegments.length - 1 ? colors.foreground : colors.mutedForeground} />
       </Pressable>
     </View>
   );
@@ -942,13 +978,12 @@ export function TTSPage({
                   {lyricSegments.map((item, index) => {
                     const active = index === safeChunkIndex;
                     const past = index < safeChunkIndex;
-                    const isFirstCurrentSegment = prevCount > 0 && index === prevCount;
                     return (
                       <View
                         key={item.id}
                         onLayout={(event) => {
                           const { y, height } = event.nativeEvent.layout;
-                          lyricLayoutRef.current.set(index, { y, height });
+                          lyricLayoutRef.current.set(item.id, { y, height });
                           if (visible && index === safeChunkIndex && !userScrollingRef.current) {
                             requestAnimationFrame(() => {
                               centerLyricIndex(index, false);
@@ -961,9 +996,6 @@ export function TTSPage({
                           }
                         }}
                       >
-                        {isFirstCurrentSegment ? (
-                          <View style={s.lyricSectionDivider} />
-                        ) : null}
                         <Pressable
                           style={[s.lyricLinePressable, active && s.lyricLinePressableActive]}
                           onPress={() => handleLyricPress(item, index)}

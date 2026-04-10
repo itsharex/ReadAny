@@ -363,7 +363,7 @@
     }
 
     function drawTTSHighlight(rects, options) {
-      const { color = 'rgba(255, 200, 0, 0.55)', padding = 1, radius = 4, radiusPadding = 2 } = options || {};
+      const { color = 'rgba(96, 165, 250, 0.35)', padding = 1, radius = 4, radiusPadding = 2 } = options || {};
       const svgNS = 'http://www.w3.org/2000/svg';
       const g = document.createElementNS(svgNS, 'g');
       g.setAttribute('fill', color);
@@ -405,105 +405,63 @@
     }
 
     function resolveTTSHighlightColor(color) {
-      if (!color) return 'rgba(255, 200, 0, 0.55)';
-      // If it's a plain hex color, apply 55% opacity for good visibility in both light/dark mode
+      if (!color) return 'rgba(96, 165, 250, 0.35)';
+      // If it's already an rgba/rgb value, use as-is
+      if (color.startsWith('rgba(') || color.startsWith('rgb(')) return color;
+      // If it's a plain hex color, apply 35% opacity for a soft blue-tinted highlight
       if (/^#[0-9a-fA-F]{3,8}$/.test(color)) {
         const r = parseInt(color.slice(1, 3), 16);
         const g = parseInt(color.slice(3, 5), 16);
         const b = parseInt(color.slice(5, 7), 16);
-        return `rgba(${r}, ${g}, ${b}, 0.55)`;
+        return `rgba(${r}, ${g}, ${b}, 0.35)`;
       }
       return color;
     }
 
     function clearTTSHighlight() {
-      const previousAnnotationValue = ttsHighlightState.annotationValue;
+      const previousCfi = ttsHighlightState.cfi;
       ttsHighlightState = { cfi: null, color: null, annotationValue: null };
-      removeAllTTSHighlights();
-      if (view && previousAnnotationValue) {
+      if (view && previousCfi) {
         try {
-          view.deleteAnnotation({ value: previousAnnotationValue, type: 'tts-highlight' });
-        } catch (e) {
-          emitTTSDebug('failed to delete previous annotation', { error: String(e) });
-        }
+          view.deleteAnnotation({ value: previousCfi, type: 'tts-highlight' });
+        } catch (e) {}
       }
     }
 
     async function setTTSHighlight(cfi, color) {
-      const previousAnnotationValue = ttsHighlightState.annotationValue;
+      postToRN('debug', { message: '[ttsHighlight] setTTSHighlight called: cfi=' + (cfi || 'null') + ' color=' + (color || 'null') });
+      const previousCfi = ttsHighlightState.cfi;
       ttsHighlightState = {
         cfi: cfi || null,
         color: color || null,
-        annotationValue: null,
+        annotationValue: cfi || null,
       };
-      if (!view || !cfi) return;
-      const current = getRendererContentForCfi(cfi) || getCurrentTTSOverlayerContext();
-      if (!current || !current.doc || current.index == null || !current.overlayer) {
-        emitTTSDebug('no target overlayer for cfi', { cfi });
+      if (!view) {
+        postToRN('debug', { message: '[ttsHighlight] no view, aborting' });
         return;
       }
-      const tts = await ensureTTSEngine();
-      let targetCfi = cfi;
-      if (tts && typeof tts.highlightCfi === 'function') {
+
+      // Remove previous TTS highlight annotation
+      if (previousCfi) {
         try {
-          const detail = tts.highlightCfi(cfi);
-          if (detail && detail.cfi) {
-            targetCfi = detail.cfi;
-          }
+          await view.deleteAnnotation({ value: previousCfi, type: 'tts-highlight' });
         } catch (e) {
-          emitTTSDebug('engine highlight fallback error', { cfi, error: String(e) });
+          postToRN('debug', { message: '[ttsHighlight] delete error: ' + String(e) });
         }
       }
 
-      const annotationValue = `${TTS_ANNOTATION_PREFIX}${targetCfi}`;
-      if (previousAnnotationValue && previousAnnotationValue !== annotationValue) {
-        try {
-          await view.deleteAnnotation({ value: previousAnnotationValue, type: 'tts-highlight' });
-        } catch (e) {
-          emitTTSDebug('failed to clear previous highlight annotation', {
-            previousAnnotationValue,
-            error: String(e),
-          });
-        }
-      }
+      if (!cfi) return;
 
-      removeAllTTSHighlights();
-
-      const resolved = view.resolveCFI ? view.resolveCFI(targetCfi) : null;
-      if (!resolved || !resolved.anchor) {
-        emitTTSDebug('failed to resolve target cfi', { requestedCfi: cfi, targetCfi });
-        return;
-      }
+      // Add new TTS highlight via annotation system (same as flashHighlight which works)
       try {
-        const target = getRendererContentForCfi(targetCfi) || current;
-        const range = resolved.anchor(target.doc);
-        if (!range) {
-          emitTTSDebug('resolved without range', { requestedCfi: cfi, targetCfi });
-          return;
-        }
-        ttsHighlightState = {
-          cfi: targetCfi,
-          color: color || null,
-          annotationValue,
-        };
-        emitTTSDebug('applying highlight', {
-          requestedCfi: cfi,
-          targetCfi,
-          targetIndex: target.index,
-          text: range.toString().slice(0, 48),
-        });
-
         await view.addAnnotation({
-          value: `${TTS_ANNOTATION_PREFIX}${targetCfi}`,
+          value: cfi,
           type: 'tts-highlight',
           color: color || null,
         });
+        postToRN('debug', { message: '[ttsHighlight] addAnnotation success for: ' + cfi.slice(0, 40) });
       } catch (e) {
-        emitTTSDebug('error applying highlight', {
-          requestedCfi: cfi,
-          targetCfi,
-          error: String(e),
-        });
+        postToRN('debug', { message: '[ttsHighlight] addAnnotation error: ' + String(e) });
       }
     }
 

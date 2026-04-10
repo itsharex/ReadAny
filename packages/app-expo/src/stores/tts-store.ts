@@ -32,6 +32,8 @@ export interface TTSState {
   setCurrentBook: (title: string, chapter: string, bookId?: string) => void;
   setCurrentLocation: (cfi?: string | null) => void;
   setChunkProgress: (index: number, total: number) => void;
+  /** Jump to a specific chunk index within the current session, restarting speech from that point */
+  jumpToChunk: (index: number) => void;
 }
 
 const DEFAULT_TTS_CONFIG: TTSConfig = {
@@ -48,6 +50,8 @@ let _sessionSegments: string[] = [];
 let _sessionIndex = 0;
 let _sessionStopped = false;
 let _sessionLanguage = "zh-CN";
+/** Generation counter — incremented on every play/jumpToChunk to invalidate stale callbacks */
+let _sessionGeneration = 0;
 
 function normalizeSegments(text: string | string[]): string[] {
   if (Array.isArray(text)) {
@@ -72,6 +76,7 @@ function speakSegmentQueue(
   get: () => TTSState,
   language: string,
 ) {
+  const gen = _sessionGeneration;
   if (_sessionStopped || _sessionIndex >= _sessionSegments.length) {
     console.log("[TTSStore] Session finished");
     set({ playState: "stopped" });
@@ -91,7 +96,7 @@ function speakSegmentQueue(
     pitch: get().config.pitch || 1.0,
     language,
     onDone: () => {
-      if (_sessionStopped) return;
+      if (_sessionStopped || gen !== _sessionGeneration) return;
       _sessionIndex += 1;
       speakSegmentQueue(set, get, language);
     },
@@ -100,11 +105,12 @@ function speakSegmentQueue(
     },
     onError: (e) => {
       console.log("[TTSStore] Speech.onError:", e);
-      if (_sessionStopped) return;
+      if (_sessionStopped || gen !== _sessionGeneration) return;
       _sessionIndex += 1;
       speakSegmentQueue(set, get, language);
     },
     onStart: () => {
+      if (gen !== _sessionGeneration) return;
       console.log("[TTSStore] Speech.onStart");
       set({
         playState: "playing",
@@ -137,6 +143,7 @@ export const useTTSStore = create<TTSState>()(
         return;
       }
       stopSpeechSilently();
+      _sessionGeneration += 1;
       _sessionSegments = segments;
       _sessionIndex = 0;
       _sessionStopped = false;
@@ -209,6 +216,16 @@ export const useTTSStore = create<TTSState>()(
     setCurrentLocation: (cfi) => set({ currentLocationCfi: cfi ?? "" }),
 
     setChunkProgress: (index, total) => set({ currentChunkIndex: index, totalChunks: total }),
+
+    jumpToChunk: (index: number) => {
+      if (index < 0 || index >= _sessionSegments.length) return;
+      stopSpeechSilently();
+      _sessionGeneration += 1;
+      _sessionIndex = index;
+      _sessionStopped = false;
+      set({ currentChunkIndex: index });
+      speakSegmentQueue(set, get, _sessionLanguage);
+    },
   }), {
     playState: "stopped" as const,
     currentText: "",

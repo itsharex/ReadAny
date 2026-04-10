@@ -219,7 +219,7 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
     const [appTheme, setAppTheme] = useState<AppTheme>(() => getAppTheme());
     const ttsHighlightStateRef = useRef<{ cfi: string | null; color: string }>({
       cfi: null,
-      color: "gray",
+      color: "rgba(96, 165, 250, 0.35)",
     });
 
     // Listen for theme changes
@@ -247,13 +247,18 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
       return () => observer.disconnect();
     }, [viewSettings, isFixedLayout, viewReady]);
 
+    const ttsHighlightKeyRef = useRef<string | null>(null);
+
     const clearTTSHighlight = useCallback(() => {
-      const current = viewRef.current?.renderer?.getContents?.()?.[0];
       ttsHighlightStateRef.current.cfi = null;
-      try {
-        current?.overlayer?.remove("readany-desktop-tts-highlight");
-      } catch {
-        // no-op
+      const prev = ttsHighlightKeyRef.current;
+      ttsHighlightKeyRef.current = null;
+      if (prev && viewRef.current) {
+        try {
+          viewRef.current.deleteAnnotation({ value: prev });
+        } catch {
+          // no-op
+        }
       }
     }, []);
 
@@ -273,6 +278,8 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
           cfi = null;
         }
 
+        // Use overlayer directly for the TTS engine's internal highlight callback
+        // (this runs synchronously during TTS engine cursor movement)
         let renderRange: Range = range;
         if (cfi) {
           try {
@@ -285,17 +292,17 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
         }
 
         try {
-          active.overlayer.remove("readany-desktop-tts-highlight");
+          active.overlayer.remove("readany-tts-engine-hl");
         } catch {
           // no-op
         }
 
         try {
           active.overlayer.add(
-            "readany-desktop-tts-highlight",
+            "readany-tts-engine-hl",
             renderRange,
             Overlayer.highlight,
-            { color: ttsHighlightStateRef.current.color || "gray" },
+            { color: ttsHighlightStateRef.current.color || "rgba(96, 165, 250, 0.35)" },
           );
         } catch {
           // no-op
@@ -757,7 +764,7 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
         setTTSHighlight: async (cfi: string | null, color?: string) => {
           ttsHighlightStateRef.current = {
             cfi,
-            color: color || "gray",
+            color: color || "rgba(96, 165, 250, 0.35)",
           };
           if (!cfi) {
             clearTTSHighlight();
@@ -765,31 +772,27 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
           }
 
           const view = viewRef.current;
-          const current = view?.renderer?.getContents?.()?.[0];
-          if (!view || !current?.doc || !current.overlayer) return;
+          if (!view) return;
 
-          const tts = await ensureDesktopTTS();
-          if (tts?.highlightCfi) {
-            const detail = tts.highlightCfi(cfi);
-            if (detail) return;
+          // Use foliate-tts: prefix so the key never collides with user annotation CFIs
+          const key = `foliate-tts:${cfi}`;
+          const prev = ttsHighlightKeyRef.current;
+          ttsHighlightKeyRef.current = key;
+
+          if (prev && prev !== key) {
+            try {
+              await view.deleteAnnotation({ value: prev });
+            } catch {
+              // no-op
+            }
           }
 
           try {
-            current.overlayer.remove("readany-desktop-tts-highlight");
-          } catch {
-            // no-op
-          }
-
-          try {
-            const resolved = view.resolveCFI(cfi);
-            const range = resolved?.anchor?.(current.doc);
-            if (!range) return;
-            current.overlayer.add(
-              "readany-desktop-tts-highlight",
-              range,
-              Overlayer.highlight,
-              { color: color || "gray" },
-            );
+            await view.addAnnotation({
+              value: key,
+              type: "tts-highlight",
+              color: color || "rgba(96, 165, 250, 0.35)",
+            });
           } catch {
             // no-op
           }

@@ -484,6 +484,7 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
   const ttsSetOnEnd = useTTSStore((s) => s.setOnEnd);
   const ttsCurrentChunkIndex = useTTSStore((s) => s.currentChunkIndex);
   const ttsTotalChunks = useTTSStore((s) => s.totalChunks);
+  const ttsJumpToChunk = useTTSStore((s) => s.jumpToChunk);
   const ttsSetCurrentBook = useTTSStore((s) => s.setCurrentBook);
   const ttsSetCurrentLocation = useTTSStore((s) => s.setCurrentLocation);
   const ttsCurrentLocationCfi = useTTSStore((s) => s.currentLocationCfi);
@@ -1052,7 +1053,7 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
   const handleToggleSettings = useCallback(() => setShowSettings((p) => !p), []);
 
   useEffect(() => {
-    if (ttsPlayState !== "playing" && ttsPlayState !== "paused") {
+    if (ttsPlayState !== "playing" && ttsPlayState !== "paused" && ttsPlayState !== "loading") {
       void foliateRef.current?.setTTSHighlight(null);
       return;
     }
@@ -1060,7 +1061,7 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
       void foliateRef.current?.setTTSHighlight(null);
       return;
     }
-    void foliateRef.current?.setTTSHighlight(currentTTSSegment?.cfi || null, "gray");
+    void foliateRef.current?.setTTSHighlight(currentTTSSegment?.cfi || null, "rgba(96, 165, 250, 0.35)");
   }, [currentTTSSegment?.cfi, ttsPlayState, ttsSourceKind]);
 
   useEffect(() => {
@@ -1215,7 +1216,11 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
           ttsSegmentsRef.current = dedupedSegments;
           ttsLastTextRef.current = text;
           ttsFutureSegmentsRef.current = [];
-          void primeDesktopTTSLyricContext(dedupedSegments[0]?.cfi || firstCfi);
+          void primeDesktopTTSLyricContext(
+            dedupedSegments[dedupedSegments.length - 1]?.cfi ||
+              dedupedSegments[0]?.cfi ||
+              firstCfi,
+          );
           ttsPlay(dedupedSegments.length > 0 ? dedupedSegments.map((segment) => segment.text) : text);
         } else {
           // No more text (end of book) — stop TTS
@@ -1229,6 +1234,10 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
     };
 
     pendingTTSContinueCallbackRef.current = continuationCallback;
+
+    // Clear TTS highlight BEFORE navigating — otherwise addAnnotation for the
+    // old segment's CFI will navigate the renderer back to the previous page
+    void foliateRef.current?.setTTSHighlight(null);
 
     // Turn to next page — handleRelocate will fire after the renderer has fully updated
     foliateRef.current?.goNext();
@@ -1312,6 +1321,7 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
       const normalizedSegments = segments.filter((segment) => segment.text.length > 0);
       const normalized = normalizedSegments.map((segment) => segment.text).join(" ").trim();
       if (!normalized) return;
+      ttsStartChapterRef.current = readerTab?.chapterTitle ?? "";
       setTtsSourceKind("page");
       setTtsContinuousEnabled(continuous);
       setTtsLastText(normalized);
@@ -1326,7 +1336,12 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
       ttsSetCurrentBook(book?.meta.title ?? "", readerTab?.chapterTitle ?? "", bookId);
       ttsSetCurrentLocation(normalizedSegments[0]?.cfi || readerTab?.currentCfi || "");
       setShowTTS(true);
-      void primeDesktopTTSLyricContext(normalizedSegments[0]?.cfi || readerTab?.currentCfi || "");
+      void primeDesktopTTSLyricContext(
+        normalizedSegments[normalizedSegments.length - 1]?.cfi ||
+          normalizedSegments[0]?.cfi ||
+          readerTab?.currentCfi ||
+          "",
+      );
       ttsPlay(normalizedSegments.length > 0 ? normalizedSegments.map((segment) => segment.text) : normalized);
     },
     [
@@ -1391,6 +1406,9 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
     ],
   );
 
+  // Track the chapter that was active when TTS was last started
+  const ttsStartChapterRef = useRef<string>("");
+
   // TTS: toggle reading from current page with auto page-turn
   const handleToggleTTS = useCallback(async () => {
     if (showTTS) {
@@ -1399,11 +1417,20 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
     }
 
     const hasActiveSession = ttsPlayState !== "stopped" || !!(ttsCurrentText || ttsLastText).trim();
-    if (hasActiveSession) {
+    const isPlaying = ttsPlayState === "playing" || ttsPlayState === "loading";
+    const chapterChanged =
+      ttsStartChapterRef.current !== "" &&
+      ttsStartChapterRef.current !== readerTab?.chapterTitle;
+
+    // If playing, always just re-show (don't interrupt playback)
+    // If stopped/paused with active session and same chapter, also just re-show
+    if (hasActiveSession && (isPlaying || !chapterChanged)) {
       setShowTTS(true);
       return;
     }
 
+    // Otherwise refresh: either first time, or chapter changed while not playing
+    ttsStartChapterRef.current = readerTab?.chapterTitle ?? "";
     await startPageTTS(ttsContinuousEnabled);
   }, [
     showTTS,
@@ -1412,6 +1439,7 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
     ttsCurrentText,
     ttsLastText,
     ttsPlayState,
+    readerTab?.chapterTitle,
   ]);
 
   // TTS: speak selected text (no auto page-turn)
@@ -1552,14 +1580,88 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
   );
 
   const handleJumpToTTSLyricSegment = useCallback(
-    async (segment: { text: string; cfi?: string | null }, offsetFromCurrent: number) => {
-      if (segment.cfi) {
-        await startPageTTSFromCfi(segment.cfi, segment.text);
+    (segment: { text: string; cfi?: string | null }, offsetFromCurrent: number) => {
+      // offsetFromCurrent = lyricIndex - prevCount
+      // lyricSegments = [...ttsPrevPageSegments, ...ttsSegments, ...ttsFutureSegments]
+
+      // ── Within current TTS session: instant jump ──
+      if (offsetFromCurrent >= 0 && offsetFromCurrent < ttsSegments.length) {
+        ttsJumpToChunk(offsetFromCurrent);
+        if (segment.cfi) {
+          void foliateRef.current?.setTTSHighlight(segment.cfi);
+        }
         return;
       }
-      handleJumpToTTSSegment(offsetFromCurrent);
+
+      // ── Jumping to a prev-page segment (data already in memory) ──
+      if (offsetFromCurrent < 0) {
+        const prevIndex = ttsPrevPageSegments.length + offsetFromCurrent;
+        const safeIdx = Math.max(0, prevIndex);
+        const fromPrev = ttsPrevPageSegments.slice(safeIdx);
+        const allSegments = [...fromPrev, ...ttsSegments, ...ttsFutureSegments];
+        if (allSegments.length === 0) return;
+        const newPrev = ttsPrevPageSegments.slice(0, safeIdx);
+        const nextText = allSegments.map((s) => s.text).join(" ").trim();
+        const nextCfi = allSegments[0]?.cfi;
+        setTtsPrevPageSegments(newPrev);
+        setTtsSegments(allSegments);
+        setTtsFutureSegments([]);
+        setTtsLastText(nextText);
+        ttsSegmentsRef.current = allSegments;
+        ttsLastTextRef.current = nextText;
+        ttsFutureSegmentsRef.current = [];
+        if (nextCfi) {
+          ttsSetCurrentLocation(nextCfi);
+          foliateRef.current?.goToCFI(nextCfi);
+        }
+        ttsPlay(allSegments.map((s) => s.text));
+        return;
+      }
+
+      // ── Jumping to a future segment (data already in memory) ──
+      const futureOffset = offsetFromCurrent - ttsSegments.length;
+      if (futureOffset >= 0 && futureOffset < ttsFutureSegments.length) {
+        const consumedCurrent = ttsSegments;
+        const skippedFuture = ttsFutureSegments.slice(0, futureOffset);
+        const remainingFuture = ttsFutureSegments.slice(futureOffset);
+        const newPrev = [...ttsPrevPageSegments, ...consumedCurrent, ...skippedFuture];
+        const nextText = remainingFuture.map((s) => s.text).join(" ").trim();
+        const nextCfi = remainingFuture[0]?.cfi;
+        setTtsPrevPageSegments(newPrev);
+        setTtsSegments(remainingFuture);
+        setTtsFutureSegments([]);
+        setTtsLastText(nextText);
+        ttsSegmentsRef.current = remainingFuture;
+        ttsLastTextRef.current = nextText;
+        ttsFutureSegmentsRef.current = [];
+        if (nextCfi) {
+          ttsSetCurrentLocation(nextCfi);
+          foliateRef.current?.goToCFI(nextCfi);
+        }
+        ttsPlay(remainingFuture.map((s) => s.text));
+        void primeDesktopTTSLyricContext(
+          remainingFuture[remainingFuture.length - 1]?.cfi ||
+            remainingFuture[0]?.cfi ||
+            nextCfi,
+        );
+        return;
+      }
+
+      // ── Data not loaded yet — fall back ──
+      if (segment.cfi) {
+        void startPageTTSFromCfi(segment.cfi, segment.text);
+      }
     },
-    [handleJumpToTTSSegment, startPageTTSFromCfi],
+    [
+      primeDesktopTTSLyricContext,
+      startPageTTSFromCfi,
+      ttsJumpToChunk,
+      ttsPlay,
+      ttsPrevPageSegments,
+      ttsSegments,
+      ttsFutureSegments,
+      ttsSetCurrentLocation,
+    ],
   );
 
   const handleLoadMoreAboveTTSLyrics = useCallback(async () => {
