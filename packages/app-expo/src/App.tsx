@@ -30,6 +30,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { rnSessionEventSource } from "@/hooks";
+import { Audio } from "expo-av";
 import { setStreamingFetch } from "@readany/core/ai/llm-provider";
 import { initDatabase } from "@readany/core/db/database";
 import { setSessionEventSource } from "@readany/core/hooks/use-reading-session";
@@ -40,6 +41,8 @@ import { setSyncAdapter } from "@readany/core/sync";
 import { I18nextProvider } from "react-i18next";
 
 import { UpdateDialog } from "@/components/update/UpdateDialog";
+import { FloatingTTSBubble } from "@/components/tts/FloatingTTSBubble";
+import { navigationRef } from "@/lib/navigationRef";
 import { useUpdateChecker } from "@/hooks/use-update-checker";
 import { ExpoPlatformService } from "@/lib/platform/expo-platform-service";
 import { MobileSyncAdapter } from "@/lib/sync/sync-adapter-mobile";
@@ -78,6 +81,13 @@ export default function App() {
         console.log("[App] bootstrap: import expo/fetch");
         const { fetch: expoFetch } = await import("expo/fetch");
         setStreamingFetch(expoFetch as typeof globalThis.fetch);
+
+        console.log("[App] bootstrap: configure audio session for background playback");
+        await Audio.setAudioModeAsync({
+          staysActiveInBackground: true,
+          playsInSilentModeIOS: true,
+          allowsRecordingIOS: false,
+        });
 
         console.log("[App] bootstrap: done");
         setReady(true);
@@ -164,11 +174,12 @@ function AppInner() {
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.background }}>
       <SafeAreaProvider>
-        <NavigationContainer theme={navTheme}>
+        <NavigationContainer theme={navTheme} ref={navigationRef}>
           <StatusBar style={mode === "dark" ? "light" : "dark"} />
           <RootNavigator />
         </NavigationContainer>
         <UpdateDialog />
+        <FloatingTTSBubble />
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

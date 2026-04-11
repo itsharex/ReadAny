@@ -14,7 +14,10 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.readany.app"
+      "bundleIdentifier": "com.readany.app",
+      "infoPlist": {
+        "UIBackgroundModes": ["audio"]
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -25,10 +28,17 @@
       "package": "com.readany.app",
       "permissions": [
         "android.permission.CAMERA",
-        "android.permission.RECORD_AUDIO"
+        "android.permission.RECORD_AUDIO",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
       ]
     },
     "plugins": [
+      [
+        "expo-av",
+        {
+          "microphonePermission": false
+        }
+      ],
       [
         "expo-build-properties",
         {

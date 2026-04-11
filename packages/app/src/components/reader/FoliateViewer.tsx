@@ -121,6 +121,11 @@ export interface BookSelection {
   color?: string; // the existing highlight's color
 }
 
+export interface TTSSegmentDetail {
+  text: string;
+  cfi: string;
+}
+
 /** Imperative handle exposed to parent via ref */
 export interface FoliateViewerHandle {
   goNext: () => void;
@@ -143,6 +148,13 @@ export interface FoliateViewerHandle {
   getView: () => FoliateView | null;
   /** Get visible text on the current page for TTS */
   getVisibleText: () => string;
+  getVisibleTTSSegments: (alignCfi?: string | null) => Promise<TTSSegmentDetail[]>;
+  getTTSSegmentContext: (
+    cfi: string,
+    before?: number,
+    after?: number,
+  ) => Promise<{ before: TTSSegmentDetail[]; after: TTSSegmentDetail[] }>;
+  setTTSHighlight: (cfi: string | null, color?: string) => Promise<void>;
   /** Extract all paragraphs from current section for chapter translation */
   getChapterParagraphs: () => ChapterParagraph[];
   /** Inject translated paragraphs below each original paragraph */
@@ -205,6 +217,10 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
 
     // Track app theme for reader styling
     const [appTheme, setAppTheme] = useState<AppTheme>(() => getAppTheme());
+    const ttsHighlightStateRef = useRef<{ cfi: string | null; color: string }>({
+      cfi: null,
+      color: "rgba(96, 165, 250, 0.35)",
+    });
 
     // Listen for theme changes
     useEffect(() => {
@@ -230,6 +246,347 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
 
       return () => observer.disconnect();
     }, [viewSettings, isFixedLayout, viewReady]);
+
+    const ttsHighlightKeyRef = useRef<string | null>(null);
+
+    const clearTTSHighlight = useCallback(() => {
+      ttsHighlightStateRef.current.cfi = null;
+      const prev = ttsHighlightKeyRef.current;
+      ttsHighlightKeyRef.current = null;
+      if (prev && viewRef.current) {
+        try {
+          viewRef.current.deleteAnnotation({ value: prev });
+        } catch {
+          // no-op
+        }
+      }
+    }, []);
+
+    const ensureDesktopTTS = useCallback(async () => {
+      const view = viewRef.current;
+      const current = view?.renderer?.getContents?.()?.[0];
+      if (!view || !current?.doc) return null;
+
+      await view.initTTS("sentence", (range) => {
+        const active = view.renderer?.getContents?.()?.[0];
+        if (!active?.doc || active.index == null || !active.overlayer) return null;
+
+        let cfi: string | null = null;
+        try {
+          cfi = view.getCFI(active.index, range.cloneRange());
+        } catch {
+          cfi = null;
+        }
+
+        // Use overlayer directly for the TTS engine's internal highlight callback
+        // (this runs synchronously during TTS engine cursor movement)
+        let renderRange: Range = range;
+        if (cfi) {
+          try {
+            const resolved = view.resolveCFI(cfi);
+            const anchoredRange = resolved?.anchor?.(active.doc);
+            if (anchoredRange) renderRange = anchoredRange;
+          } catch {
+            renderRange = range;
+          }
+        }
+
+        try {
+          active.overlayer.remove("readany-tts-engine-hl");
+        } catch {
+          // no-op
+        }
+
+        try {
+          active.overlayer.add(
+            "readany-tts-engine-hl",
+            renderRange,
+            Overlayer.highlight,
+            { color: ttsHighlightStateRef.current.color || "rgba(96, 165, 250, 0.35)" },
+          );
+        } catch {
+          // no-op
+        }
+
+        return cfi;
+      });
+
+      return view.tts ?? null;
+    }, []);
+
+    const getVisibleTTSSegments = useCallback(async (alignCfi?: string | null): Promise<TTSSegmentDetail[]> => {
+      const view = viewRef.current;
+      const renderer = view?.renderer;
+      const current = renderer?.getContents?.()?.[0];
+      const doc = current?.doc as Document | undefined;
+      const sectionIndex = current?.index ?? 0;
+      if (!view || !renderer || !doc) return [];
+
+      await ensureDesktopTTS();
+
+      const isRectVisibleInReader = (rect: DOMRect) => {
+        if (!rect || rect.width <= 0 || rect.height <= 0) return false;
+        const isPaginated = !renderer.scrolled;
+        if (isPaginated && renderer.size > 0) {
+          const visibleLeft = renderer.start - renderer.size;
+          const visibleRight = renderer.start;
+          return rect.right > visibleLeft && rect.left < visibleRight;
+        }
+        const win = doc.defaultView;
+        if (!win) return false;
+        return (
+          rect.right > 0 &&
+          rect.left < win.innerWidth &&
+          rect.bottom > 0 &&
+          rect.top < win.innerHeight
+        );
+      };
+
+      // Require the START of the sentence range to be visible on the current page,
+      // preventing sentences that began on the previous page from appearing as the
+      // first TTS segment.
+      const isRangeStartVisibleInReader = (range: Range) => {
+        try {
+          const rects = Array.from(range.getClientRects());
+          if (!rects.length) {
+            return isRectVisibleInReader(range.getBoundingClientRect());
+          }
+          return isRectVisibleInReader(rects[0]);
+        } catch {
+          return false;
+        }
+      };
+
+      const blockSelector =
+        "p, h1, h2, h3, h4, h5, h6, li, blockquote, dd, dt, figcaption, pre, td, th";
+      const visibleBlocks = Array.from(doc.querySelectorAll(blockSelector)).filter((block) => {
+        if (!block.textContent?.trim()) return false;
+        if (block.closest(".readany-translation")) return false;
+        return isRectVisibleInReader(block.getBoundingClientRect());
+      });
+
+      const lang =
+        doc.documentElement.lang ||
+        doc.documentElement.getAttribute("xml:lang") ||
+        doc.body.lang ||
+        navigator.language ||
+        "en";
+      const SegmenterCtor = (Intl as typeof Intl & {
+        Segmenter?: new (
+          locales?: string | string[],
+          options?: { granularity?: "grapheme" | "word" | "sentence" },
+        ) => {
+          segment(input: string): Iterable<{ index: number; segment: string }>;
+        };
+      }).Segmenter;
+      const segmenter = SegmenterCtor
+        ? new SegmenterCtor(lang, { granularity: "sentence" })
+        : null;
+
+      const segments: TTSSegmentDetail[] = [];
+      for (const block of visibleBlocks) {
+        const walker = doc.createTreeWalker(block, NodeFilter.SHOW_TEXT, {
+          acceptNode: (node) => {
+            if (!node.nodeValue?.trim()) return NodeFilter.FILTER_SKIP;
+            const parent = (node as Text).parentElement;
+            if (!parent) return NodeFilter.FILTER_ACCEPT;
+            const tag = parent.tagName.toLowerCase();
+            if (tag === "script" || tag === "style") return NodeFilter.FILTER_REJECT;
+            if (parent.closest(".readany-translation")) return NodeFilter.FILTER_REJECT;
+            return NodeFilter.FILTER_ACCEPT;
+          },
+        });
+
+        const positionedNodes: Array<{ node: Text; start: number; end: number }> = [];
+        let absoluteText = "";
+        for (let textNode = walker.nextNode() as Text | null; textNode; textNode = walker.nextNode() as Text | null) {
+          const text = textNode.nodeValue || "";
+          const start = absoluteText.length;
+          absoluteText += text;
+          positionedNodes.push({ node: textNode, start, end: absoluteText.length });
+        }
+        if (!absoluteText.trim() || positionedNodes.length === 0) continue;
+
+        const rawSegments = segmenter
+          ? Array.from(segmenter.segment(absoluteText)).map((item: { index: number; segment: string }) => ({
+              start: item.index,
+              end: item.index + item.segment.length,
+            }))
+          : (
+              absoluteText.match(/[^。！？!?；;\n]+[。！？!?；;…]?/gu) ||
+              [absoluteText]
+            ).reduce<Array<{ start: number; end: number }>>((acc, sentence) => {
+              const last = acc.length > 0 ? acc[acc.length - 1] : null;
+              const start = absoluteText.indexOf(sentence, last?.end ?? 0);
+              if (start >= 0) acc.push({ start, end: start + sentence.length });
+              return acc;
+            }, []);
+
+        const resolvePosition = (absoluteOffset: number, isEnd: boolean) => {
+          for (const item of positionedNodes) {
+            if (absoluteOffset < item.end || (isEnd && absoluteOffset <= item.end)) {
+              return {
+                node: item.node,
+                offset: Math.max(
+                  0,
+                  Math.min(item.node.nodeValue?.length ?? 0, absoluteOffset - item.start),
+                ),
+              };
+            }
+          }
+          const last = positionedNodes[positionedNodes.length - 1];
+          return { node: last.node, offset: last.node.nodeValue?.length ?? 0 };
+        };
+
+        for (const rawSegment of rawSegments.length
+          ? rawSegments
+          : [{ start: 0, end: absoluteText.length }]) {
+          let start = rawSegment.start;
+          let end = rawSegment.end;
+          while (start < end && /\s/u.test(absoluteText[start] ?? "")) start++;
+          while (end > start && /\s/u.test(absoluteText[end - 1] ?? "")) end--;
+          if (end - start < 2) continue;
+
+          const startPos = resolvePosition(start, false);
+          const endPos = resolvePosition(end, true);
+          if (!startPos || !endPos) continue;
+
+          const range = doc.createRange();
+          range.setStart(startPos.node, startPos.offset);
+          range.setEnd(endPos.node, endPos.offset);
+          if (!isRangeStartVisibleInReader(range)) continue;
+
+          const text = absoluteText.slice(start, end).replace(/\s+/g, " ").trim();
+          if (!text) continue;
+
+          try {
+            const cfi = view.getCFI(sectionIndex, range);
+            if (cfi) segments.push({ text, cfi });
+          } catch {
+            // skip segment if CFI resolution fails
+          }
+        }
+      }
+
+      const tts = view.tts as
+        | null
+        | {
+            alignCfi?: (cfi: string) => { text?: string; cfi?: string } | null;
+            currentDetail?: () => { text?: string; cfi?: string } | null;
+            collectDetails?: (
+              count?: number,
+              options?: { includeCurrent?: boolean; offset?: number },
+            ) => Array<{ text?: string; cfi?: string }>;
+          };
+
+      if ((segments.length > 0 || alignCfi) && tts) {
+        try {
+          const alignTargetCfi = alignCfi || segments[0]?.cfi;
+          if (!alignTargetCfi) return segments;
+          if (typeof tts.alignCfi === "function") {
+            tts.alignCfi(alignTargetCfi);
+          } else if (typeof (tts as { highlightCfi?: (cfi: string) => unknown }).highlightCfi === "function") {
+            (tts as { highlightCfi: (cfi: string) => unknown }).highlightCfi(alignTargetCfi);
+          }
+          const currentDetail =
+            typeof tts.currentDetail === "function" ? tts.currentDetail() : null;
+          const followingDetails =
+            typeof tts.collectDetails === "function"
+              ? tts.collectDetails(
+                  Math.max(
+                    0,
+                    Math.max(segments.length, alignCfi ? 12 : segments.length) - (currentDetail ? 1 : 0),
+                  ),
+                  {
+                    includeCurrent: false,
+                    offset: 1,
+                  },
+                )
+              : [];
+          const alignedSegments = [currentDetail, ...(followingDetails || [])]
+            .filter(
+              (detail): detail is { text: string; cfi: string } =>
+                !!detail?.text && !!detail?.cfi,
+            )
+            .map((detail) => ({
+              text: detail.text.replace(/\s+/g, " ").trim(),
+              cfi: detail.cfi,
+            }))
+            .filter((detail, index, arr) =>
+              detail.text && arr.findIndex((item) => item.cfi === detail.cfi) === index,
+            );
+          if (alignedSegments.length > 0) {
+            if (segments.length > 0) {
+              const visibleCfis = new Set(segments.map((segment) => segment.cfi));
+              const filtered = alignedSegments.filter((segment) => visibleCfis.has(segment.cfi));
+              if (filtered.length > 0) {
+                return filtered;
+              }
+            }
+            return alignCfi ? alignedSegments : segments;
+          }
+        } catch {
+          // fall through to manual segments
+        }
+      }
+
+      return segments;
+    }, [ensureDesktopTTS]);
+
+    const getTTSSegmentContext = useCallback(
+      async (
+        cfi: string,
+        before = 10,
+        after = 10,
+      ): Promise<{ before: TTSSegmentDetail[]; after: TTSSegmentDetail[] }> => {
+        const tts = await ensureDesktopTTS();
+        if (!tts || !cfi) return { before: [], after: [] };
+
+        try {
+          if (typeof tts.alignCfi === "function") {
+            tts.alignCfi(cfi);
+          } else if (typeof (tts as { highlightCfi?: (value: string) => unknown }).highlightCfi === "function") {
+            (tts as { highlightCfi: (value: string) => unknown }).highlightCfi(cfi);
+          }
+        } catch {
+          return { before: [], after: [] };
+        }
+
+        const normalize = (details: Array<{ text?: string; cfi?: string }>) => {
+          const seen = new Set<string>();
+          const result: TTSSegmentDetail[] = [];
+          for (const detail of details) {
+            if (!detail?.text || !detail?.cfi) continue;
+            const text = detail.text.replace(/\s+/g, " ").trim();
+            if (!text || detail.cfi === cfi || seen.has(detail.cfi)) continue;
+            seen.add(detail.cfi);
+            result.push({ text, cfi: detail.cfi });
+          }
+          return result;
+        };
+
+        const beforeDetails =
+          typeof tts.collectDetails === "function"
+            ? tts.collectDetails(Math.max(0, before), {
+                includeCurrent: false,
+                offset: -Math.max(0, before),
+              })
+            : [];
+        const afterDetails =
+          typeof tts.collectDetails === "function"
+            ? tts.collectDetails(Math.max(0, after), {
+                includeCurrent: false,
+                offset: 1,
+              })
+            : [];
+
+        return {
+          before: normalize(beforeDetails),
+          after: normalize(afterDetails),
+        };
+      },
+      [ensureDesktopTTS],
+    );
 
     // --- Imperative handle for parent ---
     useImperativeHandle(
@@ -263,11 +620,12 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
           }
 
           try {
-            // Create a temporary highlight annotation with yellow color
+            const tempKey = `foliate-temp:${cfi}`;
+            // Create a temporary highlight annotation with blue color to match mobile TTS follow.
             const tempAnnotation = {
-              value: cfi,
+              value: tempKey,
               type: "highlight",
-              color: "yellow",
+              color: "blue",
             };
 
             console.log("[highlightCFITemporarily] Adding annotation:", tempAnnotation);
@@ -285,7 +643,7 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
             setTimeout(() => {
               console.log("[highlightCFITemporarily] Removing annotation for CFI:", cfi);
               try {
-                view.deleteAnnotation({ value: cfi });
+                view.deleteAnnotation({ value: tempKey });
                 console.log("[highlightCFITemporarily] Annotation removed successfully");
               } catch (deleteError) {
                 console.error("[highlightCFITemporarily] Error removing annotation:", deleteError);
@@ -400,6 +758,44 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
             return doc.body?.innerText?.trim() || "";
           } catch {
             return "";
+          }
+        },
+        getVisibleTTSSegments,
+        getTTSSegmentContext,
+        setTTSHighlight: async (cfi: string | null, color?: string) => {
+          ttsHighlightStateRef.current = {
+            cfi,
+            color: color || "rgba(96, 165, 250, 0.35)",
+          };
+          if (!cfi) {
+            clearTTSHighlight();
+            return;
+          }
+
+          const view = viewRef.current;
+          if (!view) return;
+
+          // Use foliate-tts: prefix so the key never collides with user annotation CFIs
+          const key = `foliate-tts:${cfi}`;
+          const prev = ttsHighlightKeyRef.current;
+          ttsHighlightKeyRef.current = key;
+
+          if (prev && prev !== key) {
+            try {
+              await view.deleteAnnotation({ value: prev });
+            } catch {
+              // no-op
+            }
+          }
+
+          try {
+            await view.addAnnotation({
+              value: key,
+              type: "tts-highlight",
+              color: color || "rgba(96, 165, 250, 0.35)",
+            });
+          } catch {
+            // no-op
           }
         },
         getChapterParagraphs: () => {
@@ -578,7 +974,7 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
               : undefined,
         }));
       },
-      [],
+      [clearTTSHighlight, ensureDesktopTTS, getVisibleTTSSegments],
     );
 
     // --- Section load handler ---
@@ -687,7 +1083,9 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
         violet: "rgba(167, 139, 250, 0.4)", // violet-400
       };
 
-      const hexColor = colorMap[color] || colorMap.yellow;
+      const normalizedColor = typeof color === "string" ? color.trim() : "";
+      const isCssColor = /^(#|rgb\(|rgba\(|hsl\(|hsla\()/i.test(normalizedColor);
+      const resolvedColor = colorMap[normalizedColor] || (isCssColor ? normalizedColor : colorMap.yellow);
 
       // Check writing mode for vertical text support
       let writingMode = "horizontal-tb";
@@ -727,10 +1125,10 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
         cfisWithNotes.delete(annotation.value);
         // Draw regular highlight
         console.log("[drawAnnotationHandler] Calling draw(Overlayer.highlight) with:", {
-          hexColor,
+          resolvedColor,
           vertical,
         });
-        draw(Overlayer.highlight, { color: hexColor, vertical });
+        draw(Overlayer.highlight, { color: resolvedColor, vertical });
         console.log("[drawAnnotationHandler] draw() call completed");
       }
     }, []);
@@ -818,6 +1216,8 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
           // Capture coordinates immediately (before setTimeout)
           const clientX = ev.clientX;
           const clientY = ev.clientY;
+          const screenX = ev.screenX;
+          const screenY = ev.screenY;
 
           setTimeout(() => {
             // If show-annotation handler already handled this click, skip
@@ -860,6 +1260,8 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
                     bookKey,
                     clientX,
                     clientY,
+                    screenX,
+                    screenY,
                   },
                   "*",
                 );
@@ -1114,11 +1516,41 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
       return () => window.removeEventListener("message", handleMessage);
     }, [bookKey]);
 
+    const handleViewerShellClick = useCallback(
+      (event: {
+        target: EventTarget | null;
+        clientX: number;
+        clientY: number;
+        screenX: number;
+        screenY: number;
+      }) => {
+        const target = event.target as EventTarget | null;
+        const container = containerRef.current;
+        const view = viewRef.current;
+        if (!container) return;
+        if (target !== container && target !== view) return;
+
+        window.postMessage(
+          {
+            type: "viewer-single-click",
+            bookKey,
+            clientX: event.clientX,
+            clientY: event.clientY,
+            screenX: event.screenX,
+            screenY: event.screenY,
+          },
+          "*",
+        );
+      },
+      [bookKey],
+    );
+
     return (
       <div
         ref={containerRef}
         className="foliate-viewer h-full w-full focus:outline-none"
         tabIndex={-1}
+        onClick={handleViewerShellClick}
       >
         {loading && (
           <div className="absolute inset-0 flex items-center justify-center bg-background">
@@ -1166,9 +1598,13 @@ function applyRendererSettings(
     renderer.setAttribute("spread", "auto");
   } else {
     // Reflowable: columns, sizes, margins
-    renderer.setAttribute("max-inline-size", "720px");
+    const isSinglePage = (settings.paginatedLayout ?? "double") === "single";
+    const rendererWidth = Number(renderer.size || 0);
+    const singlePageInlineSize =
+      rendererWidth > 0 ? Math.round(Math.max(980, Math.min(rendererWidth * 0.94, 1600))) : 1280;
+    renderer.setAttribute("max-inline-size", isSinglePage ? `${singlePageInlineSize}px` : "760px");
     renderer.setAttribute("max-block-size", "1440px");
-    renderer.setAttribute("gap", "5%");
+    renderer.setAttribute("gap", isSinglePage ? "1.2%" : "4.5%");
     applyReflowLayoutSettings(view, settings);
   }
 

@@ -34,6 +34,16 @@ export interface BookmarkPullEvent {
   active: boolean;
 }
 
+export interface VisibleTTSSegment {
+  text: string;
+  cfi: string;
+}
+
+export interface VisibleTTSContext {
+  before: VisibleTTSSegment[];
+  after: VisibleTTSSegment[];
+}
+
 export interface ReaderBridgeCallbacks {
   onRelocate?: (detail: RelocateEvent) => void;
   onTocReady?: (items: TOCItem[]) => void;
@@ -66,6 +76,14 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
   const callbacksRef = useRef(callbacks);
   callbacksRef.current = callbacks;
   const pendingVisibleTextResolveRef = useRef<((text: string) => void) | null>(null);
+  const pendingVisibleTTSSegmentsResolveRef = useRef<((segments: VisibleTTSSegment[]) => void) | null>(
+    null,
+  );
+  const lastTTSHighlightRef = useRef<{ cfi: string | null; color: string | null }>({
+    cfi: null,
+    color: null,
+  });
+  const pendingTTSContextResolveRef = useRef<((context: VisibleTTSContext) => void) | null>(null);
   const pendingChapterParagraphsResolveRef = useRef<
     | ((
         paragraphs: Array<{ id: string; text: string; tagName: string }>,
@@ -151,18 +169,47 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
 
   const addAnnotation = useCallback(
     (annotation: { value: string; type?: string; color?: string; note?: string }) => {
-      const msg = JSON.stringify({ type: "addAnnotation", annotation });
-      inject(`handleCommand(${msg})`);
+      const annotationStr = JSON.stringify(annotation);
+      // Direct view.addAnnotation for immediate render + handleCommand to maintain userAnnotations map
+      webViewRef.current?.injectJavaScript(`
+        (function() {
+          try {
+            if (!window.__view && document.querySelector('foliate-view')) {
+              window.__view = document.querySelector('foliate-view');
+            }
+            var v = window.__view;
+            if (v) v.addAnnotation(${annotationStr}).catch(function(){});
+            if (typeof handleCommand === 'function') {
+              handleCommand(${JSON.stringify({ type: "addAnnotation", annotation })});
+            }
+          } catch(e) {}
+        })();
+        true;
+      `);
     },
-    [inject],
+    [],
   );
 
   const removeAnnotation = useCallback(
-    (annotation: { value: string }) => {
-      const msg = JSON.stringify({ type: "removeAnnotation", annotation });
-      inject(`handleCommand(${msg})`);
+    (annotation: { value: string; type?: string }) => {
+      const annotationStr = JSON.stringify(annotation);
+      webViewRef.current?.injectJavaScript(`
+        (function() {
+          try {
+            if (!window.__view && document.querySelector('foliate-view')) {
+              window.__view = document.querySelector('foliate-view');
+            }
+            var v = window.__view;
+            if (v) v.deleteAnnotation(${annotationStr}).catch(function(){});
+            if (typeof handleCommand === 'function') {
+              handleCommand(${JSON.stringify({ type: "removeAnnotation", annotation })});
+            }
+          } catch(e) {}
+        })();
+        true;
+      `);
     },
-    [inject],
+    [],
   );
 
   const highlightCFITemporarily = useCallback(
@@ -257,6 +304,102 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
       }, 2000);
     });
   }, []);
+
+  const getVisibleTTSSegments = useCallback((alignCfi?: string | null) => {
+    return new Promise<VisibleTTSSegment[]>((resolve) => {
+      pendingVisibleTTSSegmentsResolveRef.current = resolve;
+
+      webViewRef.current?.injectJavaScript(`
+        (function() {
+          try {
+            if (window.doGetVisibleTTSSegments) {
+              window.doGetVisibleTTSSegments(${JSON.stringify(alignCfi || null)});
+            } else {
+              window.ReactNativeWebView.postMessage(JSON.stringify({type:'visibleTTSSegments',segments:[],error:'doGetVisibleTTSSegments not defined'}));
+            }
+          } catch(e) {
+            window.ReactNativeWebView.postMessage(JSON.stringify({type:'visibleTTSSegments',segments:[],error:String(e)}));
+          }
+        })();
+        true;
+      `);
+
+      setTimeout(() => {
+        if (pendingVisibleTTSSegmentsResolveRef.current === resolve) {
+          pendingVisibleTTSSegmentsResolveRef.current = null;
+          resolve([]);
+        }
+      }, 4000);
+    });
+  }, []);
+
+  const getTTSSegmentContext = useCallback((cfi: string, before = 10, after = 10) => {
+    return new Promise<VisibleTTSContext>((resolve) => {
+      pendingTTSContextResolveRef.current = resolve;
+
+      webViewRef.current?.injectJavaScript(`
+        (function() {
+          try {
+            if (window.doGetTTSSegmentContext) {
+              window.doGetTTSSegmentContext(${JSON.stringify(cfi)}, ${before}, ${after});
+            } else {
+              window.ReactNativeWebView.postMessage(JSON.stringify({type:'ttsSegmentContext',before:[],after:[],error:'doGetTTSSegmentContext not defined'}));
+            }
+          } catch(e) {
+            window.ReactNativeWebView.postMessage(JSON.stringify({type:'ttsSegmentContext',before:[],after:[],error:String(e)}));
+          }
+        })();
+        true;
+      `);
+
+      setTimeout(() => {
+        if (pendingTTSContextResolveRef.current === resolve) {
+          pendingTTSContextResolveRef.current = null;
+          resolve({ before: [], after: [] });
+        }
+      }, 4000);
+    });
+  }, []);
+
+  const setTTSHighlight = useCallback(
+    (cfi: string | null, color?: string, force = false) => {
+      const nextColor = color || null;
+      if (
+        !force &&
+        lastTTSHighlightRef.current.cfi === cfi &&
+        lastTTSHighlightRef.current.color === nextColor
+      ) {
+        return;
+      }
+      lastTTSHighlightRef.current = { cfi, color: nextColor };
+      if (!cfi) {
+        webViewRef.current?.injectJavaScript(`
+          (function() {
+            try {
+              if (window.clearTTSHighlight) {
+                window.clearTTSHighlight();
+              }
+            } catch(e) {}
+          })();
+          true;
+        `);
+        return;
+      }
+      const colorStr = JSON.stringify(color || null);
+      const cfiStr = JSON.stringify(cfi);
+      webViewRef.current?.injectJavaScript(`
+        (function() {
+          try {
+            if (window.setTTSHighlight) {
+              window.setTTSHighlight(${cfiStr}, ${colorStr});
+            }
+          } catch(e) {}
+        })();
+        true;
+      `);
+    },
+    [],
+  );
 
   const flashHighlight = useCallback(
     (cfi: string, color?: string, duration?: number) => {
@@ -475,6 +618,27 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
             pendingVisibleTextResolveRef.current = null;
           }
           break;
+        case "visibleTTSSegments":
+          if (pendingVisibleTTSSegmentsResolveRef.current) {
+            if (msg.error) {
+              console.warn("[ReaderBridge] visibleTTSSegments error:", msg.error);
+            }
+            pendingVisibleTTSSegmentsResolveRef.current(msg.segments || []);
+            pendingVisibleTTSSegmentsResolveRef.current = null;
+          }
+          break;
+        case "ttsSegmentContext":
+          if (pendingTTSContextResolveRef.current) {
+            if (msg.error) {
+              console.warn("[ReaderBridge] ttsSegmentContext error:", msg.error);
+            }
+            pendingTTSContextResolveRef.current({
+              before: msg.before || [],
+              after: msg.after || [],
+            });
+            pendingTTSContextResolveRef.current = null;
+          }
+          break;
         case "chapterParagraphs":
           console.log("[ChapterTranslation] Received chapterParagraphs:", JSON.stringify({
             count: msg.paragraphs?.length || 0,
@@ -529,6 +693,9 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
       setBookmarkPullState,
       requestPageSnippet,
       getVisibleText,
+      getVisibleTTSSegments,
+      getTTSSegmentContext,
+      setTTSHighlight,
       flashHighlight,
       getChapterParagraphs,
       injectChapterTranslations,
@@ -556,6 +723,9 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
       setBookmarkPullState,
       requestPageSnippet,
       getVisibleText,
+      getVisibleTTSSegments,
+      getTTSSegmentContext,
+      setTTSHighlight,
       getChapterParagraphs,
       injectChapterTranslations,
       removeChapterTranslations,

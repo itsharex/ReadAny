@@ -2,7 +2,7 @@ import { MarkdownRenderer } from "@/components/chat/MarkdownRenderer";
 import { BookmarkRibbon } from "@/components/reader/BookmarkRibbon";
 import { ChapterTranslationSheet } from "@/components/reader/ChapterTranslationSheet";
 import { SelectionPopover } from "@/components/reader/SelectionPopover";
-import { TTSControls } from "@/components/reader/TTSControls";
+import { TTSPage } from "@/components/reader/TTSPage";
 import { TranslationPanel } from "@/components/reader/TranslationPanel";
 import {
   BotIcon,
@@ -22,12 +22,13 @@ import {
 } from "@/components/ui/Icon";
 import { RichTextEditor } from "@/components/ui/RichTextEditor";
 import { useReaderBridge } from "@/hooks/use-reader-bridge";
-import type { RelocateEvent, SelectionEvent } from "@/hooks/use-reader-bridge";
+import type { RelocateEvent, SelectionEvent, VisibleTTSSegment } from "@/hooks/use-reader-bridge";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import {
   useAnnotationStore,
   useLibraryStore,
   useReadingSessionStore,
+  useReaderStore,
   useSettingsStore,
   useTTSStore,
 } from "@/stores";
@@ -47,11 +48,13 @@ import { useChapterTranslation } from "@readany/core/hooks";
 import { useReadingSession } from "@readany/core/hooks/use-reading-session";
 import { createSelectionNoteMutation } from "@readany/core/reader";
 import { getPlatformService } from "@readany/core/services";
-import type { TOCItem } from "@readany/core/types";
+import { splitNarrationText } from "@readany/core/tts";
+import type { ReadSettings, TOCItem } from "@readany/core/types";
 import { generateId } from "@readany/core/utils";
 import { eventBus } from "@readany/core/utils/event-bus";
 import { throttle } from "@readany/core/utils/throttle";
 import { Asset } from "expo-asset";
+import * as Battery from "expo-battery";
 import * as FileSystem from "expo-file-system/legacy";
 import { setStatusBarHidden } from "expo-status-bar";
 /**
@@ -80,16 +83,25 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import Svg, { Path } from "react-native-svg";
+import Svg, { Path, Rect } from "react-native-svg";
 import { WebView } from "react-native-webview";
 
 const READER_HTML_ASSET = Asset.fromModule(require("../../assets/reader/reader.html"));
 
 type Props = NativeStackScreenProps<RootStackParamList, "Reader">;
+type TTSSegment = VisibleTTSSegment;
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const SCREEN_HEIGHT = Dimensions.get("window").height;
 const CONTROLS_TIMEOUT = 4000;
+
+function formatReaderClock(date: Date) {
+  return date.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
 
 const FONT_THEMES = [
   { id: "default", labelKey: "reader.fontThemeDefault", fallback: "System" },
@@ -131,6 +143,61 @@ function ListIcon({ size = 24, color = "#e8e8ed" }: { size?: number; color?: str
       strokeLinejoin="round"
     >
       <Path d="M3 12h18M3 6h18M3 18h18" />
+    </Svg>
+  );
+}
+
+function BatteryIcon({
+  width = 24,
+  height = 12,
+  color = "#e8e8ed",
+  level,
+}: {
+  width?: number;
+  height?: number;
+  color?: string;
+  level?: number | null;
+}) {
+  const normalizedLevel =
+    typeof level === "number" && Number.isFinite(level) ? Math.max(0, Math.min(1, level)) : null;
+  const bodyWidth = width - 3;
+  const innerPadding = 1.5;
+  const innerWidth = Math.max(0, bodyWidth - innerPadding * 2);
+  const fillWidth =
+    normalizedLevel == null ? innerWidth * 0.42 : Math.max(2, innerWidth * normalizedLevel);
+  const fillColor =
+    normalizedLevel != null && normalizedLevel <= 0.2 ? "#ef4444" : color;
+
+  return (
+    <Svg
+      width={width}
+      height={height}
+      viewBox={`0 0 ${width} ${height}`}
+      fill="none"
+      stroke={color}
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <Rect x={1} y={1} width={bodyWidth} height={height - 2} rx={2.8} />
+      <Rect
+        x={3}
+        y={2.6}
+        width={fillWidth}
+        height={Math.max(0, height - 5.2)}
+        rx={1.8}
+        fill={fillColor}
+        stroke="none"
+      />
+      <Rect
+        x={width - 2}
+        y={height / 2 - 2}
+        width={2}
+        height={4}
+        rx={1}
+        fill={color}
+        stroke="none"
+      />
     </Svg>
   );
 }
@@ -261,8 +328,15 @@ export function ReaderScreen({ route, navigation }: Props) {
   const [webViewReady, setWebViewReady] = useState(false);
   const [translationReady, setTranslationReady] = useState(false);
   const [readerHtmlUri, setReaderHtmlUri] = useState<string | null>(null);
+  const [ttsCoverUri, setTtsCoverUri] = useState<string | undefined>(undefined);
+  const [ttsLastText, setTtsLastText] = useState("");
+  const [ttsSegments, setTtsSegments] = useState<TTSSegment[]>([]);
+  const [ttsPrevPageSegments, setTtsPrevPageSegments] = useState<TTSSegment[]>([]);
+  const [ttsFutureSegments, setTtsFutureSegments] = useState<TTSSegment[]>([]);
   const [currentCfi, setCurrentCfi] = useState("");
   const [pageSnippet, setPageSnippet] = useState("");
+  const [readerClock, setReaderClock] = useState(() => formatReaderClock(new Date()));
+  const [batteryLevel, setBatteryLevel] = useState<number | null>(null);
   const [selection, setSelection] = useState<SelectionEvent | null>(null);
   const [stableTopInset, setStableTopInset] = useState(() =>
     Math.max(insets.top, isIPadLayout ? 24 : baseTopInset)
@@ -276,6 +350,8 @@ export function ReaderScreen({ route, navigation }: Props) {
   } | null>(null);
   const [noteViewEditing, setNoteViewEditing] = useState(false);
   const [noteViewContent, setNoteViewContent] = useState("");
+  const [ttsSourceKind, setTtsSourceKind] = useState<"page" | "selection">("page");
+  const [ttsContinuousEnabled, setTtsContinuousEnabled] = useState(true);
   const [noteTooltip, setNoteTooltip] = useState<{
     note: string;
     cfi: string;
@@ -289,6 +365,17 @@ export function ReaderScreen({ route, navigation }: Props) {
     requestPageSnippet: () => void;
     goNext: () => void;
     getVisibleText: () => Promise<string>;
+    getVisibleTTSSegments: (alignCfi?: string | null) => Promise<TTSSegment[]>;
+    getTTSSegmentContext: (
+      cfi: string,
+      before?: number,
+      after?: number,
+    ) => Promise<{ before: TTSSegment[]; after: TTSSegment[] }>;
+    goToCFI: (cfi: string) => void;
+    flashHighlight: (cfi: string, color?: string, duration?: number) => void;
+    addAnnotation: (annotation: { value: string; type?: string; color?: string; note?: string }) => void;
+    removeAnnotation: (annotation: { value: string; type?: string }) => void;
+    setTTSHighlight: (cfi: string | null, color?: string, force?: boolean) => void;
   } | null>(null);
 
   // Chapter translation state
@@ -312,6 +399,8 @@ export function ReaderScreen({ route, navigation }: Props) {
   const settingPageMargin = readSettings.pageMargin;
   const settingFontTheme = readSettings.fontTheme;
   const settingViewMode = readSettings.viewMode;
+  const showTopTitleProgress = readSettings.showTopTitleProgress !== false;
+  const showBottomTimeBattery = readSettings.showBottomTimeBattery !== false;
 
   const controlsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -322,10 +411,23 @@ const TOOLBAR_HIDE_OFFSET = 100;
   const progressRef = useRef(0);
   const locationHistoryRef = useRef<string[]>([]);
   const lastNavigatedCfiRef = useRef<string | undefined>(undefined);
+  const ttsSegmentsRef = useRef<TTSSegment[]>([]);
+  const ttsLastTextRef = useRef("");
+  const ttsFutureSegmentsRef = useRef<TTSSegment[]>([]);
+  const ttsLoadMoreAboveRef = useRef<string | null>(null);
+  const ttsLoadMoreBelowRef = useRef<string | null>(null);
+  const lastTTSLyricPrimeSignatureRef = useRef<string | null>(null);
+  const ttsContextCacheRef = useRef<Map<string, { before: TTSSegment[]; after: TTSSegment[] }>>(
+    new Map(),
+  );
+  const ttsContextInflightRef = useRef<
+    Map<string, Promise<{ before: TTSSegment[]; after: TTSSegment[] }>>
+  >(new Map());
 
   const {} = useReadingSessionStore(); // Removed startSession and stopSession
   const { sendEvent } = useReadingSession(bookId); // Added useReadingSession hook
   const { books, updateBook } = useLibraryStore();
+  const setGoToCfiFn = useReaderStore((s) => s.setGoToCfiFn);
 
   // Throttled progress save (same as desktop - 5 seconds)
   const throttledSaveProgress = useRef(
@@ -347,10 +449,69 @@ const TOOLBAR_HIDE_OFFSET = 100;
     removeBookmark,
   } = useAnnotationStore();
   const ttsPlay = useTTSStore((s) => s.play);
+  const ttsPause = useTTSStore((s) => s.pause);
+  const ttsResume = useTTSStore((s) => s.resume);
   const ttsStop = useTTSStore((s) => s.stop);
+  const ttsPlayState = useTTSStore((s) => s.playState);
+  const ttsCurrentText = useTTSStore((s) => s.currentText);
+  const ttsConfig = useTTSStore((s) => s.config);
+  const ttsUpdateConfig = useTTSStore((s) => s.updateConfig);
   const ttsSetOnEnd = useTTSStore((s) => s.setOnEnd);
+  const ttsSetCurrentBook = useTTSStore((s) => s.setCurrentBook);
+  const ttsSetCurrentLocation = useTTSStore((s) => s.setCurrentLocation);
+  const ttsCurrentLocationCfi = useTTSStore((s) => s.currentLocationCfi);
+  const ttsCurrentBookId = useTTSStore((s) => s.currentBookId);
+  const ttsCurrentChunkIndex = useTTSStore((s) => s.currentChunkIndex);
+  const ttsTotalChunks = useTTSStore((s) => s.totalChunks);
+  const ttsJumpToChunk = useTTSStore((s) => s.jumpToChunk);
+  const TTS_CONTEXT_CACHE_LIMIT = 24;
+  const TTS_CONTEXT_WINDOW = 12;
 
   const book = useMemo(() => books.find((b) => b.id === bookId), [books, bookId]);
+  const currentTTSSegment = useMemo(
+    () =>
+      ttsSegments.length > 0 && ttsCurrentChunkIndex >= 0
+        ? ttsSegments[Math.min(ttsCurrentChunkIndex, ttsSegments.length - 1)] || null
+        : null,
+    [ttsCurrentChunkIndex, ttsSegments],
+  );
+  const ttsHighlightColor = "rgba(96, 165, 250, 0.35)";
+  const ttsSourceLabel =
+    ttsSourceKind === "selection"
+      ? t("tts.fromSelection", "来自选中文本")
+      : t("tts.fromCurrentPage", "从当前页开始");
+
+  useEffect(() => {
+    const raw = book?.meta.coverUrl;
+    if (!raw) {
+      setTtsCoverUri(undefined);
+      return;
+    }
+    if (raw.startsWith("http") || raw.startsWith("blob") || raw.startsWith("file")) {
+      setTtsCoverUri(raw);
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const platform = getPlatformService();
+        const appData = await platform.getAppDataDir();
+        const absPath = await platform.joinPath(appData, raw);
+        if (!cancelled) {
+          setTtsCoverUri(absPath);
+        }
+      } catch {
+        if (!cancelled) {
+          setTtsCoverUri(undefined);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [book?.meta.coverUrl]);
 
   // Chapter translation hook
   const chapterTranslation = useChapterTranslation({
@@ -462,8 +623,8 @@ const TOOLBAR_HIDE_OFFSET = 100;
       setStatusBarHidden(false, "none");
       return;
     }
-    setStatusBarHidden(!showControls && !showSearch, "slide");
-  }, [showControls, showSearch, shouldToggleSystemStatusBar]);
+    setStatusBarHidden(!showSearch, "slide");
+  }, [showSearch, shouldToggleSystemStatusBar]);
 
   useEffect(() => {
     return () => {
@@ -480,6 +641,40 @@ const TOOLBAR_HIDE_OFFSET = 100;
       return nextInset;
     });
   }, [baseTopInset, insets.top, isIPadLayout]);
+
+  useEffect(() => {
+    const updateClock = () => setReaderClock(formatReaderClock(new Date()));
+    updateClock();
+    const timer = setInterval(updateClock, 30000);
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const syncBattery = async () => {
+      try {
+        const nextLevel = await Battery.getBatteryLevelAsync();
+        if (mounted) {
+          setBatteryLevel(typeof nextLevel === "number" && nextLevel >= 0 ? nextLevel : null);
+        }
+      } catch {
+        if (mounted) {
+          setBatteryLevel(null);
+        }
+      }
+    };
+
+    syncBattery();
+    const subscription = Battery.addBatteryLevelListener(({ batteryLevel: nextLevel }) => {
+      setBatteryLevel(typeof nextLevel === "number" && nextLevel >= 0 ? nextLevel : null);
+    });
+
+    return () => {
+      mounted = false;
+      subscription.remove();
+    };
+  }, []);
 
   // Load reader HTML asset
   useEffect(() => {
@@ -504,6 +699,59 @@ const TOOLBAR_HIDE_OFFSET = 100;
   const bridge = useReaderBridge({
     onReady: () => {
       setWebViewReady(true);
+      // Patch WebView functions to bypass Expo Asset cache issues
+      bridge.webViewRef.current?.injectJavaScript(`
+        (function() {
+          if (!window.__view && document.querySelector('foliate-view')) {
+            window.__view = document.querySelector('foliate-view');
+          }
+
+          // ── Patch doGetVisibleTTSSegments ──
+          // Only adds TTS engine reinit for section changes on top of the original.
+          // The original extractVisibleTTSSegments handles paginated overflow correctly.
+          window.doGetVisibleTTSSegments = async function(alignCfi) {
+            try {
+              var maxWaitMs = 3000, pollMs = 80, waited = 0;
+              while (waited < maxWaitMs) {
+                var contents = (window.__view || document.querySelector('foliate-view'));
+                if (contents && contents.renderer) {
+                  var c = contents.renderer.getContents();
+                  if (c && c.length > 0 && c.some(function(x) { return x.overlayer; })) break;
+                }
+                await new Promise(function(r) { setTimeout(r, pollMs); });
+                waited += pollMs;
+              }
+
+              // Ensure TTS engine is initialized (or reinit if section changed)
+              // Prefer ensureTTSEngine which sets up the full CFI generation callback
+              if (typeof ensureTTSEngine === 'function') {
+                try { await ensureTTSEngine(); } catch(e) {}
+              } else {
+                var v = window.__view || document.querySelector('foliate-view');
+                if (v) {
+                  var currentDoc = v.renderer && v.renderer.getContents && v.renderer.getContents()[0] && v.renderer.getContents()[0].doc;
+                  if (v.initTTS && (!v.tts || !v.tts.doc || (currentDoc && v.tts.doc !== currentDoc))) {
+                    try { await v.initTTS('sentence'); } catch(e) {}
+                  }
+                }
+              }
+
+              // Delegate to the original extractVisibleTTSSegments
+              // When alignCfi is provided, the original returns unfiltered TTS engine segments
+              // (bypassing CFI intersection), which fixes sentence swallowing.
+              var segments = [];
+              if (typeof extractVisibleTTSSegments === 'function') {
+                try { segments = extractVisibleTTSSegments(alignCfi || null) || []; } catch(e) {}
+              }
+
+              window.ReactNativeWebView.postMessage(JSON.stringify({type:'visibleTTSSegments',segments:segments}));
+            } catch(e) {
+              window.ReactNativeWebView.postMessage(JSON.stringify({type:'visibleTTSSegments',segments:[],error:String(e)}));
+            }
+          };
+        })();
+        true;
+      `);
     },
     onLoaded: () => {
       setLoading(false);
@@ -559,6 +807,20 @@ const TOOLBAR_HIDE_OFFSET = 100;
 
       // Mark translation ready after first successful relocate (CFI navigation done)
       if (!translationReady) setTranslationReady(true);
+
+      // If TTS is waiting for a page turn to complete, fire the continuation callback now
+      // that the renderer has fully updated its position (renderer.start reflects new page).
+      if (pendingTTSContinueCallbackRef.current) {
+        console.log("[ReaderScreen][TTS] onRelocate triggered pending TTS continuation");
+        const cb = pendingTTSContinueCallbackRef.current;
+        pendingTTSContinueCallbackRef.current = null;
+        // Cancel the safety timer since onRelocate fired successfully
+        if (pendingTTSContinueSafetyTimerRef.current) {
+          clearTimeout(pendingTTSContinueSafetyTimerRef.current);
+          pendingTTSContinueSafetyTimerRef.current = null;
+        }
+        void cb();
+      }
 
       // Sync reading context for AI tools
       readingContextService.updateContext({
@@ -695,6 +957,108 @@ const TOOLBAR_HIDE_OFFSET = 100;
 
   bridgeRef.current = bridge;
   chapterTranslationBridgeRef.current = bridge;
+
+  useEffect(() => {
+    setGoToCfiFn(() => bridge.goToCFI);
+    return () => setGoToCfiFn(null);
+  }, [bridge.goToCFI, setGoToCfiFn]);
+
+  useEffect(() => {
+    ttsSegmentsRef.current = ttsSegments;
+    ttsLastTextRef.current = ttsLastText;
+    ttsFutureSegmentsRef.current = ttsFutureSegments;
+  }, [ttsFutureSegments, ttsLastText, ttsSegments]);
+
+  useEffect(() => {
+    ttsContextCacheRef.current.clear();
+    ttsContextInflightRef.current.clear();
+    ttsLoadMoreAboveRef.current = null;
+    ttsLoadMoreBelowRef.current = null;
+    lastTTSLyricPrimeSignatureRef.current = null;
+  }, [bookId]);
+
+  useEffect(() => {
+    return eventBus.on("tts:jump-to-current", ({ bookId: targetBookId, cfi: targetCfi, respond }) => {
+      if (targetBookId !== bookId || !targetCfi) return;
+      setShowTTS(false);
+      setShowControls(false);
+      bridge.goToCFI(targetCfi);
+      bridge.flashHighlight(targetCfi, colors.primary, 1200);
+      respond?.();
+    });
+  }, [bookId, bridge, colors.primary]);
+
+  useEffect(() => {
+    return eventBus.on("tts:open-lyrics-page", ({ bookId: targetBookId, respond }) => {
+      if (targetBookId !== bookId) return;
+      setShowControls(false);
+      setShowTTS(true);
+      respond?.();
+    });
+  }, [bookId]);
+
+  useEffect(() => {
+    if (!webViewReady) return;
+    if (ttsPlayState !== "playing" && ttsPlayState !== "paused" && ttsPlayState !== "loading") {
+      bridge.setTTSHighlight(null);
+      return;
+    }
+    if (ttsSourceKind !== "page") {
+      bridge.setTTSHighlight(null);
+      return;
+    }
+    const targetCfi = currentTTSSegment?.cfi || ttsCurrentLocationCfi || currentCfi || null;
+    if (!targetCfi) {
+      bridge.setTTSHighlight(null);
+      return;
+    }
+    bridge.setTTSHighlight(targetCfi, ttsHighlightColor);
+  }, [
+    bridge,
+    currentCfi,
+    currentTTSSegment?.cfi,
+    ttsCurrentLocationCfi,
+    ttsPlayState,
+    ttsSourceKind,
+    webViewReady,
+  ]);
+
+  useEffect(() => {
+    if (!webViewReady) return;
+    if (ttsSourceKind !== "page") return;
+    if (ttsPlayState !== "playing" && ttsPlayState !== "paused" && ttsPlayState !== "loading") return;
+    const targetCfi = currentTTSSegment?.cfi || ttsCurrentLocationCfi || currentCfi || null;
+    if (!targetCfi) return;
+    bridge.setTTSHighlight(targetCfi, ttsHighlightColor, true);
+  }, [
+    bridge,
+    currentCfi,
+    currentTTSSegment?.cfi,
+    ttsCurrentLocationCfi,
+    ttsHighlightColor,
+    ttsPlayState,
+    ttsSourceKind,
+    webViewReady,
+  ]);
+
+  useEffect(() => {
+    if (ttsCurrentBookId !== bookId) return;
+    const targetCfi =
+      ttsSourceKind === "page" && (ttsPlayState === "playing" || ttsPlayState === "paused")
+        ? currentTTSSegment?.cfi || currentCfi
+        : currentCfi;
+    if (targetCfi) {
+      ttsSetCurrentLocation(targetCfi);
+    }
+  }, [
+    bookId,
+    currentCfi,
+    currentTTSSegment?.cfi,
+    ttsCurrentBookId,
+    ttsPlayState,
+    ttsSetCurrentLocation,
+    ttsSourceKind,
+  ]);
 
   useEffect(() => {
     if (!webViewReady) return;
@@ -956,11 +1320,9 @@ const TOOLBAR_HIDE_OFFSET = 100;
   );
 
   const updateSetting = useCallback(
-    (key: string, value: number | string) => {
-      const updates: Record<string, number | string> = {};
-      updates[key] = value;
+    <K extends keyof ReadSettings,>(key: K, value: ReadSettings[K]) => {
+      const updates = { [key]: value } as Partial<ReadSettings>;
       updateReadSettings(updates);
-      // Pass all current settings to bridge to avoid resetting other values
       const currentSettings = useSettingsStore.getState().readSettings;
       bridge.applySettings({
         ...currentSettings,
@@ -995,64 +1357,845 @@ const TOOLBAR_HIDE_OFFSET = 100;
     setSelection(null);
   }, []);
 
-  const handleSpeak = useCallback(() => {
-    if (!selection) return;
-    ttsPlay(selection.text);
-    setSelection(null);
-    setShowTTS(true);
-  }, [selection, ttsPlay]);
+  const getNormalizedVisibleTTSSegments = useCallback(async (alignCfi?: string | null) => {
+    const segmentCandidates = await bridgeRef.current?.getVisibleTTSSegments(alignCfi);
+    const segments =
+      segmentCandidates && segmentCandidates.length > 0
+        ? segmentCandidates
+        : splitNarrationText((await bridgeRef.current?.getVisibleText()) || "").map((segmentText) => ({
+            text: segmentText,
+            cfi: alignCfi || currentCfi,
+          }));
+
+    return segments
+      .map((segment) => ({
+        text: segment.text.trim(),
+        cfi: segment.cfi,
+      }))
+      .filter((segment) => segment.text.length > 0);
+  }, [currentCfi]);
+
+  const dedupeTTSSegments = useCallback(
+    (segments: TTSSegment[]) => {
+      const seenCfi = new Set<string>();
+      const result: TTSSegment[] = [];
+      for (const segment of segments) {
+        if (segment.cfi) {
+          if (seenCfi.has(segment.cfi)) continue;
+          seenCfi.add(segment.cfi);
+        }
+        if (!segment.text.trim()) continue;
+        result.push(segment);
+      }
+      return result;
+    },
+    [],
+  );
+
+  const filterDistinctTTSSegments = useCallback(
+    (incoming: TTSSegment[], ...existingGroups: TTSSegment[][]) => {
+      const blockedCfi = new Set<string>();
+      for (const segment of existingGroups.flat()) {
+        if (segment.cfi) blockedCfi.add(segment.cfi);
+      }
+      const result: TTSSegment[] = [];
+      for (const segment of dedupeTTSSegments(incoming)) {
+        if (segment.cfi && blockedCfi.has(segment.cfi)) continue;
+        if (segment.cfi) blockedCfi.add(segment.cfi);
+        result.push(segment);
+      }
+      return result;
+    },
+    [dedupeTTSSegments],
+  );
+
+  const areTTSSegmentListsEqual = useCallback((a: TTSSegment[], b: TTSSegment[]) => {
+    if (a === b) return true;
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i += 1) {
+      if ((a[i]?.cfi || null) !== (b[i]?.cfi || null)) return false;
+      if ((a[i]?.text || "").trim() !== (b[i]?.text || "").trim()) return false;
+    }
+    return true;
+  }, []);
+
+  const mergeUniqueTTSSegments: (
+    base: TTSSegment[],
+    incoming: TTSSegment[],
+    direction?: "prepend" | "append",
+  ) => TTSSegment[] = useCallback(
+    (
+      base: TTSSegment[],
+      incoming: TTSSegment[],
+      direction: "prepend" | "append" = "append",
+    ) => {
+      const ordered = direction === "prepend" ? [...incoming, ...base] : [...base, ...incoming];
+      return dedupeTTSSegments(ordered);
+    },
+    [dedupeTTSSegments],
+  );
+
+  const getCachedTTSSegmentContext = useCallback(
+    async (cfi: string | null | undefined, before = TTS_CONTEXT_WINDOW, after = TTS_CONTEXT_WINDOW) => {
+      if (!cfi || !bridgeRef.current?.getTTSSegmentContext) {
+        return { before: [], after: [] };
+      }
+      const key = `${cfi}|${before}|${after}`;
+      const cached = ttsContextCacheRef.current.get(key);
+      if (cached) {
+        ttsContextCacheRef.current.delete(key);
+        ttsContextCacheRef.current.set(key, cached);
+        return cached;
+      }
+
+      const inflight = ttsContextInflightRef.current.get(key);
+      if (inflight) {
+        return inflight;
+      }
+
+      const request = bridgeRef.current
+        .getTTSSegmentContext(cfi, before, after)
+        .then((context) => {
+          const normalized = {
+            before: dedupeTTSSegments(
+              (context.before || [])
+                .map((segment) => ({ text: segment.text.trim(), cfi: segment.cfi }))
+                .filter((segment) => segment.text.length > 0),
+            ),
+            after: dedupeTTSSegments(
+              (context.after || [])
+                .map((segment) => ({ text: segment.text.trim(), cfi: segment.cfi }))
+                .filter((segment) => segment.text.length > 0),
+            ),
+          };
+          ttsContextCacheRef.current.set(key, normalized);
+          while (ttsContextCacheRef.current.size > TTS_CONTEXT_CACHE_LIMIT) {
+            const oldestKey = ttsContextCacheRef.current.keys().next().value;
+            if (!oldestKey) break;
+            ttsContextCacheRef.current.delete(oldestKey);
+          }
+          return normalized;
+        })
+        .finally(() => {
+          ttsContextInflightRef.current.delete(key);
+        });
+
+      ttsContextInflightRef.current.set(key, request);
+      return request;
+    },
+    [TTS_CONTEXT_CACHE_LIMIT, TTS_CONTEXT_WINDOW, dedupeTTSSegments],
+  );
+
+  const primeTTSLyricContext = useCallback(
+    async (
+      currentCfi: string | null | undefined,
+      firstCfi?: string | null,
+      lastCfi?: string | null,
+    ) => {
+      if (!currentCfi) return;
+      const [centerContext, leadingContext, trailingContext] = await Promise.all([
+        getCachedTTSSegmentContext(currentCfi, TTS_CONTEXT_WINDOW, TTS_CONTEXT_WINDOW),
+        firstCfi
+          ? getCachedTTSSegmentContext(firstCfi, TTS_CONTEXT_WINDOW, 0)
+          : Promise.resolve({ before: [], after: [] }),
+        lastCfi
+          ? getCachedTTSSegmentContext(lastCfi, 0, TTS_CONTEXT_WINDOW)
+          : Promise.resolve({ before: [], after: [] }),
+      ]);
+
+      const previous = filterDistinctTTSSegments(
+        [...(leadingContext.before || []), ...(centerContext.before || [])],
+        ttsSegmentsRef.current,
+      ).slice(-(TTS_CONTEXT_WINDOW * 2));
+
+      const future = filterDistinctTTSSegments(
+        [...(centerContext.after || []), ...(trailingContext.after || [])],
+        previous,
+        ttsSegmentsRef.current,
+      ).slice(0, TTS_CONTEXT_WINDOW * 2);
+
+      setTtsPrevPageSegments((prev) =>
+        areTTSSegmentListsEqual(prev, previous) ? prev : previous,
+      );
+      setTtsFutureSegments((prev) => {
+        if (areTTSSegmentListsEqual(prev, future)) {
+          ttsFutureSegmentsRef.current = prev;
+          return prev;
+        }
+        ttsFutureSegmentsRef.current = future;
+        return future;
+      });
+    },
+    [
+      TTS_CONTEXT_WINDOW,
+      areTTSSegmentListsEqual,
+      filterDistinctTTSSegments,
+      getCachedTTSSegmentContext,
+    ],
+  );
+
+  const trimLeadingTTSOverlap = useCallback((previousSegments: TTSSegment[], nextSegments: TTSSegment[]) => {
+    if (!previousSegments.length || !nextSegments.length) return nextSegments;
+    const maxOverlap = Math.min(previousSegments.length, nextSegments.length);
+    for (let overlap = maxOverlap; overlap > 0; overlap -= 1) {
+      let matches = true;
+      for (let i = 0; i < overlap; i += 1) {
+        const previous = previousSegments[previousSegments.length - overlap + i];
+        const next = nextSegments[i];
+        const same = previous?.cfi
+          ? previous.cfi === next?.cfi
+          : previous?.text?.trim() === next?.text?.trim();
+        if (!same) {
+          matches = false;
+          break;
+        }
+      }
+      if (matches) {
+        return nextSegments.slice(overlap);
+      }
+    }
+    return nextSegments;
+  }, []);
 
   // TTS auto page-turn handler
   const ttsContinuousRef = useRef(false);
+  // Stores the callback to resume TTS after a page turn; triggered by onRelocate
+  const pendingTTSContinueCallbackRef = useRef<(() => void) | null>(null);
+  const pendingTTSContinueSafetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const handleTTSPageEnd = useCallback(() => {
     if (!ttsContinuousRef.current) return;
-    // Go to next page and continue reading
-    bridgeRef.current?.goNext();
-    setTimeout(async () => {
-      const text = await bridgeRef.current?.getVisibleText();
-      if (text && ttsContinuousRef.current) {
-        ttsPlay(text);
-      } else {
-        ttsContinuousRef.current = false;
-        ttsSetOnEnd(null);
-        ttsStop();
-        setShowTTS(false);
+    const previousSegments = ttsSegmentsRef.current;
+    const previousFirstCfi = previousSegments[0]?.cfi || currentTTSSegment?.cfi || currentCfi;
+    const previousText = ttsLastTextRef.current;
+    console.log("[ReaderScreen][TTS] page end", {
+      previousFirstCfi,
+      previousTextLength: previousText.length,
+      previousSegmentCount: previousSegments.length,
+    });
+
+    // Accumulate ALL previous pages so the lyric list is infinitely scrollable upward
+    if (previousSegments.length > 0) {
+      setTtsPrevPageSegments((prev) => mergeUniqueTTSSegments(prev, previousSegments, "append"));
+    }
+    setTtsSegments([]);
+    setTtsFutureSegments([]);
+    ttsFutureSegmentsRef.current = [];
+
+    // Clear any lingering safety timer from a previous page turn
+    if (pendingTTSContinueSafetyTimerRef.current) {
+      clearTimeout(pendingTTSContinueSafetyTimerRef.current);
+      pendingTTSContinueSafetyTimerRef.current = null;
+    }
+
+    // Store the continuation logic — will be triggered by onRelocate once the renderer
+    // has fully updated to the new page position (renderer.start reflects new page).
+    const continuationCallback = async () => {
+      pendingTTSContinueCallbackRef.current = null;
+      if (pendingTTSContinueSafetyTimerRef.current) {
+        clearTimeout(pendingTTSContinueSafetyTimerRef.current);
+        pendingTTSContinueSafetyTimerRef.current = null;
       }
-    }, 500);
-  }, [ttsPlay, ttsSetOnEnd, ttsStop]);
+      if (!ttsContinuousRef.current) return;
+
+      const tryContinue = async (attempt = 0) => {
+        const pageAnchorCfi =
+          lastCfiRef.current || currentCfi || previousFirstCfi || previousSegments[0]?.cfi || null;
+        const normalizedSegments = await getNormalizedVisibleTTSSegments(pageAnchorCfi);
+        const dedupedSegments = trimLeadingTTSOverlap(previousSegments, normalizedSegments);
+        const text = dedupedSegments.map((segment) => segment.text).join(" ").trim();
+        const firstCfi = dedupedSegments[0]?.cfi || null;
+        const isSamePage = !!text && text === previousText && firstCfi === previousFirstCfi;
+        console.log("[ReaderScreen][TTS] continue check (post-relocate)", {
+          attempt,
+          pageAnchorCfi,
+          firstCfi,
+          textLength: text.length,
+          segmentCount: dedupedSegments.length,
+          rawSegmentCount: normalizedSegments.length,
+          isSamePage,
+        });
+
+        // The WebView already polls internally for up to 3s waiting for renderer to settle.
+        // If we still get nothing or same page, wait before the next attempt to avoid
+        // concurrent requests conflicting on the single-slot pendingVisibleTTSSegmentsResolveRef.
+        if (ttsContinuousRef.current && (!text || isSamePage) && attempt < 4) {
+          setTimeout(() => {
+            void tryContinue(attempt + 1);
+          }, 800);
+          return;
+        }
+
+        if (text && ttsContinuousRef.current) {
+          setTtsSegments(dedupedSegments);
+          setTtsFutureSegments([]);
+          setTtsLastText(text);
+          ttsSegmentsRef.current = dedupedSegments;
+          ttsLastTextRef.current = text;
+          ttsFutureSegmentsRef.current = [];
+          void primeTTSLyricContext(
+            dedupedSegments[0]?.cfi || firstCfi,
+            dedupedSegments[0]?.cfi || firstCfi,
+            dedupedSegments[dedupedSegments.length - 1]?.cfi || firstCfi,
+          );
+          ttsPlay(dedupedSegments.length > 0 ? dedupedSegments.map((segment) => segment.text) : text);
+        } else {
+          ttsContinuousRef.current = false;
+          ttsSetOnEnd(null);
+          ttsStop();
+        }
+      };
+
+      void tryContinue(0);
+    };
+
+    pendingTTSContinueCallbackRef.current = continuationCallback;
+
+    // Clear TTS highlight BEFORE navigating — otherwise addAnnotation for the
+    // old segment's CFI will navigate the renderer back to the previous page,
+    // causing a page-bounce loop that prevents the continuation from finding
+    // any segments on the new page.
+    bridgeRef.current?.setTTSHighlight(null);
+
+    // Go to next page — onRelocate will fire after the renderer has fully updated
+    bridgeRef.current?.goNext();
+
+    // Safety fallback: if onRelocate never fires within 8s, run the callback anyway
+    pendingTTSContinueSafetyTimerRef.current = setTimeout(() => {
+      pendingTTSContinueSafetyTimerRef.current = null;
+      // Atomically read-and-clear to prevent double-fire with onRelocate
+      const cb = pendingTTSContinueCallbackRef.current;
+      if (!cb) return;
+      pendingTTSContinueCallbackRef.current = null;
+      console.log("[ReaderScreen][TTS] safety timeout — onRelocate didn't fire, running continuation");
+      void cb();
+    }, 8000);
+  }, [currentCfi, currentTTSSegment?.cfi, getNormalizedVisibleTTSSegments, mergeUniqueTTSSegments, primeTTSLyricContext, trimLeadingTTSOverlap, ttsPlay, ttsSetOnEnd, ttsStop]);
+
+  useEffect(() => {
+    const shouldContinue = ttsContinuousRef.current && ttsSourceKind === "page";
+    ttsSetOnEnd(shouldContinue ? handleTTSPageEnd : null);
+  }, [handleTTSPageEnd, ttsSetOnEnd, ttsSourceKind]);
+
+  const handleTTSPrevChapter = useCallback(() => {
+    // Find index of current chapter in toc, go to previous
+    const idx = toc.findIndex((item) => item.title === currentChapter);
+    const prevIdx = idx > 0 ? idx - 1 : 0;
+    const prevHref = toc[prevIdx]?.href;
+    if (prevHref) {
+      bridge.goToHref(prevHref);
+    }
+  }, [toc, currentChapter, bridge]);
+
+  const handleTTSNextChapter = useCallback(() => {
+    const idx = toc.findIndex((item) => item.title === currentChapter);
+    const nextIdx = idx >= 0 && idx < toc.length - 1 ? idx + 1 : toc.length - 1;
+    const nextHref = toc[nextIdx]?.href;
+    if (nextHref) {
+      bridge.goToHref(nextHref);
+    }
+  }, [toc, currentChapter, bridge]);
+
+  const startSelectionTTS = useCallback(
+    (text: string) => {
+      const normalized = text.trim();
+      if (!normalized) return;
+      const segments = splitNarrationText(normalized).map((segmentText) => ({
+        text: segmentText,
+        cfi: selection?.cfi || currentCfi,
+      }));
+      setTtsSourceKind("selection");
+      setTtsContinuousEnabled(false);
+      setTtsLastText(normalized);
+      setTtsSegments(segments);
+      setTtsPrevPageSegments([]);
+      setTtsFutureSegments([]);
+      ttsLastTextRef.current = normalized;
+      ttsSegmentsRef.current = segments;
+      ttsFutureSegmentsRef.current = [];
+      ttsContinuousRef.current = false;
+      ttsSetOnEnd(null);
+      ttsSetCurrentLocation(selection?.cfi || currentCfi);
+      ttsSetCurrentBook(bookTitle || book?.meta.title || "", currentChapter, bookId);
+      setShowControls(false);
+      setShowTTS(true);
+      ttsPlay(segments.length > 0 ? segments.map((segment) => segment.text) : normalized);
+    },
+    [
+      ttsPlay,
+      ttsSetOnEnd,
+      ttsSetCurrentBook,
+      ttsSetCurrentLocation,
+      bookTitle,
+      book,
+      currentChapter,
+      bookId,
+      selection?.cfi,
+      currentCfi,
+    ],
+  );
+
+  const startPageTTS = useCallback(
+    async (continuous = ttsContinuousEnabled) => {
+      const pageAnchorCfi = lastCfiRef.current || currentCfi || null;
+      const normalizedSegments = await getNormalizedVisibleTTSSegments(pageAnchorCfi);
+      const normalized = normalizedSegments.map((segment) => segment.text).join(" ").trim();
+      if (!normalized) return;
+      ttsStartChapterRef.current = currentChapter;
+      setTtsSourceKind("page");
+      setTtsContinuousEnabled(continuous);
+      setTtsLastText(normalized);
+      setTtsSegments(normalizedSegments);
+      setTtsPrevPageSegments([]); // fresh start — no prev page
+      setTtsFutureSegments([]);
+      ttsLastTextRef.current = normalized;
+      ttsSegmentsRef.current = normalizedSegments;
+      ttsFutureSegmentsRef.current = [];
+      ttsContinuousRef.current = continuous;
+      ttsSetOnEnd(continuous ? handleTTSPageEnd : null);
+      ttsSetCurrentBook(bookTitle || book?.meta.title || "", currentChapter, bookId);
+      ttsSetCurrentLocation(normalizedSegments[0]?.cfi || pageAnchorCfi);
+      setShowControls(false);
+      setShowTTS(true);
+      void primeTTSLyricContext(
+        normalizedSegments[0]?.cfi || pageAnchorCfi,
+        normalizedSegments[0]?.cfi || pageAnchorCfi,
+        normalizedSegments[normalizedSegments.length - 1]?.cfi ||
+          normalizedSegments[0]?.cfi ||
+          pageAnchorCfi,
+      );
+      ttsPlay(normalizedSegments.length > 0 ? normalizedSegments.map((segment) => segment.text) : normalized);
+    },
+    [
+      handleTTSPageEnd,
+      getNormalizedVisibleTTSSegments,
+      ttsContinuousEnabled,
+      ttsPlay,
+      ttsSetOnEnd,
+      ttsSetCurrentBook,
+      ttsSetCurrentLocation,
+      bookTitle,
+      book,
+      currentChapter,
+      bookId,
+      currentCfi,
+      primeTTSLyricContext,
+    ],
+  );
+
+  const startPageTTSFromCfi = useCallback(
+    async (targetCfi: string, targetText?: string) => {
+      if (!targetCfi || !bridgeRef.current) return;
+      pendingTTSContinueCallbackRef.current = null;
+      if (pendingTTSContinueSafetyTimerRef.current) {
+        clearTimeout(pendingTTSContinueSafetyTimerRef.current);
+        pendingTTSContinueSafetyTimerRef.current = null;
+      }
+      bridgeRef.current.goToCFI(targetCfi);
+      await new Promise((resolve) => setTimeout(resolve, 320));
+      const normalizedSegments = await getNormalizedVisibleTTSSegments(targetCfi);
+      const visibleSegments = normalizedSegments.length
+        ? normalizedSegments
+        : [{ text: (targetText || "").trim(), cfi: targetCfi }].filter((segment) => segment.text.length > 0);
+      if (!visibleSegments.length) return;
+      const context = await getCachedTTSSegmentContext(targetCfi, TTS_CONTEXT_WINDOW, TTS_CONTEXT_WINDOW);
+      const previous = filterDistinctTTSSegments(context.before || [], visibleSegments);
+      const future = filterDistinctTTSSegments(context.after || [], previous, visibleSegments);
+      const nextText = visibleSegments.map((segment) => segment.text).join(" ").trim();
+      setTtsSegments(visibleSegments);
+      setTtsPrevPageSegments(previous);
+      setTtsFutureSegments(future);
+      setTtsLastText(nextText);
+      ttsSegmentsRef.current = visibleSegments;
+      ttsLastTextRef.current = nextText;
+      ttsFutureSegmentsRef.current = future;
+      ttsSetCurrentLocation(visibleSegments[0]?.cfi || targetCfi);
+      ttsContinuousRef.current = ttsSourceKind === "page" && ttsContinuousEnabled;
+      ttsSetOnEnd(ttsContinuousRef.current ? handleTTSPageEnd : null);
+      ttsPlay(visibleSegments.map((segment) => segment.text));
+    },
+    [
+      filterDistinctTTSSegments,
+      getCachedTTSSegmentContext,
+      getNormalizedVisibleTTSSegments,
+      handleTTSPageEnd,
+      TTS_CONTEXT_WINDOW,
+      ttsContinuousEnabled,
+      ttsPlay,
+      ttsSetCurrentLocation,
+      ttsSetOnEnd,
+      ttsSourceKind,
+    ],
+  );
+
+  const handleSpeak = useCallback(() => {
+    if (!selection) return;
+    startSelectionTTS(selection.text);
+    setSelection(null);
+  }, [selection, startSelectionTTS]);
+
+  // Track the chapter that was active when TTS was last started, so we know
+  // if the user has navigated to a different chapter since then.
+  const ttsStartChapterRef = useRef<string>("");
 
   const handleToggleTTS = useCallback(async () => {
     if (showTTS) {
-      ttsContinuousRef.current = false;
-      ttsSetOnEnd(null);
-      ttsStop();
       setShowTTS(false);
-    } else {
-      setShowTTS(true);
-      const text = await bridgeRef.current?.getVisibleText();
-      if (text) {
-        ttsContinuousRef.current = true;
-        ttsSetOnEnd(handleTTSPageEnd);
-        ttsPlay(text);
-      }
+      return;
     }
-  }, [showTTS, ttsPlay, ttsStop, ttsSetOnEnd, handleTTSPageEnd]);
+
+    const hasActiveSession = ttsPlayState !== "stopped" || !!(ttsCurrentText || ttsLastText).trim();
+    const isPlaying = ttsPlayState === "playing" || ttsPlayState === "loading";
+    const chapterChanged = ttsStartChapterRef.current !== "" && ttsStartChapterRef.current !== currentChapter;
+
+    // If playing, always just re-show (don't interrupt playback)
+    // If stopped/paused with active session and same chapter, also just re-show
+    if (hasActiveSession && (isPlaying || !chapterChanged)) {
+      setShowControls(false);
+      setShowTTS(true);
+      return;
+    }
+
+    // Otherwise refresh: either first time, or chapter changed while not playing
+    ttsStartChapterRef.current = currentChapter;
+    await startPageTTS(ttsContinuousEnabled);
+  }, [
+    showTTS,
+    startPageTTS,
+    ttsContinuousEnabled,
+    ttsCurrentText,
+    ttsLastText,
+    ttsPlayState,
+    currentChapter,
+  ]);
 
   const handleTTSReplay = useCallback(async () => {
-    const text = await bridgeRef.current?.getVisibleText();
-    if (text && text.trim()) {
-      ttsContinuousRef.current = true;
-      ttsSetOnEnd(handleTTSPageEnd);
-      ttsPlay(text);
+    if (ttsSourceKind === "selection") {
+      const text = (ttsCurrentText || ttsLastText).trim();
+      if (text) {
+        startSelectionTTS(text);
+      }
+      return;
     }
-  }, [ttsPlay, ttsSetOnEnd, handleTTSPageEnd]);
+
+    await startPageTTS(ttsContinuousEnabled);
+  }, [
+    startPageTTS,
+    startSelectionTTS,
+    ttsContinuousEnabled,
+    ttsCurrentText,
+    ttsLastText,
+    ttsSourceKind,
+  ]);
+
+  const handleTTSPlayPause = useCallback(async () => {
+    if (ttsPlayState === "loading" || ttsPlayState === "playing") {
+      ttsPause();
+      return;
+    }
+    if (ttsPlayState === "paused") {
+      ttsResume();
+      return;
+    }
+
+    if (ttsSourceKind === "selection") {
+      const text = (ttsCurrentText || ttsLastText).trim();
+      if (text) {
+        startSelectionTTS(text);
+      }
+      return;
+    }
+
+    await startPageTTS(ttsContinuousEnabled);
+  }, [
+    startPageTTS,
+    startSelectionTTS,
+    ttsContinuousEnabled,
+    ttsCurrentText,
+    ttsLastText,
+    ttsPause,
+    ttsPlayState,
+    ttsResume,
+    ttsSourceKind,
+  ]);
+
+  const handleAdjustTTSRate = useCallback(
+    (delta: number) => {
+      const nextRate = Math.max(0.5, Math.min(2, Math.round((ttsConfig.rate + delta) * 10) / 10));
+      ttsUpdateConfig({ rate: nextRate });
+    },
+    [ttsConfig.rate, ttsUpdateConfig],
+  );
+
+  const handleAdjustTTSPitch = useCallback(
+    (delta: number) => {
+      const nextPitch = Math.max(
+        0.5,
+        Math.min(2, Math.round((ttsConfig.pitch + delta) * 10) / 10),
+      );
+      ttsUpdateConfig({ pitch: nextPitch });
+    },
+    [ttsConfig.pitch, ttsUpdateConfig],
+  );
+
+  const handleToggleTTSContinuous = useCallback(() => {
+    setTtsContinuousEnabled((prev) => {
+      const next = !prev;
+      const shouldContinue = next && ttsSourceKind === "page";
+      ttsContinuousRef.current = shouldContinue;
+      ttsSetOnEnd(shouldContinue ? handleTTSPageEnd : null);
+      return next;
+    });
+  }, [handleTTSPageEnd, ttsSetOnEnd, ttsSourceKind]);
+
+  const handleJumpToTTSSegment = useCallback(
+    (offsetFromCurrent = 0) => {
+      // Play from the tapped sentence — keep TTS page open
+      if (offsetFromCurrent < 0) {
+        // Tapped a prev-page segment — compute absolute index in prevPageSegments
+        const prevIndex = ttsPrevPageSegments.length + offsetFromCurrent;
+        const safeIdx = Math.max(0, prevIndex);
+        const fromPrev = ttsPrevPageSegments.slice(safeIdx);
+        const allSegments = [...fromPrev, ...ttsSegments];
+        if (allSegments.length === 0) return;
+        // Update UI state first, then play after React re-renders so safeChunkIndex is correct
+        const newPrev = ttsPrevPageSegments.slice(0, safeIdx);
+        const nextText = allSegments.map((segment) => segment.text).join(" ").trim();
+        const nextCfi = allSegments[0]?.cfi || currentCfi;
+        setTtsPrevPageSegments(newPrev);
+        setTtsSegments(allSegments);
+        setTtsLastText(nextText);
+        ttsSegmentsRef.current = allSegments;
+        ttsLastTextRef.current = nextText;
+        ttsSetCurrentLocation(nextCfi);
+        if (nextCfi) {
+          bridge.goToCFI(nextCfi);
+        }
+        setTimeout(() => ttsPlay(allSegments.map((s) => s.text)), 0);
+      } else {
+        // Tapped a current-page segment — slice from that offset
+        const safeIdx = Math.max(0, Math.min(offsetFromCurrent, ttsSegments.length - 1));
+        const sliced = ttsSegments.slice(safeIdx);
+        if (sliced.length === 0) return;
+        // Update UI state first, then play after React re-renders so safeChunkIndex is correct
+        const newPrev = [...ttsPrevPageSegments, ...ttsSegments.slice(0, safeIdx)];
+        const nextText = sliced.map((segment) => segment.text).join(" ").trim();
+        const nextCfi = sliced[0]?.cfi || currentCfi;
+        setTtsPrevPageSegments(newPrev);
+        setTtsSegments(sliced);
+        setTtsLastText(nextText);
+        ttsSegmentsRef.current = sliced;
+        ttsLastTextRef.current = nextText;
+        ttsSetCurrentLocation(nextCfi);
+        if (nextCfi) {
+          bridge.goToCFI(nextCfi);
+        }
+        setTimeout(() => ttsPlay(sliced.map((s) => s.text)), 0);
+      }
+    },
+    [
+      bridge,
+      currentCfi,
+      ttsPlay,
+      ttsPrevPageSegments,
+      ttsSegments,
+      ttsSetCurrentLocation,
+    ],
+  );
+
+  const handleJumpToTTSLyricSegment = useCallback(
+    (segment: { text: string; cfi?: string | null }, offsetFromCurrent: number) => {
+      // offsetFromCurrent = lyricIndex - prevCount
+      // lyricSegments = [...ttsPrevPageSegments, ...ttsSegments, ...ttsFutureSegments]
+      // offsetFromCurrent < 0                      → prev segment
+      // 0 <= offsetFromCurrent < ttsSegments.length → current TTS session
+      // offsetFromCurrent >= ttsSegments.length     → future segment
+
+      // ── Within current TTS session: instant jump ──
+      if (offsetFromCurrent >= 0 && offsetFromCurrent < ttsSegments.length) {
+        ttsJumpToChunk(offsetFromCurrent);
+        if (segment.cfi) {
+          bridge.setTTSHighlight(segment.cfi, ttsHighlightColor);
+        }
+        return;
+      }
+
+      // ── Jumping to a prev-page segment (data already in memory) ──
+      if (offsetFromCurrent < 0) {
+        const prevIndex = ttsPrevPageSegments.length + offsetFromCurrent;
+        const safeIdx = Math.max(0, prevIndex);
+        const fromPrev = ttsPrevPageSegments.slice(safeIdx);
+        const allSegments = [...fromPrev, ...ttsSegments, ...ttsFutureSegments];
+        if (allSegments.length === 0) return;
+        const newPrev = ttsPrevPageSegments.slice(0, safeIdx);
+        const targetChunkInNew = 0; // play from the first (target) segment
+        const nextText = allSegments.map((s) => s.text).join(" ").trim();
+        const nextCfi = allSegments[0]?.cfi || currentCfi;
+        setTtsPrevPageSegments(newPrev);
+        setTtsSegments(allSegments);
+        setTtsFutureSegments([]);
+        setTtsLastText(nextText);
+        ttsSegmentsRef.current = allSegments;
+        ttsLastTextRef.current = nextText;
+        ttsFutureSegmentsRef.current = [];
+        ttsSetCurrentLocation(nextCfi);
+        if (nextCfi) bridge.goToCFI(nextCfi);
+        // Play all segments, starting from the target
+        ttsPlay(allSegments.map((s) => s.text));
+        // jumpToChunk(0) is implicit since play() starts from index 0
+        return;
+      }
+
+      // ── Jumping to a future segment (data already in memory) ──
+      const futureOffset = offsetFromCurrent - ttsSegments.length;
+      if (futureOffset >= 0 && futureOffset < ttsFutureSegments.length) {
+        // Move consumed ttsSegments + skipped future segments to prev
+        const consumedCurrent = ttsSegments;
+        const skippedFuture = ttsFutureSegments.slice(0, futureOffset);
+        const remainingFuture = ttsFutureSegments.slice(futureOffset);
+        const newPrev = [...ttsPrevPageSegments, ...consumedCurrent, ...skippedFuture];
+        const nextText = remainingFuture.map((s) => s.text).join(" ").trim();
+        const nextCfi = remainingFuture[0]?.cfi || currentCfi;
+        setTtsPrevPageSegments(newPrev);
+        setTtsSegments(remainingFuture);
+        setTtsFutureSegments([]);
+        setTtsLastText(nextText);
+        ttsSegmentsRef.current = remainingFuture;
+        ttsLastTextRef.current = nextText;
+        ttsFutureSegmentsRef.current = [];
+        ttsSetCurrentLocation(nextCfi);
+        if (nextCfi) bridge.goToCFI(nextCfi);
+        ttsPlay(remainingFuture.map((s) => s.text));
+        // Prime more context from the new position
+        void primeTTSLyricContext(
+          remainingFuture[0]?.cfi || nextCfi,
+          remainingFuture[0]?.cfi || nextCfi,
+          remainingFuture[remainingFuture.length - 1]?.cfi ||
+            nextCfi,
+        );
+        return;
+      }
+
+      // ── Data not loaded yet — should not normally happen ──
+      // Fall back to startPageTTSFromCfi which navigates and reloads
+      if (segment.cfi) {
+        void startPageTTSFromCfi(segment.cfi, segment.text);
+      }
+    },
+    [
+      bridge,
+      currentCfi,
+      primeTTSLyricContext,
+      startPageTTSFromCfi,
+      ttsJumpToChunk,
+      ttsPlay,
+      ttsPrevPageSegments,
+      ttsSegments,
+      ttsFutureSegments,
+      ttsSetCurrentLocation,
+    ],
+  );
+
+  const handleLoadMoreAboveTTSLyrics = useCallback(async () => {
+    const anchorCfi = ttsPrevPageSegments[0]?.cfi || ttsSegments[0]?.cfi || null;
+    if (!anchorCfi || ttsLoadMoreAboveRef.current === anchorCfi) {
+      return;
+    }
+    ttsLoadMoreAboveRef.current = anchorCfi;
+    try {
+      const context = await getCachedTTSSegmentContext(anchorCfi, TTS_CONTEXT_WINDOW, 0);
+      if (context.before?.length) {
+        const incoming = filterDistinctTTSSegments(context.before, ttsPrevPageSegments, ttsSegments);
+        if (incoming.length > 0) {
+          setTtsPrevPageSegments((prev) => mergeUniqueTTSSegments(prev, incoming, "prepend"));
+        }
+      }
+    } finally {
+      ttsLoadMoreAboveRef.current = null;
+    }
+  }, [
+    TTS_CONTEXT_WINDOW,
+    filterDistinctTTSSegments,
+    getCachedTTSSegmentContext,
+    mergeUniqueTTSSegments,
+    ttsPrevPageSegments,
+    ttsSegments,
+  ]);
+
+  const handleLoadMoreBelowTTSLyrics = useCallback(async () => {
+    const anchorCfi =
+      ttsFutureSegments[ttsFutureSegments.length - 1]?.cfi ||
+      ttsSegments[ttsSegments.length - 1]?.cfi ||
+      null;
+    if (!anchorCfi || ttsLoadMoreBelowRef.current === anchorCfi) {
+      return;
+    }
+    ttsLoadMoreBelowRef.current = anchorCfi;
+    try {
+      const context = await getCachedTTSSegmentContext(anchorCfi, 0, TTS_CONTEXT_WINDOW);
+      if (context.after?.length) {
+        const incoming = filterDistinctTTSSegments(
+          context.after,
+          ttsPrevPageSegments,
+          ttsSegments,
+          ttsFutureSegments,
+        );
+        if (incoming.length > 0) {
+          setTtsFutureSegments((prev) => {
+            const next = mergeUniqueTTSSegments(prev, incoming, "append");
+            ttsFutureSegmentsRef.current = next;
+            return next;
+          });
+        }
+      }
+    } finally {
+      ttsLoadMoreBelowRef.current = null;
+    }
+  }, [
+    TTS_CONTEXT_WINDOW,
+    filterDistinctTTSSegments,
+    getCachedTTSSegmentContext,
+    mergeUniqueTTSSegments,
+    ttsFutureSegments,
+    ttsPrevPageSegments,
+    ttsSegments,
+  ]);
+
+  useEffect(() => {
+    if (!showTTS) {
+      lastTTSLyricPrimeSignatureRef.current = null;
+      return;
+    }
+    const activeCfi = currentTTSSegment?.cfi || ttsSegments[0]?.cfi || null;
+    if (!activeCfi) return;
+    const firstCfi = ttsPrevPageSegments[0]?.cfi || ttsSegments[0]?.cfi || activeCfi;
+    const lastKnownCfi =
+      ttsFutureSegments[ttsFutureSegments.length - 1]?.cfi ||
+      ttsSegments[ttsSegments.length - 1]?.cfi ||
+      activeCfi;
+    const signature = `${activeCfi}|${firstCfi}|${lastKnownCfi}`;
+    if (lastTTSLyricPrimeSignatureRef.current === signature) return;
+    lastTTSLyricPrimeSignatureRef.current = signature;
+    void primeTTSLyricContext(activeCfi, firstCfi, lastKnownCfi);
+  }, [
+    currentTTSSegment?.cfi,
+    primeTTSLyricContext,
+    showTTS,
+    ttsFutureSegments,
+    ttsPrevPageSegments,
+    ttsSegments,
+  ]);
 
   useEffect(() => {
     return () => {
-      ttsStop();
+      // Don't stop TTS on unmount — the floating bubble should keep playing
+      // while the user navigates to other screens.
+      // Just clear the continuous-reading callback that depends on this WebView.
+      ttsContinuousRef.current = false;
       ttsSetOnEnd(null);
+      bridgeRef.current?.setTTSHighlight(null);
     };
-  }, [ttsStop, ttsSetOnEnd]);
+  }, [ttsSetOnEnd]);
 
   if (loading && !webViewReady && !readerHtmlUri) {
     return (
@@ -1126,6 +2269,13 @@ const TOOLBAR_HIDE_OFFSET = 100;
   const existingSelectionHighlight = selection
     ? (highlights.find((highlight) => highlight.cfi === selection.cfi) ?? null)
     : null;
+  const readerTopMargin = !showSearch
+    ? showTopTitleProgress
+      ? layoutTopInset + 30
+      : layoutTopInset
+    : 0;
+  const readerBottomInset = !showSearch && showBottomTimeBattery ? Math.max(insets.bottom, 8) + 14 : 0;
+  const batteryLabel = batteryLevel == null ? "--%" : `${Math.round(batteryLevel * 100)}%`;
 
   return (
     <View style={[s.container, { paddingBottom: insets.bottom }]}>
@@ -1138,7 +2288,13 @@ const TOOLBAR_HIDE_OFFSET = 100;
           <WebView
             ref={bridge.webViewRef}
             source={{ uri: readerHtmlUri }}
-            style={[s.webview, { marginTop: layoutTopInset + 24 }]}
+            style={[
+              s.webview,
+              {
+                marginTop: readerTopMargin,
+                marginBottom: readerBottomInset,
+              },
+            ]}
             pointerEvents={isPanelOpen ? "none" : "auto"}
             onMessage={bridge.handleMessage}
             onError={(e) => {
@@ -1171,14 +2327,16 @@ const TOOLBAR_HIDE_OFFSET = 100;
         )}
 
         {/* ─── Top Info Bar (always visible) ─── */}
-        {!showSearch && !showControls && (
+        {!showSearch && !showControls && showTopTitleProgress && (
           <View style={[s.topInfoBar, { top: layoutTopInset }]}>
-            <Text style={s.topInfoText} numberOfLines={1}>
-              {currentChapter || bookTitle}
-            </Text>
-            <Text style={s.topInfoPageText}>
-              {currentPage > 0 && totalPages > 0 ? `${currentPage}/${totalPages}` : ""}
-            </Text>
+            <View style={s.topInfoRow}>
+              <Text style={s.topInfoText} numberOfLines={1}>
+                {currentChapter || bookTitle}
+              </Text>
+              <Text style={s.topInfoPageText}>
+                {currentPage > 0 && totalPages > 0 ? `${currentPage}/${totalPages}` : `${percent}%`}
+              </Text>
+            </View>
           </View>
         )}
 
@@ -1377,7 +2535,10 @@ const TOOLBAR_HIDE_OFFSET = 100;
             <LanguagesIcon size={18} color="#fff" />
           </TouchableOpacity>
           <TouchableOpacity
-            style={[s.floatingToolBtn, showTTS && s.floatingToolBtnActive]}
+            style={[
+              s.floatingToolBtn,
+              (showTTS || ttsPlayState !== "stopped") && s.floatingToolBtnActive,
+            ]}
             onPress={handleToggleTTS}
           >
             <HeadphonesIcon size={20} color="#fff" />
@@ -1389,6 +2550,26 @@ const TOOLBAR_HIDE_OFFSET = 100;
             <BotIcon size={20} color="#fff" />
           </TouchableOpacity>
         </Animated.View>
+      )}
+
+      {!showSearch && !showControls && showBottomTimeBattery && (
+        <View
+          pointerEvents="none"
+          style={[
+            s.bottomInfoBar,
+            {
+              left: insets.left + 18,
+              right: insets.right + 18,
+              bottom: Math.max(insets.bottom, 8) + 4,
+            },
+          ]}
+        >
+          <Text style={s.bottomInfoText}>{readerClock}</Text>
+          <View style={s.bottomInfoSide}>
+            <BatteryIcon width={22} height={11} color={colors.mutedForeground} level={batteryLevel} />
+            <Text style={s.bottomInfoText}>{batteryLabel}</Text>
+          </View>
+        </View>
       )}
 
       {/* ─── Bottom Toolbar ─── */}
@@ -1871,6 +3052,44 @@ const TOOLBAR_HIDE_OFFSET = 100;
                 </TouchableOpacity>
               </View>
             </View>
+            <View style={s.settingRow}>
+              <Text style={s.settingLabel}>{t("settings.showTopTitleProgress")}</Text>
+              <TouchableOpacity
+                style={[
+                  s.settingToggleBtn,
+                  showTopTitleProgress && s.settingToggleBtnActive,
+                ]}
+                onPress={() => updateSetting("showTopTitleProgress", !showTopTitleProgress)}
+              >
+                <Text
+                  style={[
+                    s.settingToggleText,
+                    showTopTitleProgress && s.settingToggleTextActive,
+                  ]}
+                >
+                  {showTopTitleProgress ? t("settings.enabled") : t("settings.disabled")}
+                </Text>
+              </TouchableOpacity>
+            </View>
+            <View style={s.settingRow}>
+              <Text style={s.settingLabel}>{t("settings.showBottomTimeBattery")}</Text>
+              <TouchableOpacity
+                style={[
+                  s.settingToggleBtn,
+                  showBottomTimeBattery && s.settingToggleBtnActive,
+                ]}
+                onPress={() => updateSetting("showBottomTimeBattery", !showBottomTimeBattery)}
+              >
+                <Text
+                  style={[
+                    s.settingToggleText,
+                    showBottomTimeBattery && s.settingToggleTextActive,
+                  ]}
+                >
+                  {showBottomTimeBattery ? t("settings.enabled") : t("settings.disabled")}
+                </Text>
+              </TouchableOpacity>
+            </View>
           </ScrollView>
         </View>
       </Modal>
@@ -2084,18 +3303,61 @@ const TOOLBAR_HIDE_OFFSET = 100;
         onReset={chapterTranslation.reset}
       />
 
-      {/* ─── TTS Controls ─── */}
-      {showTTS && (
-        <TTSControls
-          onClose={() => {
-            ttsContinuousRef.current = false;
-            ttsSetOnEnd(null);
-            ttsStop();
-            setShowTTS(false);
-          }}
-          onReplay={handleTTSReplay}
-        />
-      )}
+      <TTSPage
+        visible={showTTS}
+        bookTitle={bookTitle || book?.meta.title || ""}
+        chapterTitle={currentChapter}
+        coverUri={ttsCoverUri}
+        playState={ttsPlayState}
+        currentText={ttsCurrentText || ttsLastText}
+        config={ttsConfig}
+        readingProgress={progress}
+        currentPage={currentPage}
+        totalPages={totalPages}
+        sourceLabel={ttsSourceLabel}
+        continuousEnabled={ttsContinuousEnabled}
+        narrationSegments={[...ttsSegments, ...ttsFutureSegments]}
+        prevNarrationSegments={ttsPrevPageSegments}
+        currentSegmentCfi={currentTTSSegment?.cfi || ttsCurrentLocationCfi || null}
+        currentChunkIndex={ttsCurrentChunkIndex}
+        totalChunks={ttsTotalChunks}
+        onClose={() => setShowTTS(false)}
+        onReturnToReading={() => {
+          const targetCfi = currentTTSSegment?.cfi || ttsCurrentLocationCfi || currentCfi;
+          setShowTTS(false);
+          if (!targetCfi) return;
+          bridge.goToCFI(targetCfi);
+          bridge.flashHighlight(targetCfi, colors.primary, 1200);
+          setTimeout(() => {
+            bridge.setTTSHighlight(targetCfi, ttsHighlightColor, true);
+          }, 120);
+        }}
+        onReplay={handleTTSReplay}
+        onPlayPause={handleTTSPlayPause}
+        onJumpToSegment={handleJumpToTTSSegment}
+        onJumpToLyricSegment={handleJumpToTTSLyricSegment}
+        onLoadMoreAbove={handleLoadMoreAboveTTSLyrics}
+        onLoadMoreBelow={handleLoadMoreBelowTTSLyrics}
+        onStop={() => {
+          ttsContinuousRef.current = false;
+          ttsSetOnEnd(null);
+          bridge.setTTSHighlight(null);
+          setTtsSegments([]);
+          ttsSegmentsRef.current = [];
+          setTtsPrevPageSegments([]);
+          setTtsFutureSegments([]);
+          ttsFutureSegmentsRef.current = [];
+          setTtsLastText("");
+          ttsLastTextRef.current = "";
+          ttsStop();
+        }}
+        onAdjustRate={handleAdjustTTSRate}
+        onAdjustPitch={handleAdjustTTSPitch}
+        onToggleContinuous={handleToggleTTSContinuous}
+        onUpdateConfig={ttsUpdateConfig}
+        onPrevChapter={toc.length > 0 ? handleTTSPrevChapter : undefined}
+        onNextChapter={toc.length > 0 ? handleTTSNextChapter : undefined}
+      />
     </View>
   );
 }
@@ -2380,11 +3642,14 @@ const makeStyles = (colors: ThemeColors) =>
       position: "absolute",
       left: 0,
       right: 0,
+      paddingHorizontal: 18,
+      paddingVertical: 6,
+      gap: 8,
+    },
+    topInfoRow: {
       flexDirection: "row",
       justifyContent: "space-between",
       alignItems: "center",
-      paddingHorizontal: 18,
-      paddingVertical: 6,
     },
     topInfoText: {
       flex: 1,
@@ -2395,6 +3660,34 @@ const makeStyles = (colors: ThemeColors) =>
     topInfoPageText: {
       fontSize: fontSize.xs,
       color: colors.mutedForeground,
+    },
+    topInfoProgressTrack: {
+      height: 2,
+      borderRadius: 999,
+      overflow: "hidden",
+      backgroundColor: withOpacity(colors.foreground, 0.08),
+    },
+    topInfoProgressFill: {
+      height: "100%",
+      borderRadius: 999,
+      backgroundColor: withOpacity(colors.foreground, 0.42),
+    },
+    bottomInfoBar: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      position: "absolute",
+      zIndex: 24,
+    },
+    bottomInfoSide: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+    },
+    bottomInfoText: {
+      fontSize: fontSize.xs,
+      color: colors.mutedForeground,
+      fontVariant: ["tabular-nums"],
     },
     footerSliderRow: { flexDirection: "row", alignItems: "center", gap: 6 },
     footerNavBtn: {
@@ -2531,6 +3824,26 @@ const makeStyles = (colors: ThemeColors) =>
       color: colors.foreground,
       minWidth: 32,
       textAlign: "center",
+    },
+    settingToggleBtn: {
+      minWidth: 68,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: radius.lg,
+      backgroundColor: colors.muted,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    settingToggleBtnActive: {
+      backgroundColor: `${colors.primary}18`,
+    },
+    settingToggleText: {
+      fontSize: fontSize.xs,
+      color: colors.mutedForeground,
+      fontWeight: fontWeight.medium,
+    },
+    settingToggleTextActive: {
+      color: colors.primary,
     },
     themeScroll: { maxWidth: 220 },
     themeRow: { flexDirection: "row", gap: 6 },
