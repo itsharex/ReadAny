@@ -12,6 +12,7 @@ export type TTSPlayState = "stopped" | "playing" | "paused" | "loading";
 export interface TTSState {
   playState: TTSPlayState;
   currentText: string;
+  currentSegmentText: string;
   config: TTSConfig;
   onEnd: (() => void) | null;
   currentBookTitle: string;
@@ -89,11 +90,13 @@ function speakSegmentQueue(
   if (options?.showLoading) {
     set({
       playState: "loading",
+      currentSegmentText: segment,
       currentChunkIndex: _sessionIndex,
       totalChunks: _sessionSegments.length,
     });
   } else {
     set({
+      currentSegmentText: segment,
       currentChunkIndex: _sessionIndex,
       totalChunks: _sessionSegments.length,
     });
@@ -122,6 +125,7 @@ function speakSegmentQueue(
       console.log("[TTSStore] Speech.onStart");
       set({
         playState: "playing",
+        currentSegmentText: segment,
         currentChunkIndex: _sessionIndex,
         totalChunks: _sessionSegments.length,
       });
@@ -133,6 +137,7 @@ export const useTTSStore = create<TTSState>()(
   withPersist<TTSState>("tts", (set, get) => ({
     playState: "stopped",
     currentText: "",
+    currentSegmentText: "",
     config: DEFAULT_TTS_CONFIG,
     onEnd: null,
     currentBookTitle: "",
@@ -159,6 +164,7 @@ export const useTTSStore = create<TTSState>()(
       set({
         playState: "loading",
         currentText: joinedText,
+        currentSegmentText: segments[0] || "",
         currentChunkIndex: 0,
         totalChunks: segments.length,
       });
@@ -186,6 +192,7 @@ export const useTTSStore = create<TTSState>()(
       _sessionStopped = false;
       set({
         playState: "loading",
+        currentSegmentText: _sessionSegments[_sessionIndex] || "",
         currentChunkIndex: _sessionIndex,
         totalChunks: _sessionSegments.length,
       });
@@ -202,6 +209,7 @@ export const useTTSStore = create<TTSState>()(
       set({
         playState: "stopped",
         currentText: "",
+        currentSegmentText: "",
         currentChunkIndex: 0,
         totalChunks: 0,
         currentLocationCfi: "",
@@ -243,6 +251,7 @@ export const useTTSStore = create<TTSState>()(
       _sessionStopped = false;
       set({
         playState: "loading",
+        currentSegmentText: _sessionSegments[index] || "",
         currentChunkIndex: index,
         totalChunks: _sessionSegments.length,
       });
@@ -251,6 +260,7 @@ export const useTTSStore = create<TTSState>()(
   }), {
     playState: "stopped" as const,
     currentText: "",
+    currentSegmentText: "",
     currentChunkIndex: 0,
     totalChunks: 0,
     currentLocationCfi: "",

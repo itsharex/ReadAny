@@ -115,6 +115,8 @@ export default function SyncSettingsScreen() {
   const [lanManualServerIP, setLanManualServerIP] = useState("");
   const [showScanner, setShowScanner] = useState(false);
   const [permission, requestPermission] = useCameraPermissions();
+  const scannerHandledRef = useRef(false);
+  const [scannerLocked, setScannerLocked] = useState(false);
 
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<"success" | "error" | null>(null);
@@ -377,11 +379,16 @@ export default function SyncSettingsScreen() {
         return;
       }
     }
+    scannerHandledRef.current = false;
+    setScannerLocked(false);
     setShowScanner(true);
   }, [permission, requestPermission, t]);
 
   const onBarcodeScanned = useCallback(
     ({ data }: { data: string }) => {
+      if (scannerHandledRef.current) return;
+      scannerHandledRef.current = true;
+      setScannerLocked(true);
       setShowScanner(false);
       const { parseLANQRData } = require("@readany/core/sync/lan-backend");
       const qrData = parseLANQRData(data);
@@ -1264,7 +1271,7 @@ export default function SyncSettingsScreen() {
           <CameraView
             style={StyleSheet.absoluteFill}
             facing="back"
-            onBarcodeScanned={onBarcodeScanned}
+            onBarcodeScanned={showScanner && !scannerLocked ? onBarcodeScanned : undefined}
             barcodeScannerSettings={{
               barcodeTypes: ["qr"],
             }}
@@ -1274,7 +1281,11 @@ export default function SyncSettingsScreen() {
             <Text style={styles.scannerText}>{t("settings.syncLANScanHint") || "Scan the center QR code."}</Text>
             <TouchableOpacity
               style={styles.scannerCloseBtn}
-              onPress={() => setShowScanner(false)}
+              onPress={() => {
+                scannerHandledRef.current = false;
+                setScannerLocked(false);
+                setShowScanner(false);
+              }}
             >
               <Text style={styles.scannerCloseText}>{t("settings.syncClose") || "Close"}</Text>
             </TouchableOpacity>

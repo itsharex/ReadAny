@@ -135,22 +135,23 @@ export function FloatingTTSBubble() {
     (e: React.MouseEvent) => {
       e.stopPropagation();
       if (!currentBookId) return;
-      let handled = false;
-      if (currentLocationCfi) {
-        eventBus.emit("tts:jump-to-current", {
-          bookId: currentBookId,
-          cfi: currentLocationCfi,
-          respond: () => {
-            handled = true;
-          },
-        });
-      }
-      if (!handled && currentLocationCfi && goToCfiFn) {
-        goToCfiFn(currentLocationCfi);
-        setShowPlayer(false);
-        return;
-      }
       openReaderTab();
+      if (currentLocationCfi) {
+        window.setTimeout(() => {
+          let handled = false;
+          eventBus.emit("tts:jump-to-current", {
+            bookId: currentBookId,
+            cfi: currentLocationCfi,
+            respond: () => {
+              handled = true;
+            },
+          });
+          if (!handled && goToCfiFn) {
+            goToCfiFn(currentLocationCfi);
+          }
+        }, 120);
+      }
+      setShowPlayer(false);
     },
     [currentBookId, currentLocationCfi, goToCfiFn, openReaderTab],
   );
@@ -159,21 +160,11 @@ export function FloatingTTSBubble() {
     (e: React.MouseEvent) => {
       e.stopPropagation();
       if (!currentBookId) return;
-      let handled = false;
-      eventBus.emit("tts:open-lyrics-page", {
-        bookId: currentBookId,
-        respond: () => {
-          handled = true;
-        },
-      });
-      if (handled) {
-        setShowPlayer(false);
-        return;
-      }
       openReaderTab();
       window.setTimeout(() => {
         eventBus.emit("tts:open-lyrics-page", { bookId: currentBookId });
-      }, 350);
+      }, 120);
+      setShowPlayer(false);
     },
     [currentBookId, openReaderTab],
   );

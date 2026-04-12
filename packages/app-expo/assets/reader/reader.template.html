@@ -499,9 +499,10 @@
 
       if (!cfi) return;
 
-      // Add new TTS highlight via annotation system (same as flashHighlight which works)
+      // Only draw the active TTS highlight here.
+      // Reader-level sentence following is controlled in React so this layer
+      // does not accidentally trigger extra relocates while simply repainting.
       try {
-        await followTTSLocation(cfi);
         await view.addAnnotation({
           value: annotationValue,
           type: 'tts-highlight',
@@ -1744,6 +1745,10 @@ a { color: ${primary} !important; }
       return (matches.length ? matches : [normalized]).map((segment) => segment.trim()).filter(Boolean);
     }
 
+    function getTTSSegmentIdentity(cfi, text) {
+      return `${cfi || ''}::${String(text || '').replace(/\s+/g, ' ').trim()}`;
+    }
+
     function collectTTSSegmentsFromEngine(count, alignCfi, alignRange) {
       const tts = view && view.tts;
       if (!tts) return [];
@@ -1796,8 +1801,9 @@ a { color: ${primary} !important; }
       for (const detail of [current, ...(following || [])]) {
         if (!detail || !detail.text || !detail.cfi) continue;
         const text = String(detail.text).replace(/\s+/g, ' ').trim();
-        if (!text || seen.has(detail.cfi)) continue;
-        seen.add(detail.cfi);
+        const identity = getTTSSegmentIdentity(detail.cfi, text);
+        if (!text || seen.has(identity)) continue;
+        seen.add(identity);
         result.push({ text, cfi: detail.cfi });
       }
       return result;
@@ -1824,14 +1830,25 @@ a { color: ${primary} !important; }
           return { before: [], after: [] };
         }
 
+        const current =
+          typeof tts.currentDetail === 'function'
+            ? tts.currentDetail()
+            : null;
+        const currentText =
+          current && current.text
+            ? String(current.text).replace(/\s+/g, ' ').trim()
+            : '';
+        const currentIdentity = currentText ? getTTSSegmentIdentity(current && current.cfi, currentText) : null;
+
         const normalize = function(details) {
           const result = [];
           const seen = new Set();
           for (const detail of details || []) {
             if (!detail || !detail.text || !detail.cfi) continue;
             const text = String(detail.text).replace(/\s+/g, ' ').trim();
-            if (!text || detail.cfi === cfi || seen.has(detail.cfi)) continue;
-            seen.add(detail.cfi);
+            const identity = getTTSSegmentIdentity(detail.cfi, text);
+            if (!text || (currentIdentity && identity === currentIdentity) || seen.has(identity)) continue;
+            seen.add(identity);
             result.push({ text, cfi: detail.cfi });
           }
           return result;
@@ -1975,14 +1992,24 @@ a { color: ${primary} !important; }
           resolvedAlignRange?.range || firstVisibleRange
         );
         if (alignedSegments.length && segments.length) {
-          const visibleCfis = new Set(segments.map((segment) => segment.cfi));
-          const filtered = alignedSegments.filter((segment) => visibleCfis.has(segment.cfi));
+          const visibleIdentities = new Set(
+            segments.map((segment) => getTTSSegmentIdentity(segment.cfi, segment.text))
+          );
+          const filtered = alignedSegments.filter((segment) =>
+            visibleIdentities.has(getTTSSegmentIdentity(segment.cfi, segment.text))
+          );
           if (filtered.length) return filtered;
 
           if (alignCfi) {
-            const alignedStartCfi = alignedSegments[0] && alignedSegments[0].cfi;
-            const visibleStartIndex = alignedStartCfi
-              ? segments.findIndex((segment) => segment.cfi === alignedStartCfi)
+            const alignedStart = alignedSegments[0] || null;
+            const alignedStartIdentity = alignedStart
+              ? getTTSSegmentIdentity(alignedStart.cfi, alignedStart.text)
+              : null;
+            const visibleStartIndex = alignedStartIdentity
+              ? segments.findIndex(
+                  (segment) =>
+                    getTTSSegmentIdentity(segment.cfi, segment.text) === alignedStartIdentity
+                )
               : -1;
             if (visibleStartIndex >= 0) {
               return segments.slice(visibleStartIndex);
@@ -2091,7 +2118,7 @@ a { color: ${primary} !important; }
       var result = doGetVisibleText();
       return JSON.stringify(result);
     };
-    window.doGetVisibleTTSSegments = async function (alignCfi) {
+    window.doGetVisibleTTSSegments = async function (alignCfi, requestId) {
       // After page navigation (goNext/goPrev) the renderer takes time to load the
       // new chapter. Poll until getRendererContents() returns at least one content
       // with an overlayer before attempting extraction — otherwise we always get [].
@@ -2108,12 +2135,12 @@ a { color: ${primary} !important; }
       await ensureTTSEngine();
       const segments = extractVisibleTTSSegments(alignCfi || null);
       console.log('[doGetVisibleTTSSegments] extracted ' + segments.length + ' segments');
-      postToRN('visibleTTSSegments', { segments });
+      postToRN('visibleTTSSegments', { requestId: requestId || null, segments });
     };
-    window.doGetTTSSegmentContext = async function (cfi, before, after) {
+    window.doGetTTSSegmentContext = async function (cfi, before, after, requestId) {
       await ensureTTSEngine();
       const context = getTTSSegmentContextFromEngine(cfi, before, after);
-      postToRN('ttsSegmentContext', context);
+      postToRN('ttsSegmentContext', { requestId: requestId || null, ...context });
     };
     window.doGetChapterParagraphs = function () {
       handleGetChapterParagraphs();

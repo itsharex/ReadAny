@@ -328,6 +328,7 @@ interface TTSPageProps {
   /** Sentences from the previously-read page, shown above current page sentences */
   prevNarrationSegments?: Array<{ text: string; cfi?: string | null }>;
   currentSegmentCfi?: string | null;
+  currentSegmentText?: string | null;
   currentChunkIndex?: number;
   totalChunks?: number;
   onClose: () => void;
@@ -373,9 +374,10 @@ export function TTSPage({
   currentPage,
   totalPages,
   continuousEnabled,
-  narrationSegments,
-  prevNarrationSegments,
+  narrationSegments = [],
+  prevNarrationSegments = [],
   currentSegmentCfi,
+  currentSegmentText,
   currentChunkIndex = 0,
   totalChunks = 0,
   onClose,
@@ -405,6 +407,8 @@ export function TTSPage({
   const userScrollUnlockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadMoreAboveLockRef = useRef(false);
   const loadMoreBelowLockRef = useRef(false);
+  const loadMoreAboveArmedRef = useRef(true);
+  const loadMoreBelowArmedRef = useRef(true);
   const autoScrollLockUntilRef = useRef(0);
 
   const fallbackPreview = useMemo(() => buildNarrationPreview(currentText), [currentText]);
@@ -413,7 +417,10 @@ export function TTSPage({
   // last sentence can always scroll to the vertical center of the list.
   const [lyricAreaHeight, setLyricAreaHeight] = useState(SH * 0.4);
   const onLyricAreaLayout = useCallback((e: { nativeEvent: { layout: { height: number } } }) => {
-    setLyricAreaHeight(e.nativeEvent.layout.height);
+    const nextHeight = e.nativeEvent.layout.height;
+    // Ignore transient tiny heights during modal open/close animation.
+    if (nextHeight < 120) return;
+    setLyricAreaHeight((prev) => (Math.abs(prev - nextHeight) > 2 ? nextHeight : prev));
   }, []);
 
   // Number of prev-page sentences prepended to the list (only used in fallback mode)
@@ -458,8 +465,13 @@ export function TTSPage({
   // the visible/current arrays are sliced or rebuilt around the current sentence.
   const safeChunkIndex = useMemo(() => {
     if (!lyricSegments.length) return 0;
-    if (currentSegmentCfi) {
-      const currentIndex = lyricSegments.findIndex((segment) => segment.cfi === currentSegmentCfi);
+    const normalizedCurrentText = currentSegmentText?.trim() || "";
+    if (currentSegmentCfi || normalizedCurrentText) {
+      const currentIndex = lyricSegments.findIndex((segment) => {
+        if (currentSegmentCfi && segment.cfi !== currentSegmentCfi) return false;
+        if (normalizedCurrentText && segment.text.trim() !== normalizedCurrentText) return false;
+        return true;
+      });
       if (currentIndex >= 0) {
         return currentIndex;
       }
@@ -467,10 +479,13 @@ export function TTSPage({
     const actualPrevCount = lyricSegments.filter((s) => s.id.startsWith("prev:")).length;
     const prevCountStale = prevCount !== actualPrevCount;
     if (prevCountStale) {
-      const cfiInCurr =
-        currentSegmentCfi && narrationSegments
-          ? narrationSegments.findIndex((s) => s.cfi === currentSegmentCfi)
-          : -1;
+      const cfiInCurr = narrationSegments
+        ? narrationSegments.findIndex((s) => {
+            if (currentSegmentCfi && s.cfi !== currentSegmentCfi) return false;
+            if (normalizedCurrentText && s.text.trim() !== normalizedCurrentText) return false;
+            return true;
+          })
+        : -1;
       if (cfiInCurr >= 0) {
         return Math.min(actualPrevCount + cfiInCurr, lyricSegments.length - 1);
       }
@@ -480,15 +495,18 @@ export function TTSPage({
     if (fallback < lyricSegments.length) {
       return Math.max(0, fallback);
     }
-    const cfiInCurr =
-      currentSegmentCfi && narrationSegments
-        ? narrationSegments.findIndex((s) => s.cfi === currentSegmentCfi)
-        : -1;
+    const cfiInCurr = narrationSegments
+      ? narrationSegments.findIndex((s) => {
+          if (currentSegmentCfi && s.cfi !== currentSegmentCfi) return false;
+          if (normalizedCurrentText && s.text.trim() !== normalizedCurrentText) return false;
+          return true;
+        })
+      : -1;
     if (cfiInCurr >= 0) {
       return prevCount + cfiInCurr;
     }
     return Math.max(0, Math.min(prevCount, lyricSegments.length - 1));
-  }, [currentChunkIndex, currentSegmentCfi, lyricSegments, narrationSegments, prevCount]);
+  }, [currentChunkIndex, currentSegmentCfi, currentSegmentText, lyricSegments, narrationSegments, prevCount]);
   const lyricCenterPadding = useMemo(
     () => Math.max(40, Math.round(lyricAreaHeight / 2 - 32)),
     [lyricAreaHeight],
@@ -578,6 +596,28 @@ export function TTSPage({
   const pendingCenterRef = useRef<number | null>(null);
 
   useEffect(() => {
+    if (!visible) {
+      pendingCenterRef.current = null;
+      lastCenteredSignatureRef.current = null;
+      userScrollingRef.current = false;
+      autoScrollLockUntilRef.current = 0;
+      loadMoreAboveArmedRef.current = true;
+      loadMoreBelowArmedRef.current = true;
+      return;
+    }
+
+    // Keep the measured lyric row layouts when the sheet is temporarily closed.
+    // Re-mounting / clearing this cache was causing the mobile lyric list to
+    // reflow as one collapsed block before the next layout pass completed.
+    pendingCenterRef.current = null;
+    lastCenteredSignatureRef.current = null;
+    userScrollingRef.current = false;
+    autoScrollLockUntilRef.current = 0;
+    loadMoreAboveArmedRef.current = true;
+    loadMoreBelowArmedRef.current = true;
+  }, [visible]);
+
+  useEffect(() => {
     // Keep layout entries that still exist in the current segment list; evict stale ones.
     const currentIds = new Set(lyricSegments.map((s) => s.id));
     for (const key of lyricLayoutRef.current.keys()) {
@@ -586,6 +626,8 @@ export function TTSPage({
       }
     }
     pendingCenterRef.current = null;
+    loadMoreAboveArmedRef.current = true;
+    loadMoreBelowArmedRef.current = true;
   }, [lyricSegmentIdsKey]);
 
   useEffect(() => {
@@ -631,6 +673,28 @@ export function TTSPage({
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (!__DEV__) return;
+    if (!visible) return;
+    if (lyricSegments.length > 1) return;
+    console.log("[TTSPage][lyrics] fallback-render", {
+      lyricSegmentsLength: lyricSegments.length,
+      narrationSegmentsLength: narrationSegments.length,
+      prevNarrationSegmentsLength: prevNarrationSegments?.length ?? 0,
+      currentSegmentCfi,
+      currentSegmentTextLength: (currentSegmentText || "").length,
+      currentTextLength: currentText.length,
+    });
+  }, [
+    currentSegmentCfi,
+    currentSegmentText,
+    currentText,
+    lyricSegments.length,
+    narrationSegments.length,
+    prevNarrationSegments?.length,
+    visible,
+  ]);
 
   const markUserScrolling = useCallback(() => {
     userScrollingRef.current = true;
@@ -683,8 +747,12 @@ export function TTSPage({
   // (and we haven't locked), trigger below-load even if the list isn't scrollable.
   const proactiveLoadBelowFiredRef = useRef<string | null>(null);
   useEffect(() => {
+    if (!visible) {
+      proactiveLoadBelowFiredRef.current = null;
+      return;
+    }
     if (!onLoadMoreBelow) return;
-    if (!lyricSegments.length) return;
+    if (lyricSegments.length <= 1) return;
     const nearEnd = safeChunkIndex >= lyricSegments.length - 2;
     if (!nearEnd) return;
     const dedupeKey = lyricSegments[lyricSegments.length - 1]?.id ?? "";
@@ -697,7 +765,7 @@ export function TTSPage({
       });
     }
     triggerLoadMoreBelow();
-  }, [safeChunkIndex, lyricSegments, onLoadMoreBelow, triggerLoadMoreBelow]);
+  }, [lyricSegments, onLoadMoreBelow, safeChunkIndex, triggerLoadMoreBelow, visible]);
 
   // ── PanResponder listener removed — replaced by native ScrollView paging ──
 
@@ -969,7 +1037,19 @@ export function TTSPage({
                     contentSize.height - (contentOffset.y + layoutMeasurement.height);
                   const canAutoLoadMore =
                     userScrollingRef.current && Date.now() > autoScrollLockUntilRef.current;
-                  if (canAutoLoadMore && contentOffset.y > 0 && contentOffset.y < 180) {
+                  if (contentOffset.y > 120) {
+                    loadMoreAboveArmedRef.current = true;
+                  }
+                  if (distanceFromBottom > 120) {
+                    loadMoreBelowArmedRef.current = true;
+                  }
+                  if (
+                    canAutoLoadMore &&
+                    loadMoreAboveArmedRef.current &&
+                    contentOffset.y >= 0 &&
+                    contentOffset.y < 32
+                  ) {
+                    loadMoreAboveArmedRef.current = false;
                     if (__DEV__) {
                       console.log("[TTSPage][lyrics] load-more-above", {
                         offsetY: contentOffset.y,
@@ -977,7 +1057,12 @@ export function TTSPage({
                     }
                     triggerLoadMoreAbove();
                   }
-                  if (canAutoLoadMore && distanceFromBottom < 260) {
+                  if (
+                    canAutoLoadMore &&
+                    loadMoreBelowArmedRef.current &&
+                    distanceFromBottom < 32
+                  ) {
+                    loadMoreBelowArmedRef.current = false;
                     if (__DEV__) {
                       console.log("[TTSPage][lyrics] load-more-below", {
                         distanceFromBottom,

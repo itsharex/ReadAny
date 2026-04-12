@@ -76,14 +76,19 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
   const callbacksRef = useRef(callbacks);
   callbacksRef.current = callbacks;
   const pendingVisibleTextResolveRef = useRef<((text: string) => void) | null>(null);
-  const pendingVisibleTTSSegmentsResolveRef = useRef<((segments: VisibleTTSSegment[]) => void) | null>(
-    null,
+  const pendingVisibleTTSSegmentsResolveRef = useRef(
+    new Map<string, (segments: VisibleTTSSegment[]) => void>(),
   );
-  const lastTTSHighlightRef = useRef<{ cfi: string | null; color: string | null }>({
+  const lastTTSHighlightRef = useRef<{
+    cfi: string | null;
+    color: string | null;
+  }>({
     cfi: null,
     color: null,
   });
-  const pendingTTSContextResolveRef = useRef<((context: VisibleTTSContext) => void) | null>(null);
+  const pendingTTSContextResolveRef = useRef(
+    new Map<string, (context: VisibleTTSContext) => void>(),
+  );
   const pendingChapterParagraphsResolveRef = useRef<
     | ((
         paragraphs: Array<{ id: string; text: string; tagName: string }>,
@@ -96,6 +101,11 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
   const inject = useCallback((code: string) => {
     webViewRef.current?.injectJavaScript(`${code}; true;`);
   }, []);
+
+  const createRequestId = useCallback(
+    (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+    [],
+  );
 
   const openBook = useCallback(
     (params: {
@@ -307,62 +317,68 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
 
   const getVisibleTTSSegments = useCallback((alignCfi?: string | null) => {
     return new Promise<VisibleTTSSegment[]>((resolve) => {
-      pendingVisibleTTSSegmentsResolveRef.current = resolve;
+      const requestId = createRequestId("visible-tts");
+      pendingVisibleTTSSegmentsResolveRef.current.set(requestId, resolve);
 
       webViewRef.current?.injectJavaScript(`
         (function() {
           try {
             if (window.doGetVisibleTTSSegments) {
-              window.doGetVisibleTTSSegments(${JSON.stringify(alignCfi || null)});
+              window.doGetVisibleTTSSegments(${JSON.stringify(alignCfi || null)}, ${JSON.stringify(requestId)});
             } else {
-              window.ReactNativeWebView.postMessage(JSON.stringify({type:'visibleTTSSegments',segments:[],error:'doGetVisibleTTSSegments not defined'}));
+              window.ReactNativeWebView.postMessage(JSON.stringify({type:'visibleTTSSegments',requestId:${JSON.stringify(requestId)},segments:[],error:'doGetVisibleTTSSegments not defined'}));
             }
           } catch(e) {
-            window.ReactNativeWebView.postMessage(JSON.stringify({type:'visibleTTSSegments',segments:[],error:String(e)}));
+            window.ReactNativeWebView.postMessage(JSON.stringify({type:'visibleTTSSegments',requestId:${JSON.stringify(requestId)},segments:[],error:String(e)}));
           }
         })();
         true;
       `);
 
       setTimeout(() => {
-        if (pendingVisibleTTSSegmentsResolveRef.current === resolve) {
-          pendingVisibleTTSSegmentsResolveRef.current = null;
+        const pendingResolve = pendingVisibleTTSSegmentsResolveRef.current.get(requestId);
+        if (pendingResolve === resolve) {
+          pendingVisibleTTSSegmentsResolveRef.current.delete(requestId);
           resolve([]);
         }
       }, 4000);
     });
-  }, []);
+  }, [createRequestId]);
 
   const getTTSSegmentContext = useCallback((cfi: string, before = 10, after = 10) => {
     return new Promise<VisibleTTSContext>((resolve) => {
-      pendingTTSContextResolveRef.current = resolve;
+      const requestId = createRequestId("tts-context");
+      pendingTTSContextResolveRef.current.set(requestId, resolve);
 
       webViewRef.current?.injectJavaScript(`
         (function() {
           try {
             if (window.doGetTTSSegmentContext) {
-              window.doGetTTSSegmentContext(${JSON.stringify(cfi)}, ${before}, ${after});
+              window.doGetTTSSegmentContext(${JSON.stringify(cfi)}, ${before}, ${after}, ${JSON.stringify(requestId)});
             } else {
-              window.ReactNativeWebView.postMessage(JSON.stringify({type:'ttsSegmentContext',before:[],after:[],error:'doGetTTSSegmentContext not defined'}));
+              window.ReactNativeWebView.postMessage(JSON.stringify({type:'ttsSegmentContext',requestId:${JSON.stringify(requestId)},before:[],after:[],error:'doGetTTSSegmentContext not defined'}));
             }
           } catch(e) {
-            window.ReactNativeWebView.postMessage(JSON.stringify({type:'ttsSegmentContext',before:[],after:[],error:String(e)}));
+            window.ReactNativeWebView.postMessage(JSON.stringify({type:'ttsSegmentContext',requestId:${JSON.stringify(requestId)},before:[],after:[],error:String(e)}));
           }
         })();
         true;
       `);
 
       setTimeout(() => {
-        if (pendingTTSContextResolveRef.current === resolve) {
-          pendingTTSContextResolveRef.current = null;
+        const pendingResolve = pendingTTSContextResolveRef.current.get(requestId);
+        if (pendingResolve === resolve) {
+          pendingTTSContextResolveRef.current.delete(requestId);
           resolve({ before: [], after: [] });
         }
       }, 4000);
     });
-  }, []);
+  }, [createRequestId]);
 
   const setTTSHighlight = useCallback(
     (cfi: string | null, color?: string, force = false) => {
+      const previousCfi = lastTTSHighlightRef.current.cfi;
+      const previousColor = lastTTSHighlightRef.current.color;
       const nextColor = color || null;
       if (
         !force &&
@@ -372,28 +388,54 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
         return;
       }
       lastTTSHighlightRef.current = { cfi, color: nextColor };
+
+      const previousCfiStr = JSON.stringify(previousCfi);
+      const previousColorStr = JSON.stringify(previousColor);
+      const cfiStr = JSON.stringify(cfi);
+      const colorStr = JSON.stringify(nextColor);
       if (!cfi) {
         webViewRef.current?.injectJavaScript(`
           (function() {
             try {
-              if (window.clearTTSHighlight) {
-                window.clearTTSHighlight();
+              if (typeof handleCommand === 'function' && ${previousCfiStr}) {
+                handleCommand({
+                  type: 'removeAnnotation',
+                  annotation: { value: ${previousCfiStr}, type: 'tts-highlight' },
+                });
               }
-            } catch(e) {}
+            } catch (e) {}
           })();
           true;
         `);
         return;
       }
-      const colorStr = JSON.stringify(color || null);
-      const cfiStr = JSON.stringify(cfi);
+
       webViewRef.current?.injectJavaScript(`
         (function() {
           try {
-            if (window.setTTSHighlight) {
-              window.setTTSHighlight(${cfiStr}, ${colorStr});
-            }
-          } catch(e) {}
+            var removePrevious = function() {
+              if (typeof handleCommand !== 'function' || !${previousCfiStr}) return Promise.resolve();
+              return Promise.resolve(handleCommand({
+                type: 'removeAnnotation',
+                annotation: { value: ${previousCfiStr}, type: 'tts-highlight' },
+              }));
+            };
+            var apply = function() {
+              if (typeof handleCommand !== 'function') return Promise.resolve();
+              return Promise.resolve(handleCommand({
+                type: 'addAnnotation',
+                annotation: {
+                  value: ${cfiStr},
+                  type: 'tts-highlight',
+                  color: ${colorStr},
+                },
+              }));
+            };
+            var shouldReplace =
+              ${force ? "true" : "false"} ||
+              (!!${previousCfiStr} && (${previousCfiStr} !== ${cfiStr} || ${previousColorStr} !== ${colorStr}));
+            (shouldReplace ? removePrevious() : Promise.resolve()).finally(apply);
+          } catch (e) {}
         })();
         true;
       `);
@@ -619,24 +661,44 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
           }
           break;
         case "visibleTTSSegments":
-          if (pendingVisibleTTSSegmentsResolveRef.current) {
-            if (msg.error) {
-              console.warn("[ReaderBridge] visibleTTSSegments error:", msg.error);
+          {
+            const requestId = typeof msg.requestId === "string" ? msg.requestId : null;
+            const pendingResolve = requestId
+              ? pendingVisibleTTSSegmentsResolveRef.current.get(requestId)
+              : pendingVisibleTTSSegmentsResolveRef.current.values().next().value;
+            if (pendingResolve) {
+              if (msg.error) {
+                console.warn("[ReaderBridge] visibleTTSSegments error:", msg.error);
+              }
+              pendingResolve(msg.segments || []);
+              if (requestId) {
+                pendingVisibleTTSSegmentsResolveRef.current.delete(requestId);
+              } else {
+                pendingVisibleTTSSegmentsResolveRef.current.clear();
+              }
             }
-            pendingVisibleTTSSegmentsResolveRef.current(msg.segments || []);
-            pendingVisibleTTSSegmentsResolveRef.current = null;
           }
           break;
         case "ttsSegmentContext":
-          if (pendingTTSContextResolveRef.current) {
-            if (msg.error) {
-              console.warn("[ReaderBridge] ttsSegmentContext error:", msg.error);
+          {
+            const requestId = typeof msg.requestId === "string" ? msg.requestId : null;
+            const pendingResolve = requestId
+              ? pendingTTSContextResolveRef.current.get(requestId)
+              : pendingTTSContextResolveRef.current.values().next().value;
+            if (pendingResolve) {
+              if (msg.error) {
+                console.warn("[ReaderBridge] ttsSegmentContext error:", msg.error);
+              }
+              pendingResolve({
+                before: msg.before || [],
+                after: msg.after || [],
+              });
+              if (requestId) {
+                pendingTTSContextResolveRef.current.delete(requestId);
+              } else {
+                pendingTTSContextResolveRef.current.clear();
+              }
             }
-            pendingTTSContextResolveRef.current({
-              before: msg.before || [],
-              after: msg.after || [],
-            });
-            pendingTTSContextResolveRef.current = null;
           }
           break;
         case "chapterParagraphs":
