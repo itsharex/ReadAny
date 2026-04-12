@@ -80,9 +80,14 @@ function speakSegmentQueue(
 ) {
   const gen = _sessionGeneration;
   if (_sessionStopped || _sessionIndex >= _sessionSegments.length) {
-    console.log("[TTSStore] Session finished");
+    const currentOnEnd = get().onEnd;
+    console.log("[TTSStore] Session finished", {
+      sessionIndex: _sessionIndex,
+      sessionLength: _sessionSegments.length,
+      hasOnEnd: !!currentOnEnd,
+    });
     set({ playState: "stopped" });
-    get().onEnd?.();
+    currentOnEnd?.();
     return;
   }
 
@@ -234,7 +239,12 @@ export const useTTSStore = create<TTSState>()(
 
     setPlayState: (playState) => set({ playState }),
 
-    setOnEnd: (cb) => set({ onEnd: cb }),
+    setOnEnd: (cb) => {
+      console.log("[TTSStore] setOnEnd", {
+        hasCallback: !!cb,
+      });
+      set({ onEnd: cb });
+    },
 
     setCurrentBook: (title, chapter, bookId) =>
       set({ currentBookTitle: title, currentChapterTitle: chapter, currentBookId: bookId ?? "" }),

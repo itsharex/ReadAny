@@ -12,7 +12,7 @@ import { DASHSCOPE_VOICES, getBrowserVoices } from "@/lib/tts/tts-service";
 import type { TTSEngine } from "@/lib/tts/tts-service";
 import { useTTSStore } from "@/stores/tts-store";
 import { cn } from "@readany/core/utils";
-import { ChevronDown, ChevronUp, Minus, Pause, Play, Plus, Square, Volume2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Headphones, Minus, Pause, Play, Plus, Square } from "lucide-react";
 /**
  * TTSControls — Floating TTS playback control bar.
  *
@@ -148,7 +148,7 @@ export function TTSControls({ onClose, className }: TTSControlsProps) {
         <div className="flex h-11 items-center justify-between px-3">
           {/* Left: icon + state label */}
           <div className="flex items-center gap-2">
-            <Volume2 className="h-3.5 w-3.5 text-primary" />
+            <Headphones className="h-3.5 w-3.5 text-primary" />
             <span className="text-xs text-muted-foreground">
               {playState === "loading"
                 ? t("tts.loading")

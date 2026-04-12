@@ -549,9 +549,10 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
                 const filtered = alignedSegments.filter((segment) =>
                   visibleIdentities.has(getTTSSegmentIdentity(segment.cfi, segment.text)),
                 );
-                if (filtered.length > 0) {
+                if (filtered.length === segments.length) {
                   return filtered;
                 }
+                return segments;
               }
               return alignCfi ? alignedSegments : segments;
             }

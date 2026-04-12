@@ -9,6 +9,7 @@ import type { ChapterTranslationState } from "@readany/core/hooks";
 import {
   ArrowLeft,
   Bookmark,
+  Headphones,
   List,
   MessageSquare,
   NotebookPen,
@@ -16,7 +17,6 @@ import {
   Search,
   Settings,
   Undo,
-  Volume2,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -215,7 +215,7 @@ export function ReaderToolbar({
           onClick={onToggleTTS}
           title={t("tts.title")}
         >
-          <Volume2 className="h-3.5 w-3.5" />
+          <Headphones className="h-3.5 w-3.5" />
         </Button>
         <Button
           variant="ghost"

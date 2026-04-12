@@ -12,6 +12,14 @@
  * - Long press bubble → stop TTS
  */
 import { useTTSStore } from "@/stores";
+import {
+  BookOpenIcon,
+  HeadphonesIcon,
+  PauseIcon,
+  PlayIcon,
+  ScrollTextIcon,
+  SquareIcon,
+} from "@/components/ui/Icon";
 import { useReaderStore } from "@/stores/reader-store";
 import { fontSize, radius, useColors } from "@/styles/theme";
 import { pushRoute } from "@/lib/navigationRef";
@@ -33,88 +41,6 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Svg, { Path } from "react-native-svg";
-
-// ─── Icons ───────────────────────────────────────────────────────────────────
-
-function HeadphonesIcon({ size = 22, color = "#fff" }: { size?: number; color?: string }) {
-  return (
-    <Svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke={color}
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <Path d="M3 18v-6a9 9 0 0 1 18 0v6" />
-      <Path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z" />
-    </Svg>
-  );
-}
-
-function PlayIcon({ size = 20, color = "#fff" }: { size?: number; color?: string }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
-      <Path d="M8 5v14l11-7z" />
-    </Svg>
-  );
-}
-
-function PauseIcon({ size = 20, color = "#fff" }: { size?: number; color?: string }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
-      <Path d="M6 4h4v16H6zM14 4h4v16h-4z" />
-    </Svg>
-  );
-}
-
-function SquareIcon({ size = 16, color = "#fff" }: { size?: number; color?: string }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
-      <Path d="M6 6h12v12H6z" />
-    </Svg>
-  );
-}
-
-function BookOpenIcon({ size = 16, color = "#fff" }: { size?: number; color?: string }) {
-  return (
-    <Svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke={color}
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <Path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
-      <Path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
-    </Svg>
-  );
-}
-
-function LyricsIcon({ size = 16, color = "#fff" }: { size?: number; color?: string }) {
-  return (
-    <Svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke={color}
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <Path d="M5 7h14" />
-      <Path d="M5 12h14" />
-      <Path d="M5 17h10" />
-    </Svg>
-  );
-}
 
 // ─── Compact expanded player modal ───────────────────────────────────────────
 
@@ -180,13 +106,10 @@ function TTSMiniPlayer({
       },
     });
     if (!handled) {
-      pushRoute("Reader", { bookId: currentBookId, cfi: currentLocationCfi || undefined });
-      setTimeout(() => {
-        eventBus.emit("tts:open-lyrics-page", { bookId: currentBookId });
-      }, 450);
+      pushRoute("Reader", { bookId: currentBookId, openTTS: true });
     }
     onClose();
-  }, [currentBookId, currentLocationCfi, onClose]);
+  }, [currentBookId, onClose]);
 
   const handlePlayPause = useCallback(() => {
     if (playState === "playing") {
@@ -398,7 +321,7 @@ function TTSMiniPlayer({
               accessibilityRole="button"
               accessibilityLabel={t("tts.openLyricsPage", "跳到歌词页")}
             >
-              <LyricsIcon size={16} color={colors.foreground} />
+              <ScrollTextIcon size={16} color={colors.foreground} />
             </TouchableOpacity>
           )}
         </View>

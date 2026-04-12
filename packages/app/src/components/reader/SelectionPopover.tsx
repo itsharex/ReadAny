@@ -4,12 +4,12 @@ import { cn } from "@readany/core/utils";
 import {
   Check,
   Copy,
+  Headphones,
   Highlighter,
   Languages,
   NotebookPen,
   Sparkles,
   Trash2,
-  Volume2,
 } from "lucide-react";
 /**
  * SelectionPopover — popover on text selection with highlight colors
@@ -85,7 +85,7 @@ export function SelectionPopover({
     { icon: Copy, label: t("common.copy"), onClick: onCopy },
     { icon: Languages, label: t("reader.translate"), onClick: onTranslate },
     { icon: Sparkles, label: t("reader.askAI"), onClick: onAskAI },
-    { icon: Volume2, label: t("tts.speakSelection"), onClick: onSpeak },
+    { icon: Headphones, label: t("tts.speakSelection"), onClick: onSpeak },
   ];
 
   // For existing annotations, add delete button

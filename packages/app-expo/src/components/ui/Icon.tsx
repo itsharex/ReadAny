@@ -2,7 +2,7 @@
  * Simple SVG icons matching the lucide-react icons used in Tauri mobile app.
  * Built with react-native-svg for native performance.
  */
-import Svg, { Path, Circle, Line, Rect, Polyline } from "react-native-svg";
+import Svg, { Path, Circle, Line, Rect, Polyline, Polygon } from "react-native-svg";
 
 interface IconProps {
   size?: number;
@@ -193,11 +193,42 @@ export const Volume2Icon = icon(() => (
 ));
 
 export const HeadphonesIcon = icon(() => (
+  <Path d="M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3" />
+));
+
+export const PlayIcon = icon((p) => (
+  <Polygon points="6 3 20 12 6 21 6 3" fill={p.color} stroke={p.color} />
+));
+
+export const PauseIcon = icon((p) => (
   <>
-    <Path d="M4 13a8 8 0 0 1 16 0" />
-    <Rect x="3" y="12" width="4" height="7" rx="2" />
-    <Rect x="17" y="12" width="4" height="7" rx="2" />
-    <Path d="M7 19v1a2 2 0 0 0 2 2h6" />
+    <Rect x="14" y="4" width="4" height="16" rx="1" fill={p.color} stroke={p.color} />
+    <Rect x="6" y="4" width="4" height="16" rx="1" fill={p.color} stroke={p.color} />
+  </>
+));
+
+export const SquareIcon = icon((p) => (
+  <Rect x="3" y="3" width="18" height="18" rx="2" fill={p.color} stroke={p.color} />
+));
+
+export const RotateCcwIcon = icon(() => (
+  <>
+    <Path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+    <Path d="M3 3v5h5" />
+  </>
+));
+
+export const SkipBackIcon = icon(() => (
+  <>
+    <Polygon points="19 20 9 12 19 4 19 20" fill="none" />
+    <Line x1="5" y1="19" x2="5" y2="5" />
+  </>
+));
+
+export const SkipForwardIcon = icon(() => (
+  <>
+    <Polygon points="5 4 15 12 5 20 5 4" fill="none" />
+    <Line x1="19" y1="5" x2="19" y2="19" />
   </>
 ));
 

@@ -17,12 +17,12 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronUp,
+  Headphones,
   Minus,
   Pause,
   Play,
   Plus,
   Square,
-  Volume2,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -237,7 +237,7 @@ export function FooterBar({
                 {playState === "loading" ? (
                   <div className="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-primary border-t-transparent" />
                 ) : (
-                  <Volume2 className="h-3 w-3 text-primary shrink-0" />
+                  <Headphones className="h-3 w-3 text-primary shrink-0" />
                 )}
 
                 {/* Rate control */}

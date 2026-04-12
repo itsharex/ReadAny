@@ -662,6 +662,12 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
           break;
         case "visibleTTSSegments":
           {
+            if (msg.debug) {
+              console.log(
+                "[ReaderBridge] visibleTTSSegments debug:",
+                JSON.stringify(msg.debug),
+              );
+            }
             const requestId = typeof msg.requestId === "string" ? msg.requestId : null;
             const pendingResolve = requestId
               ? pendingVisibleTTSSegmentsResolveRef.current.get(requestId)

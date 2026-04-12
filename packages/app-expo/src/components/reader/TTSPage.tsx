@@ -2,7 +2,13 @@ import {
   ChevronDownIcon,
   HeadphonesIcon,
   MinusIcon,
+  PauseIcon,
+  PlayIcon,
   PlusIcon,
+  RotateCcwIcon,
+  SkipBackIcon,
+  SkipForwardIcon,
+  SquareIcon,
 } from "@/components/ui/Icon";
 import { type ThemeColors, fontWeight, radius, useColors, withOpacity } from "@/styles/theme";
 import {
@@ -29,7 +35,6 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Svg, { Path } from "react-native-svg";
 
 // ── Dimensions ────────────────────────────────────────────────────────────────
 const { height: SH, width: SW } = Dimensions.get("window");
@@ -39,77 +44,6 @@ const COVER_W = Math.round(COVER_H * (28 / 41));
 // Thumbnail for lyrics header
 const THUMB_W = 48;
 const THUMB_H = Math.round(THUMB_W * (41 / 28)); // ≈ 70
-
-// ── Inline SVG icons ──────────────────────────────────────────────────────────
-
-function PlayIcon({ size = 28, color = "#fff" }: { size?: number; color?: string }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
-      <Path d="M8 5v14l11-7z" />
-    </Svg>
-  );
-}
-
-function PauseIcon({ size = 26, color = "#fff" }: { size?: number; color?: string }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
-      <Path d="M6 4h4v16H6zM14 4h4v16h-4z" />
-    </Svg>
-  );
-}
-
-function StopIcon({ size = 20, color }: { size?: number; color: string }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
-      <Path d="M6 6h12v12H6z" />
-    </Svg>
-  );
-}
-
-/** Replay — curved arrow wrapping a filled play tip; means "restart here" */
-function ReplayIcon({ size = 22, color }: { size?: number; color: string }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      {/* Arc from ~4 o'clock back up to ~10 o'clock (counter-clockwise, ≈ 240°) */}
-      <Path
-        d="M12 5 A7 7 0 1 0 18.5 15.5"
-        stroke={color}
-        strokeWidth={2}
-        strokeLinecap="round"
-        fill="none"
-      />
-      {/* Arrow head pointing back to ~10 o'clock */}
-      <Path
-        d="M12 2 L12 8 L7.5 5 Z"
-        fill={color}
-      />
-    </Svg>
-  );
-}
-
-/** Skip to previous chapter */
-function SkipBackIcon({ size = 20, color }: { size?: number; color: string }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
-      {/* Vertical bar on left */}
-      <Path d="M6 4h2v16H6z" />
-      {/* Left-pointing filled triangle */}
-      <Path d="M18 5 L8 12 L18 19 Z" />
-    </Svg>
-  );
-}
-
-/** Skip to next chapter */
-function SkipForwardIcon({ size = 20, color }: { size?: number; color: string }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
-      {/* Right-pointing filled triangle */}
-      <Path d="M6 5 L16 12 L6 19 Z" />
-      {/* Vertical bar on right */}
-      <Path d="M16 4h2v16h-2z" />
-    </Svg>
-  );
-}
 
 // ── BookCoverImage — pure render helper ───────────────────────────────────────
 
@@ -810,7 +744,7 @@ export function TTSPage({
         hitSlop={14}
         accessibilityLabel={t("tts.restartFromHere")}
       >
-        <ReplayIcon size={20} color={colors.foreground} />
+        <RotateCcwIcon size={20} color={colors.foreground} />
       </Pressable>
 
       <TouchableOpacity
@@ -834,7 +768,7 @@ export function TTSPage({
         hitSlop={14}
         accessibilityLabel={t("common.stop")}
       >
-        <StopIcon size={20} color={colors.foreground} />
+        <SquareIcon size={18} color={colors.foreground} />
       </Pressable>
 
       {/* Next segment */}

@@ -14,6 +14,9 @@ export function sanitizeWebDavUrl(url: string): string {
     .replace(/\/+$/, "");
 }
 
+const DEFAULT_TIMEOUT_MS = 30_000;
+const TRANSFER_TIMEOUT_MS = 300_000;
+
 export class WebDavClient {
   private baseUrl: string;
   private authHeader: string;
@@ -34,6 +37,12 @@ export class WebDavClient {
         encoded.length > 24 ? `${encoded.slice(0, 12)}...${encoded.slice(-8)}` : encoded,
     });
     this.allowInsecure = allowInsecure ?? false;
+  }
+
+  private getTimeout(method: string, explicitTimeoutMs?: number): number {
+    if (explicitTimeoutMs !== undefined) return explicitTimeoutMs;
+    const isTransferOperation = method === "PUT" || method === "GET";
+    return isTransferOperation ? TRANSFER_TIMEOUT_MS : DEFAULT_TIMEOUT_MS;
   }
 
   private buildUrl(path: string): string {
@@ -76,7 +85,7 @@ export class WebDavClient {
         headers,
         body: options.body as BodyInit | undefined,
         allowInsecure: this.allowInsecure,
-        timeoutMs: options.timeoutMs,
+        timeoutMs: this.getTimeout(method, options.timeoutMs),
         responseType: options.responseType,
       });
       const elapsed = Date.now() - startTime;
@@ -84,35 +93,37 @@ export class WebDavClient {
         `[WebDAV] ${method} ${url} completed in ${elapsed}ms (status: ${response.status})`,
       );
       return response;
-    } catch (error) {
+    } catch (error: unknown) {
       const elapsed = Date.now() - startTime;
-      console.error(`[WebDAV] ${method} ${url} failed after ${elapsed}ms:`, error);
+      const err = error as { name?: string; message?: string; cause?: { code?: string } };
+      let errorType = "network";
+      if (err.name === "AbortError" || err.message?.includes("aborted")) {
+        errorType = "timeout";
+      } else if (err.cause?.code === "ECONNREFUSED" || err.message?.includes("connect")) {
+        errorType = "connection";
+      } else if (err.message?.includes("fetch")) {
+        errorType = "request";
+      }
+      console.error(
+        `[WebDAV] ${method} ${url} failed (${errorType}) after ${elapsed}ms:`,
+        error,
+      );
       throw error;
     }
   }
 
   /** Test if the server is reachable and credentials are valid */
   async ping(): Promise<void> {
-    // Prefer OPTIONS for connectivity/auth checks because some servers (including
-    // our local test server after its backing data dir is deleted) may return 404
-    // for PROPFIND / even though the server is reachable and sync can recreate data.
-    const optionsResp = await this.request("OPTIONS", "/", {
-      timeoutMs: 10_000,
-    });
-    if (optionsResp.ok) {
-      return;
-    }
-
-    // Fall back to PROPFIND for servers that don't expose OPTIONS cleanly.
-    const propfindResp = await this.request("PROPFIND", "/", {
+    const resp = await this.request("PROPFIND", "/", {
       headers: { Depth: "0" },
       body: '<?xml version="1.0"?><D:propfind xmlns:D="DAV:"><D:prop><D:resourcetype/></D:prop></D:propfind>',
       contentType: "application/xml",
       timeoutMs: 10_000,
     });
-    if (!propfindResp.ok && propfindResp.status !== 207 && propfindResp.status !== 404) {
-      throw new Error(`WebDAV ping failed: ${propfindResp.status} ${propfindResp.statusText}`);
+    if (resp.ok || resp.status === 207 || resp.status === 404) {
+      return;
     }
+    throw new Error(`WebDAV ping failed: ${resp.status} ${resp.statusText}`);
   }
 
   /** Test connection, returns true if successful */
@@ -128,11 +139,14 @@ export class WebDavClient {
   /** Create a directory (MKCOL) */
   async mkcol(path: string): Promise<void> {
     const resp = await this.request("MKCOL", path);
-    // 201 Created, 405 Already Exists, 409 Conflict (some WebDAV servers like
-    // Jianguoyun may return this for existing/intermediate paths) — all OK.
-    if (!resp.ok && resp.status !== 405 && resp.status !== 409) {
-      throw new Error(`WebDAV MKCOL failed for ${path}: ${resp.status} ${resp.statusText}`);
+    const status = resp.status;
+    if (resp.ok || status === 201) {
+      return;
     }
+    if (status === 405 || status === 409) {
+      return;
+    }
+    throw new Error(`WebDAV MKCOL failed for ${path}: ${status} ${resp.statusText}`);
   }
 
   /** Ensure a full directory path exists (creates each segment) */
@@ -141,8 +155,15 @@ export class WebDavClient {
     let current = "";
     for (const segment of segments) {
       current += `/${segment}`;
-      // MKCOL already handles 405 (Already Exists), no need for a separate HEAD check
-      await this.mkcol(current);
+      try {
+        await this.mkcol(current);
+      } catch (e: unknown) {
+        const err = e as { message?: string };
+        if (err.message?.includes("405") || err.message?.includes("409")) {
+          continue;
+        }
+        throw e;
+      }
     }
   }
 
@@ -216,14 +237,23 @@ export class WebDavClient {
       const resp = await this.request("HEAD", path);
       if (resp.ok) return true;
       if (resp.status === 405) {
-        const resp = await this.request("PROPFIND", path, {
-          headers: { Depth: "0" },
-          body: '<?xml version="1.0"?><D:propfind xmlns:D="DAV:"><D:prop><D:resourcetype/></D:prop></D:propfind>',
-          contentType: "application/xml",
-        });
-        return resp.ok || resp.status === 207;
+        return await this.propfindExists(path);
       }
       return false;
+    } catch {
+      return false;
+    }
+  }
+
+  /** PROPFIND Depth 0 to check if a resource exists */
+  private async propfindExists(path: string): Promise<boolean> {
+    try {
+      const resp = await this.request("PROPFIND", path, {
+        headers: { Depth: "0" },
+        body: '<?xml version="1.0"?><D:propfind xmlns:D="DAV:"><D:prop><D:resourcetype/></D:prop></D:propfind>',
+        contentType: "application/xml",
+      });
+      return resp.ok || resp.status === 207;
     } catch {
       return false;
     }

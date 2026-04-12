@@ -90,6 +90,7 @@ const READER_HTML_ASSET = Asset.fromModule(require("../../assets/reader/reader.h
 
 type Props = NativeStackScreenProps<RootStackParamList, "Reader">;
 type TTSSegment = VisibleTTSSegment;
+type TTSDebuggableSegment = { text: string; cfi?: string | null };
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const SCREEN_HEIGHT = Dimensions.get("window").height;
@@ -101,6 +102,92 @@ function formatReaderClock(date: Date) {
     minute: "2-digit",
     hour12: false,
   });
+}
+
+function normalizeTTSDebugText(text: string | null | undefined) {
+  return String(text || "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function logTTSDebugText(label: string, text: string | null | undefined, chunkSize = 220) {
+  if (!__DEV__) return;
+  const normalized = normalizeTTSDebugText(text);
+  const chunkCount = normalized ? Math.ceil(normalized.length / chunkSize) : 0;
+  console.log(`${label} summary`, {
+    length: normalized.length,
+    chunkCount,
+  });
+  if (!normalized) return;
+  for (let index = 0; index < chunkCount; index += 1) {
+    const start = index * chunkSize;
+    const end = start + chunkSize;
+    console.log(`${label}#${index + 1}/${chunkCount}`, normalized.slice(start, end));
+  }
+}
+
+function logTTSDebugSentenceList(
+  label: string,
+  sentences: Array<string | null | undefined>,
+  limit = Number.POSITIVE_INFINITY,
+) {
+  if (!__DEV__) return;
+  const normalized = sentences.map(normalizeTTSDebugText).filter(Boolean).slice(0, limit);
+  console.log(`${label} summary`, {
+    count: normalized.length,
+  });
+  normalized.forEach((sentence, index) => {
+    console.log(`${label}[${index}]`, {
+      length: sentence.length,
+      text: sentence,
+    });
+  });
+}
+
+function normalizeTTSDebugSegments(segments: TTSDebuggableSegment[]) {
+  return segments
+    .map((segment) => ({
+      cfi: segment.cfi || null,
+      text: normalizeTTSDebugText(segment.text),
+    }))
+    .filter((segment) => segment.text.length > 0);
+}
+
+function logTTSDebugSegments(label: string, segments: TTSDebuggableSegment[]) {
+  if (!__DEV__) return;
+  const normalized = normalizeTTSDebugSegments(segments);
+  console.log(`${label} summary`, {
+    count: normalized.length,
+    firstCfi: normalized[0]?.cfi || null,
+    lastCfi: normalized[normalized.length - 1]?.cfi || null,
+  });
+  normalized.forEach((segment, index) => {
+    console.log(`${label}[${index}]`, {
+      cfi: segment.cfi || null,
+      length: segment.text.length,
+      text: segment.text,
+    });
+  });
+}
+
+function collectMissingTTSDebugSentences(
+  sentences: string[],
+  segments: TTSDebuggableSegment[],
+) {
+  const segmentTexts = new Set(
+    normalizeTTSDebugSegments(segments).map((segment) => segment.text),
+  );
+  return sentences
+    .map(normalizeTTSDebugText)
+    .filter((sentence) => sentence.length > 0 && !segmentTexts.has(sentence));
+}
+
+function findTTSDebugSentenceIndex(sentence: string | null | undefined, segments: TTSDebuggableSegment[]) {
+  const normalizedSentence = normalizeTTSDebugText(sentence);
+  if (!normalizedSentence) return -1;
+  return normalizeTTSDebugSegments(segments).findIndex(
+    (segment) => segment.text === normalizedSentence,
+  );
 }
 
 const FONT_THEMES = [
@@ -292,7 +379,7 @@ export function ReaderScreen({ route, navigation }: Props) {
   const colors = useColors();
   const { mode: themeMode } = useTheme();
   const s = makeStyles(colors);
-  const { bookId, cfi, highlight: shouldHighlight } = route.params;
+  const { bookId, cfi, highlight: shouldHighlight, openTTS } = route.params;
   const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets();
   const isWideLayout = SCREEN_WIDTH >= 768;
@@ -366,6 +453,7 @@ export function ReaderScreen({ route, navigation }: Props) {
     goNext: () => void;
     getVisibleText: () => Promise<string>;
     getVisibleTTSSegments: (alignCfi?: string | null) => Promise<TTSSegment[]>;
+    getChapterParagraphs: () => Promise<Array<{ id: string; text: string; tagName: string }>>;
     getTTSSegmentContext: (
       cfi: string,
       before?: number,
@@ -495,20 +583,17 @@ export function ReaderScreen({ route, navigation }: Props) {
   );
   const localTTSChunkIndex = Math.max(0, ttsCurrentChunkIndex - ttsChunkOffset);
   const currentTTSSegment = useMemo(() => {
-    if (
-      ttsSegments.length > 0 &&
-      localTTSChunkIndex >= 0 &&
-      localTTSChunkIndex < ttsSegments.length
-    ) {
-      return ttsSegments[localTTSChunkIndex] || null;
-    }
-
     const normalizedCurrentText = (ttsCurrentSegmentText || ttsCurrentText || "")
       .replace(/\s+/g, " ")
       .trim();
-    if (ttsCurrentLocationCfi) {
-      return (
-        allLyricSegments.find((segment) => {
+    const normalizedSegmentText = (segment?: TTSSegment | null) =>
+      (segment?.text || "").replace(/\s+/g, " ").trim();
+    const indexSegment =
+      ttsSegments.length > 0 && localTTSChunkIndex >= 0 && localTTSChunkIndex < ttsSegments.length
+        ? ttsSegments[localTTSChunkIndex] || null
+        : null;
+    const cfiMatchedSegment = ttsCurrentLocationCfi
+      ? allLyricSegments.find((segment) => {
           if (segment.cfi !== ttsCurrentLocationCfi) return false;
           if (
             normalizedCurrentText &&
@@ -520,7 +605,31 @@ export function ReaderScreen({ route, navigation }: Props) {
         }) ||
         allLyricSegments.find((segment) => segment.cfi === ttsCurrentLocationCfi) ||
         null
-      );
+      : null;
+    const textMatchedSegment =
+      normalizedCurrentText.length > 0
+        ? allLyricSegments.find(
+            (segment) => normalizedSegmentText(segment) === normalizedCurrentText,
+          ) || null
+        : null;
+
+    if (indexSegment) {
+      if (!normalizedCurrentText) return indexSegment;
+      if (normalizedSegmentText(indexSegment) === normalizedCurrentText) {
+        return indexSegment;
+      }
+    }
+
+    if (cfiMatchedSegment) {
+      return cfiMatchedSegment;
+    }
+
+    if (textMatchedSegment) {
+      return textMatchedSegment;
+    }
+
+    if (indexSegment) {
+      return indexSegment;
     }
 
     return null;
@@ -1174,6 +1283,37 @@ export function ReaderScreen({ route, navigation }: Props) {
   ]);
 
   useEffect(() => {
+    if (!__DEV__) return;
+    if (ttsSourceKind !== "page") return;
+    if (ttsPlayState === "stopped") return;
+    console.log("[ReaderScreen][TTS] segment-resolution", {
+      currentChunkIndex: ttsCurrentChunkIndex,
+      ttsChunkOffset,
+      localTTSChunkIndex,
+      resolvedTTSSegmentCfi,
+      currentSegmentText: normalizeTTSDebugText(currentTTSSegment?.text),
+      storeSegmentText: normalizeTTSDebugText(ttsCurrentSegmentText),
+      currentLocationCfi: ttsCurrentLocationCfi,
+      ttsSegmentsLength: ttsSegments.length,
+      prevSegmentsLength: ttsPrevPageSegments.length,
+      futureSegmentsLength: ttsFutureSegments.length,
+    });
+  }, [
+    currentTTSSegment?.text,
+    localTTSChunkIndex,
+    resolvedTTSSegmentCfi,
+    ttsChunkOffset,
+    ttsCurrentChunkIndex,
+    ttsCurrentLocationCfi,
+    ttsCurrentSegmentText,
+    ttsFutureSegments.length,
+    ttsPlayState,
+    ttsPrevPageSegments.length,
+    ttsSegments.length,
+    ttsSourceKind,
+  ]);
+
+  useEffect(() => {
     if (!webViewReady) return;
     bridge.setBookmarkPullState({
       bookmarked: isBookmarked,
@@ -1376,6 +1516,45 @@ export function ReaderScreen({ route, navigation }: Props) {
     }
   }, [webViewReady, loading, cfi, shouldHighlight, bridge, navigation, bookId]);
 
+  useEffect(() => {
+    if (!openTTS || !webViewReady || loading) return;
+
+    let cancelled = false;
+    const openLyricsPage = async () => {
+      const targetCfi =
+        ttsCurrentBookId === bookId
+          ? resolvedTTSSegmentCfi || ttsCurrentLocationCfi || currentCfi || null
+          : null;
+      if (targetCfi && targetCfi !== currentCfi) {
+        bridge.goToCFI(targetCfi);
+        await new Promise((resolve) => setTimeout(resolve, 320));
+      }
+      if (cancelled) return;
+      setShowControls(false);
+      setShowTTS(true);
+      navigation.setParams({
+        bookId,
+        openTTS: undefined,
+      });
+    };
+
+    void openLyricsPage();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    bookId,
+    bridge,
+    currentCfi,
+    loading,
+    navigation,
+    openTTS,
+    resolvedTTSSegmentCfi,
+    ttsCurrentBookId,
+    ttsCurrentLocationCfi,
+    webViewReady,
+  ]);
+
   // Lock navigation when selection is active
   useEffect(() => {
     if (!webViewReady) return;
@@ -1523,6 +1702,122 @@ export function ReaderScreen({ route, navigation }: Props) {
         .filter((segment) => segment.text.length > 0);
     },
     [currentCfi],
+  );
+
+  const logTTSExtractionDiagnostics = useCallback(
+    async ({
+      reason,
+      alignCfi,
+      targetCfi,
+      targetText,
+      rawVisibleSegments,
+      playbackSegments,
+    }: {
+      reason: string;
+      alignCfi?: string | null;
+      targetCfi?: string | null;
+      targetText?: string | null;
+      rawVisibleSegments: TTSSegment[];
+      playbackSegments: TTSSegment[];
+    }) => {
+      if (!__DEV__) return;
+      if (!bridgeRef.current) return;
+
+      try {
+        const [chapterParagraphs, visibleText] = await Promise.all([
+          bridgeRef.current.getChapterParagraphs(),
+          bridgeRef.current.getVisibleText(),
+        ]);
+        const chapterText = chapterParagraphs
+          .map((paragraph: { id: string; text: string; tagName: string }) =>
+            normalizeTTSDebugText(paragraph.text),
+          )
+          .filter(Boolean)
+          .join("\n");
+        const normalizedVisibleText = normalizeTTSDebugText(visibleText);
+        const pageSentences = splitNarrationText(normalizedVisibleText)
+          .map((sentence) => normalizeTTSDebugText(sentence))
+          .filter(Boolean);
+        const normalizedRawVisibleSegments = normalizeTTSDebugSegments(rawVisibleSegments);
+        const normalizedPlaybackSegments = normalizeTTSDebugSegments(playbackSegments);
+        const missingFromRaw = collectMissingTTSDebugSentences(
+          pageSentences,
+          normalizedRawVisibleSegments,
+        );
+        const missingFromPlayback = collectMissingTTSDebugSentences(
+          pageSentences,
+          normalizedPlaybackSegments,
+        );
+        const pageFirstSentence = pageSentences[0] || null;
+        const rawFirstSentence = normalizedRawVisibleSegments[0]?.text || null;
+        const playbackFirstSentence = normalizedPlaybackSegments[0]?.text || null;
+
+        console.log("[ReaderScreen][TTS][diagnostics] summary", {
+          reason,
+          chapterTitle: currentChapter,
+          currentCfi,
+          alignCfi: alignCfi || null,
+          targetCfi: targetCfi || null,
+          targetTextLength: normalizeTTSDebugText(targetText).length,
+          chapterParagraphCount: chapterParagraphs.length,
+          chapterTextLength: chapterText.length,
+          visibleTextLength: normalizedVisibleText.length,
+          pageSentenceCount: pageSentences.length,
+          rawVisibleSegmentCount: normalizedRawVisibleSegments.length,
+          playbackSegmentCount: normalizedPlaybackSegments.length,
+          missingFromRawCount: missingFromRaw.length,
+          missingFromPlaybackCount: missingFromPlayback.length,
+          pageFirstSentence,
+          rawFirstSentence,
+          playbackFirstSentence,
+          pageFirstIndexInRaw: findTTSDebugSentenceIndex(
+            pageFirstSentence,
+            normalizedRawVisibleSegments,
+          ),
+          pageFirstIndexInPlayback: findTTSDebugSentenceIndex(
+            pageFirstSentence,
+            normalizedPlaybackSegments,
+          ),
+          rawFirstCfi: normalizedRawVisibleSegments[0]?.cfi || null,
+          playbackFirstCfi: normalizedPlaybackSegments[0]?.cfi || null,
+          playbackLastCfi:
+            normalizedPlaybackSegments[normalizedPlaybackSegments.length - 1]?.cfi || null,
+        });
+
+        logTTSDebugText("[ReaderScreen][TTS][diagnostics] chapter-text", chapterText);
+        logTTSDebugText("[ReaderScreen][TTS][diagnostics] visible-text", normalizedVisibleText);
+        logTTSDebugSentenceList(
+          "[ReaderScreen][TTS][diagnostics] visible-sentences",
+          pageSentences,
+        );
+        logTTSDebugSegments(
+          "[ReaderScreen][TTS][diagnostics] raw-visible-segments",
+          normalizedRawVisibleSegments,
+        );
+        logTTSDebugSegments(
+          "[ReaderScreen][TTS][diagnostics] playback-segments",
+          normalizedPlaybackSegments,
+        );
+        if (missingFromRaw.length > 0) {
+          logTTSDebugSentenceList(
+            "[ReaderScreen][TTS][diagnostics] missing-from-raw",
+            missingFromRaw,
+          );
+        }
+        if (missingFromPlayback.length > 0) {
+          logTTSDebugSentenceList(
+            "[ReaderScreen][TTS][diagnostics] missing-from-playback",
+            missingFromPlayback,
+          );
+        }
+      } catch (error) {
+        console.warn("[ReaderScreen][TTS][diagnostics] failed", {
+          reason,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    },
+    [currentCfi, currentChapter],
   );
 
   const dedupeTTSSegments = useCallback(
@@ -1705,13 +2000,81 @@ export function ReaderScreen({ route, navigation }: Props) {
 
   const recoverTTSLyricsState = useCallback(async () => {
     if (ttsSourceKind !== "page") return false;
-    const anchorCfi = resolvedTTSSegmentCfi || ttsCurrentLocationCfi || currentCfi || null;
+    if (ttsCurrentBookId !== bookId) return false;
+    const normalizedStoreSegmentText = normalizeTTSDebugText(ttsCurrentSegmentText);
+    const alignCfi = currentCfi || ttsCurrentLocationCfi || resolvedTTSSegmentCfi || null;
+    let anchorCfi = resolvedTTSSegmentCfi || ttsCurrentLocationCfi || currentCfi || null;
+
+    if (normalizedStoreSegmentText && bridgeRef.current) {
+      try {
+        const visibleSegments = await getNormalizedVisibleTTSSegments(alignCfi);
+        const visibleIndex = visibleSegments.findIndex(
+          (segment) => normalizeTTSDebugText(segment.text) === normalizedStoreSegmentText,
+        );
+        if (visibleIndex >= 0) {
+          const visibleSeed = visibleSegments.slice(visibleIndex);
+          const matchedVisible = visibleSeed[0] || null;
+          anchorCfi = matchedVisible?.cfi || anchorCfi;
+          const context = await getCachedTTSSegmentContext(
+            anchorCfi,
+            TTS_CONTEXT_WINDOW,
+            TTS_CONTEXT_WINDOW * 2,
+          );
+          const previous = filterDistinctTTSSegments(context.before || [], visibleSeed).slice(
+            -(TTS_CONTEXT_WINDOW * 2),
+          );
+          const future = filterDistinctTTSSegments(
+            context.after || [],
+            previous,
+            visibleSeed,
+          ).slice(0, TTS_CONTEXT_WINDOW * 2);
+          const nextText =
+            visibleSeed
+              .map((segment) => segment.text)
+              .join(" ")
+              .trim() ||
+            normalizedStoreSegmentText;
+
+          if (__DEV__) {
+            console.log("[ReaderScreen][TTS] recover-visible-match", {
+              anchorCfi,
+              visibleSegmentsLength: visibleSegments.length,
+              visibleIndex,
+              recoveredSegmentsLength: visibleSeed.length,
+              previousLength: previous.length,
+              futureLength: future.length,
+              normalizedStoreSegmentTextLength: normalizedStoreSegmentText.length,
+            });
+          }
+
+          setTtsPrevPageSegments(previous);
+          setTtsSegments(visibleSeed);
+          setTtsFutureSegments(future);
+          setTtsLastText(nextText);
+          ttsPrevPageSegmentsRef.current = previous;
+          ttsSegmentsRef.current = visibleSeed;
+          ttsFutureSegmentsRef.current = future;
+          ttsLastTextRef.current = nextText;
+          syncTTSChunkOffset(ttsCurrentChunkIndex);
+          if (anchorCfi) {
+            ttsSetCurrentLocation(anchorCfi);
+          }
+          return true;
+        }
+      } catch (error) {
+        console.warn("[ReaderScreen][TTS] recover-visible-match failed", {
+          error: error instanceof Error ? error.message : String(error),
+          alignCfi,
+          anchorCfi,
+        });
+      }
+    }
+
     if (!anchorCfi) return false;
 
     const seedSegments = (() => {
-      const currentSegmentText = (ttsCurrentSegmentText || "").replace(/\s+/g, " ").trim();
-      if (currentSegmentText) {
-        return [{ text: currentSegmentText, cfi: anchorCfi }];
+      if (normalizedStoreSegmentText) {
+        return [{ text: normalizedStoreSegmentText, cfi: anchorCfi }];
       }
       return splitNarrationText(ttsCurrentText || "")
         .map((text) => text.trim())
@@ -1761,6 +2124,15 @@ export function ReaderScreen({ route, navigation }: Props) {
       ttsFutureSegmentsRef.current = [];
       ttsLastTextRef.current = nextText;
       syncTTSChunkOffset(ttsCurrentChunkIndex);
+      if (__DEV__) {
+        console.log("[ReaderScreen][TTS] recover-context-fallback", {
+          anchorCfi,
+          previousLength: previous.length,
+          nextSegmentsLength: nextSegments.length,
+          nextTextLength: nextText.length,
+          currentChunkIndex: ttsCurrentChunkIndex,
+        });
+      }
       return true;
     } finally {
       if (ttsRecoveringLyricsRef.current === requestKey) {
@@ -1770,15 +2142,19 @@ export function ReaderScreen({ route, navigation }: Props) {
   }, [
     TTS_CONTEXT_WINDOW,
     currentCfi,
+    bookId,
     dedupeTTSSegments,
     filterDistinctTTSSegments,
     getCachedTTSSegmentContext,
+    getNormalizedVisibleTTSSegments,
     resolvedTTSSegmentCfi,
     syncTTSChunkOffset,
+    ttsCurrentBookId,
     ttsCurrentChunkIndex,
     ttsCurrentLocationCfi,
     ttsCurrentSegmentText,
     ttsCurrentText,
+    ttsSetCurrentLocation,
     ttsSourceKind,
   ]);
 
@@ -1816,9 +2192,29 @@ export function ReaderScreen({ route, navigation }: Props) {
   >(null);
   const ttsPrevPageSegmentsRef = useRef<TTSSegment[]>([]);
   const ttsChunkOffsetRef = useRef(0);
+  const ttsHandlingPageEndRef = useRef(false);
+  const ttsLastStopHandledSignatureRef = useRef<string | null>(null);
 
   const handleTTSPageEnd = useCallback(() => {
-    if (!ttsContinuousRef.current) return;
+    const shouldContinue = ttsContinuousRef.current && ttsSourceKind === "page";
+    console.log("[ReaderScreen][TTS] handle-page-end", {
+      shouldContinue,
+      continuousRef: ttsContinuousRef.current,
+      continuousEnabled: ttsContinuousEnabled,
+      sourceKind: ttsSourceKind,
+      currentChunkIndex: ttsCurrentChunkIndex,
+      totalChunks: ttsTotalChunks,
+      currentLocationCfi: ttsCurrentLocationCfi,
+      currentSegmentCfi: currentTTSSegment?.cfi || null,
+      activeSegmentsLength: ttsSegmentsRef.current.length,
+      hasRestartFromCfi: !!startPageTTSFromCfiRef.current,
+    });
+    if (!shouldContinue) return;
+    if (ttsHandlingPageEndRef.current) {
+      console.log("[ReaderScreen][TTS] handle-page-end skipped: already running");
+      return;
+    }
+    ttsHandlingPageEndRef.current = true;
     const previousSegments = ttsSegmentsRef.current;
     const previousFirstCfi =
       previousSegments[0]?.cfi || currentTTSSegment?.cfi || currentCfi || null;
@@ -1859,26 +2255,30 @@ export function ReaderScreen({ route, navigation }: Props) {
     bridgeRef.current?.setTTSHighlight(null);
 
     void (async () => {
-      if (!ttsContinuousRef.current) return;
-      const restartFromCfi = startPageTTSFromCfiRef.current;
-      const context = await getCachedTTSSegmentContext(previousLastCfi, 0, TTS_CONTEXT_WINDOW * 2);
-      const nextSegment =
-        (context.after || []).find((segment) => segment.text.trim().length > 0) || null;
-      console.log("[ReaderScreen][TTS] continue from context", {
-        previousLastCfi,
-        nextCfi: nextSegment?.cfi || null,
-        nextTextLength: nextSegment?.text?.length || 0,
-        afterCount: context.after?.length || 0,
-      });
+      try {
+        if (!ttsContinuousRef.current) return;
+        const restartFromCfi = startPageTTSFromCfiRef.current;
+        const context = await getCachedTTSSegmentContext(previousLastCfi, 0, TTS_CONTEXT_WINDOW * 2);
+        const nextSegment =
+          (context.after || []).find((segment) => segment.text.trim().length > 0) || null;
+        console.log("[ReaderScreen][TTS] continue from context", {
+          previousLastCfi,
+          nextCfi: nextSegment?.cfi || null,
+          nextTextLength: nextSegment?.text?.length || 0,
+          afterCount: context.after?.length || 0,
+        });
 
-      if (nextSegment?.cfi && restartFromCfi) {
-        await restartFromCfi(nextSegment.cfi, nextSegment.text);
-        return;
+        if (nextSegment?.cfi && restartFromCfi) {
+          await restartFromCfi(nextSegment.cfi, nextSegment.text);
+          return;
+        }
+
+        ttsContinuousRef.current = false;
+        ttsSetOnEnd(null);
+        ttsStop();
+      } finally {
+        ttsHandlingPageEndRef.current = false;
       }
-
-      ttsContinuousRef.current = false;
-      ttsSetOnEnd(null);
-      ttsStop();
     })();
   }, [
     TTS_CONTEXT_WINDOW,
@@ -1886,14 +2286,68 @@ export function ReaderScreen({ route, navigation }: Props) {
     currentTTSSegment?.cfi,
     getCachedTTSSegmentContext,
     mergeUniqueTTSSegments,
+    ttsContinuousEnabled,
+    ttsCurrentChunkIndex,
+    ttsCurrentLocationCfi,
     ttsSetOnEnd,
+    ttsSourceKind,
     ttsStop,
+    ttsTotalChunks,
   ]);
 
   useEffect(() => {
-    const shouldContinue = ttsContinuousRef.current && ttsSourceKind === "page";
+    const shouldContinue =
+      ttsCurrentBookId === bookId &&
+      ttsSourceKind === "page" &&
+      ttsContinuousEnabled &&
+      (ttsPlayState === "playing" || ttsPlayState === "paused" || ttsPlayState === "loading");
+    ttsContinuousRef.current = shouldContinue;
     ttsSetOnEnd(shouldContinue ? handleTTSPageEnd : null);
-  }, [handleTTSPageEnd, ttsSetOnEnd, ttsSourceKind]);
+  }, [
+    bookId,
+    handleTTSPageEnd,
+    ttsContinuousEnabled,
+    ttsCurrentBookId,
+    ttsPlayState,
+    ttsSetOnEnd,
+    ttsSourceKind,
+  ]);
+
+  useEffect(() => {
+    const naturalStopSignature =
+      ttsSourceKind === "page" &&
+      ttsContinuousRef.current &&
+      ttsPlayState === "stopped" &&
+      ttsTotalChunks > 0 &&
+      ttsCurrentChunkIndex >= Math.max(0, ttsTotalChunks - 1)
+        ? `${ttsCurrentChunkIndex}:${resolvedTTSSegmentCfi || ""}:${ttsTotalChunks}`
+        : null;
+
+    if (!naturalStopSignature) {
+      ttsLastStopHandledSignatureRef.current = null;
+      return;
+    }
+    if (ttsLastStopHandledSignatureRef.current === naturalStopSignature) {
+      return;
+    }
+    ttsLastStopHandledSignatureRef.current = naturalStopSignature;
+    console.log("[ReaderScreen][TTS] natural-stop-fallback", {
+      signature: naturalStopSignature,
+      currentChunkIndex: ttsCurrentChunkIndex,
+      totalChunks: ttsTotalChunks,
+      resolvedTTSSegmentCfi,
+      currentLocationCfi: ttsCurrentLocationCfi,
+    });
+    handleTTSPageEnd();
+  }, [
+    handleTTSPageEnd,
+    resolvedTTSSegmentCfi,
+    ttsCurrentChunkIndex,
+    ttsCurrentLocationCfi,
+    ttsPlayState,
+    ttsSourceKind,
+    ttsTotalChunks,
+  ]);
 
   const handleTTSPrevChapter = useCallback(() => {
     // Find index of current chapter in toc, go to previous
@@ -1973,8 +2427,17 @@ export function ReaderScreen({ route, navigation }: Props) {
           segmentCount: normalizedSegments.length,
           firstCfi: normalizedSegments[0]?.cfi || null,
           lastCfi: normalizedSegments[normalizedSegments.length - 1]?.cfi || null,
+          firstText: normalizeTTSDebugText(normalizedSegments[0]?.text),
         });
       }
+      void logTTSExtractionDiagnostics({
+        reason: "start-page",
+        alignCfi: pageAnchorCfi,
+        targetCfi: normalizedSegments[0]?.cfi || pageAnchorCfi,
+        targetText: normalizedSegments[0]?.text || null,
+        rawVisibleSegments: normalizedSegments,
+        playbackSegments: normalizedSegments,
+      });
       ttsStartChapterRef.current = currentChapter;
       setTtsSourceKind("page");
       setTtsContinuousEnabled(continuous);
@@ -2022,6 +2485,7 @@ export function ReaderScreen({ route, navigation }: Props) {
       currentChapter,
       bookId,
       currentCfi,
+      logTTSExtractionDiagnostics,
       primeTTSLyricContext,
     ],
   );
@@ -2078,14 +2542,24 @@ export function ReaderScreen({ route, navigation }: Props) {
           targetCfi,
           normalizedTargetTextLength: normalizedTargetText.length,
           normalizedSegmentsLength: normalizedSegments.length,
+          exactVisibleIndex,
           visibleIndexByCfi,
           visibleSegmentsLength: visibleSegments.length,
           previousLength: previous.length,
           futureLength: future.length,
           firstVisibleCfi: visibleSegments[0]?.cfi || null,
           lastVisibleCfi: visibleSegments[visibleSegments.length - 1]?.cfi || null,
+          firstVisibleText: normalizeTTSDebugText(visibleSegments[0]?.text),
         });
       }
+      void logTTSExtractionDiagnostics({
+        reason: "start-from-cfi",
+        alignCfi: targetCfi,
+        targetCfi,
+        targetText: normalizedTargetText,
+        rawVisibleSegments: normalizedSegments,
+        playbackSegments: visibleSegments,
+      });
       setTtsSegments(visibleSegments);
       setTtsPrevPageSegments(previous);
       setTtsFutureSegments(future);
@@ -2109,6 +2583,7 @@ export function ReaderScreen({ route, navigation }: Props) {
       getCachedTTSSegmentContext,
       getNormalizedVisibleTTSSegments,
       handleTTSPageEnd,
+      logTTSExtractionDiagnostics,
       mergeUniqueTTSSegments,
       TTS_CONTEXT_WINDOW,
       ttsContinuousEnabled,
@@ -2519,6 +2994,55 @@ export function ReaderScreen({ route, navigation }: Props) {
     ttsPrevPageSegments.length,
     ttsSegments.length,
     ttsSourceKind,
+  ]);
+
+  useEffect(() => {
+    if (!webViewReady) return;
+    if (ttsCurrentBookId !== bookId) return;
+    if (ttsSourceKind !== "page") return;
+    if (ttsPlayState === "stopped") return;
+
+    const hasAnySegments =
+      ttsSegments.length > 0 || ttsPrevPageSegments.length > 0 || ttsFutureSegments.length > 0;
+    const needsRecovery =
+      !hasAnySegments ||
+      (!currentTTSSegment &&
+        (normalizeTTSDebugText(ttsCurrentSegmentText).length > 0 ||
+          normalizeTTSDebugText(ttsCurrentLocationCfi).length > 0));
+
+    if (!needsRecovery) return;
+
+    if (__DEV__) {
+      console.log("[ReaderScreen][TTS] recover-state-needed", {
+        showTTS,
+        playState: ttsPlayState,
+        currentChunkIndex: ttsCurrentChunkIndex,
+        hasAnySegments,
+        currentSegmentResolved: !!currentTTSSegment,
+        storeSegmentTextLength: normalizeTTSDebugText(ttsCurrentSegmentText).length,
+        currentLocationCfi: ttsCurrentLocationCfi,
+        ttsSegmentsLength: ttsSegments.length,
+        prevSegmentsLength: ttsPrevPageSegments.length,
+        futureSegmentsLength: ttsFutureSegments.length,
+      });
+    }
+
+    void recoverTTSLyricsState();
+  }, [
+    bookId,
+    currentTTSSegment,
+    recoverTTSLyricsState,
+    showTTS,
+    ttsCurrentBookId,
+    ttsCurrentChunkIndex,
+    ttsCurrentLocationCfi,
+    ttsCurrentSegmentText,
+    ttsFutureSegments.length,
+    ttsPlayState,
+    ttsPrevPageSegments.length,
+    ttsSegments.length,
+    ttsSourceKind,
+    webViewReady,
   ]);
 
   useEffect(() => {

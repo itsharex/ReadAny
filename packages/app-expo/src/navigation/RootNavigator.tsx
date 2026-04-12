@@ -21,7 +21,7 @@ import { TabNavigator } from "./TabNavigator";
 export type RootStackParamList = {
   Onboarding: undefined;
   Tabs: undefined;
-  Reader: { bookId: string; cfi?: string; highlight?: boolean };
+  Reader: { bookId: string; cfi?: string; highlight?: boolean; openTTS?: boolean };
   BookChat: { bookId: string; selectedText?: string; chapterTitle?: string };
   Stats: undefined;
   Skills: undefined;

@@ -20,6 +20,33 @@ import {
   type SyncResult,
 } from "./sync-types";
 
+// ─── Sync Mutex ────────────────────────────────────────────────────────────────
+
+let syncInProgress: Promise<void> | null = null;
+
+/**
+ * Acquire sync lock — prevents concurrent sync operations.
+ * Returns a function to release the lock when done.
+ */
+async function acquireSyncLock(): Promise<() => void> {
+  if (syncInProgress) {
+    console.log("[Sync] ⏳ Another sync is in progress, waiting...");
+    await syncInProgress;
+  }
+
+  let release: () => void = () => {};
+  syncInProgress = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+
+  console.log("[Sync] 🔒 Sync lock acquired");
+  return () => {
+    console.log("[Sync] 🔓 Sync lock released");
+    syncInProgress = null;
+    release();
+  };
+}
+
 /** Get a sync metadata value from the database */
 async function getSyncMeta(key: string): Promise<string | null> {
   const db = await getDB();
@@ -741,6 +768,7 @@ export async function runSync(
   useIncremental?: boolean,
   fileSyncOptions: SyncFilesOptions = {},
 ): Promise<SyncResult> {
+  const releaseLock = await acquireSyncLock();
   const startTime = Date.now();
   console.log(
     `[Sync] 🚀 Starting sync: direction=${direction}, incremental=${useIncremental ?? false}`,
@@ -851,6 +879,8 @@ export async function runSync(
       durationMs: Date.now() - startTime,
       error: e instanceof Error ? e.message : String(e),
     };
+  } finally {
+    releaseLock();
   }
 }
 
