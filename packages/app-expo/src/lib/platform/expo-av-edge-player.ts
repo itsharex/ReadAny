@@ -4,6 +4,9 @@
  * Fetch MP3 chunks from Microsoft Edge TTS → write to temp files → play
  * sequentially via expo-av Audio.Sound with background audio enabled.
  *
+ * Pipeline: while chunk N is playing, chunk N+1's Sound is pre-created
+ * in background so there is zero gap between chunks.
+ *
  * Background audio is enabled via Audio.setAudioModeAsync called at app
  * startup (see App.tsx). This player just manages playback.
  */
@@ -14,6 +17,11 @@ import { fetchEdgeTTSAudio } from "@readany/core/tts";
 import { splitIntoChunks } from "@readany/core/tts";
 
 const CHUNK_MAX_CHARS = 500;
+
+interface PrefetchedSound {
+  sound: Audio.Sound;
+  uri: string;
+}
 
 export class ExpoAVEdgeTTSPlayer implements ITTSPlayer {
   private static readonly BUFFER_SIZE = 4;
@@ -33,6 +41,9 @@ export class ExpoAVEdgeTTSPlayer implements ITTSPlayer {
   private _producerIndex = 0;
   private _producerWake: (() => void) | null = null;
 
+  private _nextSoundPromise: Promise<PrefetchedSound> | null = null;
+  private _nextSoundIndex = -1;
+
   async speak(text: string | string[], config: TTSConfig): Promise<void> {
     await this._cleanup();
     this._stopped = false;
@@ -43,7 +54,19 @@ export class ExpoAVEdgeTTSPlayer implements ITTSPlayer {
     this._tempFiles = [];
     this._prefetchBuffer.clear();
     this._producerIndex = 0;
+    this._nextSoundPromise = null;
+    this._nextSoundIndex = -1;
     this._runProducer();
+
+    const prewarmCount = Math.min(ExpoAVEdgeTTSPlayer.BUFFER_SIZE, this._chunks.length);
+    for (let p = 0; p < prewarmCount; p++) {
+      if (this._prefetchBuffer.has(p)) continue;
+      if (this._stopped) return;
+      const promise = this._fetchChunkFile(p);
+      promise.catch(() => {});
+      this._prefetchBuffer.set(p, promise);
+      this._producerIndex = p + 1;
+    }
 
     this.onStateChange?.("playing");
     await this._playChunk();
@@ -63,18 +86,43 @@ export class ExpoAVEdgeTTSPlayer implements ITTSPlayer {
     this.onChunkChange?.(idx, this._chunks.length);
 
     let audioUri: string | null = null;
+    let usedPrefetched = false;
     try {
-      audioUri = await this._getChunkFile(idx);
-      if (this._stopped) return;
 
-      const { sound } = await Audio.Sound.createAsync(
-        { uri: audioUri },
-        { shouldPlay: !this._paused, rate: 1.0, shouldCorrectPitch: false },
-      );
-      this._currentSound = sound;
+      const nextIdx = idx + 1;
+      const hasNextPrefetched =
+        this._nextSoundPromise !== null && this._nextSoundIndex === idx && idx < this._chunks.length;
+
+      if (hasNextPrefetched) {
+        const prefetched = await this._nextSoundPromise!;
+        this._nextSoundPromise = null;
+        this._nextSoundIndex = -1;
+        if (!this._stopped) {
+          this._currentSound = prefetched.sound;
+          audioUri = prefetched.uri;
+          usedPrefetched = true;
+          if (!this._paused) {
+            await prefetched.sound.playAsync();
+          }
+        } else {
+          await prefetched.sound.unloadAsync().catch(() => {});
+          return;
+        }
+      } else {
+        audioUri = await this._getChunkFile(idx);
+        if (this._stopped) return;
+        const { sound } = await Audio.Sound.createAsync(
+          { uri: audioUri },
+          { shouldPlay: !this._paused, rate: 1.0, shouldCorrectPitch: false },
+        );
+        this._currentSound = sound;
+      }
+
+      const sound = this._currentSound!;
+
+      this._prefetchNextSound(idx + 1);
 
       if (this._paused) {
-        // Created but not playing; wait for resume
         await new Promise<void>((resolve) => {
           const checkInterval = setInterval(() => {
             if (this._stopped) {
@@ -88,6 +136,7 @@ export class ExpoAVEdgeTTSPlayer implements ITTSPlayer {
         });
         if (this._stopped) {
           await sound.unloadAsync().catch(() => {});
+          this._currentSound = null;
           return;
         }
       }
@@ -128,14 +177,33 @@ export class ExpoAVEdgeTTSPlayer implements ITTSPlayer {
     } finally {
       this._prefetchBuffer.delete(idx);
       this._producerWake?.();
-      // Clean up temp file
-      if (audioUri) {
+      if (audioUri && !usedPrefetched) {
         try {
           const f = new File(audioUri);
           if (f.exists) f.delete();
         } catch {}
       }
     }
+  }
+
+  private _prefetchNextSound(idx: number): void {
+    if (this._stopped || idx >= this._chunks.length) return;
+    if (this._nextSoundPromise !== null) return;
+    this._nextSoundIndex = idx;
+    this._nextSoundPromise = (async () => {
+      const uri = await this._getChunkFile(idx);
+      if (this._stopped) throw new Error("aborted");
+      const { sound } = await Audio.Sound.createAsync(
+        { uri },
+        { shouldPlay: false, rate: 1.0, shouldCorrectPitch: false },
+      );
+      return { sound, uri };
+    })().catch((err) => {
+      if ((err as Error)?.message !== "aborted") {
+        console.error("[ExpoAVEdgeTTSPlayer] prefetch error:", err);
+      }
+      throw err;
+    });
   }
 
   pause(): void {
@@ -157,6 +225,8 @@ export class ExpoAVEdgeTTSPlayer implements ITTSPlayer {
     this._currentSound?.stopAsync().catch(() => {});
     this._currentSound?.unloadAsync().catch(() => {});
     this._currentSound = null;
+    this._nextSoundPromise = null;
+    this._nextSoundIndex = -1;
     this._prefetchBuffer.clear();
     this._producerWake?.();
     this._cleanupTempFiles();
@@ -169,6 +239,13 @@ export class ExpoAVEdgeTTSPlayer implements ITTSPlayer {
       await this._currentSound.stopAsync().catch(() => {});
       await this._currentSound.unloadAsync().catch(() => {});
       this._currentSound = null;
+    }
+    if (this._nextSoundPromise) {
+      try {
+        const prefetched = await this._nextSoundPromise;
+        await prefetched.sound.unloadAsync().catch(() => {});
+      } catch {}
+      this._nextSoundPromise = null;
     }
     this._prefetchBuffer.clear();
     this._producerWake?.();

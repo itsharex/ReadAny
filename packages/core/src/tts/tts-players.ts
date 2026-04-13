@@ -472,6 +472,16 @@ export class EdgeTTSPlayer implements ITTSPlayer {
 
     this.runProducer(base);
 
+    const prewarmCount = Math.min(EdgeTTSPlayer.BUFFER_SIZE, this.chunks.length);
+    for (let p = 0; p < prewarmCount; p++) {
+      if (this.fetchBuffer.has(p)) continue;
+      if (!this._playing || this.aborted) return;
+      const promise = fetchEdgeTTSAudio({ text: this.chunks[p], ...base });
+      promise.catch(() => {});
+      this.fetchBuffer.set(p, promise);
+      this.producerIndex = p + 1;
+    }
+
     for (let i = 0; i < this.chunks.length; i++) {
       if (!this._playing || this.aborted) return;
       try {
@@ -575,6 +585,8 @@ export class EdgeTTSPlayer implements ITTSPlayer {
   pause() {
     if (!this._playing || this._paused) return;
     this.audioCtx?.suspend();
+    for (const timer of this.chunkStartTimers) clearTimeout(timer);
+    this.chunkStartTimers.clear();
     this._paused = true;
     this.onStateChange?.("paused");
   }
