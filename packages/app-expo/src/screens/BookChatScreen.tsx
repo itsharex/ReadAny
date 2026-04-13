@@ -14,8 +14,6 @@ import {
   Keyboard,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -33,9 +31,6 @@ import type { AttachedQuote } from "@readany/core/types";
 import type { CitationPart, MessageV2 } from "@readany/core/types/message";
 import {
   convertToMessageV2,
-  formatRelativeTimeShort,
-  getMonthLabel,
-  groupThreadsByTime,
   mergeMessagesWithStreaming,
 } from "@readany/core/utils";
 
@@ -46,11 +41,10 @@ import {
   ChevronLeftIcon,
   HistoryIcon,
   MessageCirclePlusIcon,
-  Trash2Icon,
-  XIcon,
 } from "@/components/ui/Icon";
-import { fontSize as fs, fontWeight as fw, radius, useColors, withOpacity } from "@/styles/theme";
+import { fontSize as fs, fontWeight as fw, radius, useColors } from "@/styles/theme";
 import type { ThemeColors } from "@/styles/theme";
+import { ThreadSidebar } from "./chat/ThreadSidebar";
 
 const THINK_PNG = require("../../assets/think.png");
 
@@ -251,33 +245,6 @@ export function BookChatScreen({ route, navigation }: Props) {
     [bookId, setBookActiveThread, closeSidebar],
   );
 
-  const formatTime = useCallback((ts: number) => formatRelativeTimeShort(ts, t), [t]);
-
-  const groupedThreads = useMemo(() => {
-    const grouped = groupThreadsByTime(bookThreads);
-    const sections: { key: string; label: string; threads: typeof bookThreads }[] = [
-      { key: "today", label: t("chat.today", "今天"), threads: grouped.today },
-      { key: "yesterday", label: t("chat.yesterday", "昨天"), threads: grouped.yesterday },
-      { key: "last7Days", label: t("chat.last7Days", "7 天内"), threads: grouped.last7Days },
-      { key: "last30Days", label: t("chat.last30Days", "30 天内"), threads: grouped.last30Days },
-    ];
-
-    const olderByMonth = new Map<string, typeof bookThreads>();
-    for (const thread of grouped.older) {
-      const monthLabel = getMonthLabel(thread.updatedAt);
-      if (!olderByMonth.has(monthLabel)) {
-        olderByMonth.set(monthLabel, []);
-      }
-      olderByMonth.get(monthLabel)!.push(thread);
-    }
-    const sortedMonths = [...olderByMonth.keys()].sort((a, b) => b.localeCompare(a));
-    for (const month of sortedMonths) {
-      sections.push({ key: month, label: month, threads: olderByMonth.get(month)! });
-    }
-
-    return sections;
-  }, [bookThreads, t]);
-
   const SUGGESTIONS = useMemo(
     () => [
       t("chat.suggestions.summarizeChapter"),
@@ -366,87 +333,17 @@ export function BookChatScreen({ route, navigation }: Props) {
         />
       </KeyboardAvoidingView>
 
-      {/* Thread sidebar overlay */}
-      {showSidebar && (
-        <View style={[StyleSheet.absoluteFill, { zIndex: 20 }]} pointerEvents="box-none">
-          <Animated.View style={[s.sidebarBackdrop, { opacity: backdropAnim }]}>
-            <Pressable style={StyleSheet.absoluteFill} onPress={closeSidebar} />
-          </Animated.View>
-          <Animated.View
-            style={[
-              s.sidebar,
-              { paddingTop: insets.top, transform: [{ translateX: sidebarAnim }] },
-            ]}
-          >
-            <View style={s.sidebarHeader}>
-              <Text style={s.sidebarTitle}>{t("chat.history", "历史记录")}</Text>
-              <TouchableOpacity style={s.iconBtn} onPress={closeSidebar}>
-                <XIcon size={16} color={colors.foreground} />
-              </TouchableOpacity>
-            </View>
-            <ScrollView
-              style={{ flex: 1 }}
-              contentContainerStyle={{ paddingBottom: 20 }}
-              showsVerticalScrollIndicator={false}
-            >
-              {bookThreads.length === 0 ? (
-                <View style={s.sidebarEmpty}>
-                  <Text style={s.sidebarEmptyText}>{t("chat.noConversations", "暂无对话")}</Text>
-                </View>
-              ) : (
-                groupedThreads.map(({ key, label, threads }) => {
-                  if (threads.length === 0) return null;
-                  return (
-                    <View key={key}>
-                      <Text style={s.sectionLabel}>{label}</Text>
-                      {threads.map((thread) => {
-                        const isActive = thread.id === activeThreadId;
-                        const lastMsg =
-                          thread.messages.length > 0
-                            ? thread.messages[thread.messages.length - 1]
-                            : null;
-                        const preview = lastMsg?.content?.slice(0, 60) || "";
-                        return (
-                          <TouchableOpacity
-                            key={thread.id}
-                            style={[s.threadItem, isActive && s.threadItemActive]}
-                            onPress={() => handleSelectThread(thread.id)}
-                            activeOpacity={0.7}
-                          >
-                            <View style={s.threadContent}>
-                              <View style={s.threadTitleRow}>
-                                <Text
-                                  style={[s.threadTitle, isActive && s.threadTitleActive]}
-                                  numberOfLines={1}
-                                >
-                                  {thread.title || t("chat.newChat", "新对话")}
-                                </Text>
-                                <Text style={s.threadTime}>{formatTime(thread.updatedAt)}</Text>
-                              </View>
-                              {preview ? (
-                                <Text style={s.threadPreview} numberOfLines={1}>
-                                  {preview}
-                                </Text>
-                              ) : null}
-                            </View>
-                            <TouchableOpacity
-                              style={s.threadDeleteBtn}
-                              onPress={() => removeThread(thread.id)}
-                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                            >
-                              <Trash2Icon size={12} color={colors.mutedForeground} />
-                            </TouchableOpacity>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </View>
-                  );
-                })
-              )}
-            </ScrollView>
-          </Animated.View>
-        </View>
-      )}
+      <ThreadSidebar
+        visible={showSidebar}
+        threads={bookThreads}
+        activeThreadId={activeThreadId}
+        sidebarAnim={sidebarAnim}
+        backdropAnim={backdropAnim}
+        insetTop={insets.top}
+        onClose={closeSidebar}
+        onSelectThread={handleSelectThread}
+        onRemoveThread={removeThread}
+      />
     </SafeAreaView>
   );
 }
