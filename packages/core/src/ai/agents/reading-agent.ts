@@ -15,6 +15,7 @@ import { z } from "zod";
 import type { AIConfig, Book, SemanticContext, Skill } from "../../types";
 import { createChatModel } from "../llm-provider";
 import { buildSystemPrompt } from "../system-prompt";
+import { ThinkTagStreamParser } from "../think-tag-parser";
 import type { ToolDefinition, ToolParameter } from "../tools/tool-types";
 
 // --- Stream Event Types ---
@@ -190,10 +191,48 @@ export async function* streamReadingAgent(
       const { SystemMessage } = await import("@langchain/core/messages");
       const allMessages = [new SystemMessage(systemPrompt), ...inputMessages];
       const stream = await model.stream(allMessages);
+      const thinkTagParser = new ThinkTagStreamParser();
       for await (const chunk of stream) {
-        const content = typeof chunk.content === "string" ? chunk.content : "";
-        if (content) {
-          yield { type: "token", content };
+        const content = chunk.content;
+        if (typeof content === "string" && content) {
+          for (const event of thinkTagParser.push(content)) {
+            if (event.type === "token") {
+              yield { type: "token", content: event.content };
+            } else {
+              yield { type: "reasoning", content: event.content, stepType: "thinking" };
+            }
+          }
+        } else if (Array.isArray(content)) {
+          for (const block of content) {
+            if (block.type === "text" && typeof block.text === "string" && block.text) {
+              for (const event of thinkTagParser.push(block.text)) {
+                if (event.type === "token") {
+                  yield { type: "token", content: event.content };
+                } else {
+                  yield { type: "reasoning", content: event.content, stepType: "thinking" };
+                }
+              }
+            } else if (block.type === "thinking") {
+              const thinkingContent = [block.text, block.thinking, block.content].find(
+                (value): value is string => typeof value === "string" && value.length > 0,
+              );
+              if (thinkingContent) {
+                yield { type: "reasoning", content: thinkingContent, stepType: "thinking" };
+              }
+            }
+          }
+        }
+
+        const reasoningContent = chunk.additional_kwargs?.reasoning_content;
+        if (typeof reasoningContent === "string" && reasoningContent) {
+          yield { type: "reasoning", content: reasoningContent, stepType: "thinking" };
+        }
+      }
+      for (const event of thinkTagParser.flush()) {
+        if (event.type === "token") {
+          yield { type: "token", content: event.content };
+        } else {
+          yield { type: "reasoning", content: event.content, stepType: "thinking" };
         }
       }
       return;
@@ -253,6 +292,7 @@ export async function* streamReadingAgent(
 
     const iterator = eventStream[Symbol.asyncIterator]();
     let eventResult = await raceNext(iterator);
+    const thinkTagParser = new ThinkTagStreamParser();
 
     while (!eventResult.done) {
       const event = eventResult.value as any;
@@ -269,16 +309,30 @@ export async function* streamReadingAgent(
           // OpenAI models often send text (the "reason" before calling a tool) and
           // tool_call_chunks in the same stream of chunks.
           if (typeof content === "string" && content) {
-            yield { type: "token", content };
+            for (const event of thinkTagParser.push(content)) {
+              if (event.type === "token") {
+                yield { type: "token", content: event.content };
+              } else {
+                yield { type: "reasoning", content: event.content, stepType: "thinking" };
+              }
+            }
           } else if (Array.isArray(content)) {
             // Handle Anthropic-style content blocks (text + thinking)
             for (const block of content) {
-              if (block.type === "text" && block.text) {
-                yield { type: "token", content: block.text };
+              if (block.type === "text" && typeof block.text === "string" && block.text) {
+                for (const event of thinkTagParser.push(block.text)) {
+                  if (event.type === "token") {
+                    yield { type: "token", content: event.content };
+                  } else {
+                    yield { type: "reasoning", content: event.content, stepType: "thinking" };
+                  }
+                }
               } else if (block.type === "thinking") {
                 // Anthropic may return thinking content in different fields
                 // Try block.text first (most common), then block.thinking, then block.content
-                const thinkingContent = block.text || block.thinking || block.content;
+                const thinkingContent = [block.text, block.thinking, block.content].find(
+                  (value): value is string => typeof value === "string" && value.length > 0,
+                );
                 if (thinkingContent) {
                   yield { type: "reasoning", content: thinkingContent, stepType: "thinking" };
                 }
@@ -326,6 +380,14 @@ export async function* streamReadingAgent(
       // emitted from streaming chunks (e.g. non-OpenAI models that don't
       // send tool_call_chunks).
       if (event.event === "on_chat_model_end") {
+        for (const flushedEvent of thinkTagParser.flush()) {
+          if (flushedEvent.type === "token") {
+            yield { type: "token", content: flushedEvent.content };
+          } else {
+            yield { type: "reasoning", content: flushedEvent.content, stepType: "thinking" };
+          }
+        }
+
         // Clear streaming accumulator for the next LLM turn
         streamingToolCalls.clear();
 

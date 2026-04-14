@@ -1,5 +1,6 @@
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import type { AIConfig, AIEndpoint } from "../types";
+import { logAIEndpointDebug, summarizeDebugText } from "./request-debug";
 import { providerRequiresApiKey } from "../utils";
 import { formatApiHost } from "../utils/api";
 
@@ -13,18 +14,150 @@ export function setStreamingFetch(fetchImpl: typeof globalThis.fetch) {
   _streamingFetch = fetchImpl;
 }
 
-function getEndpointFetch(endpoint: AIEndpoint): typeof globalThis.fetch | undefined {
-  const exactUrl = endpoint.useExactRequestUrl ? endpoint.baseUrl?.trim() : "";
-  if (!exactUrl) {
-    return _streamingFetch;
+function isRequestLike(input: RequestInfo | URL): input is Request {
+  return typeof Request !== "undefined" && input instanceof Request;
+}
+
+function isURLLike(input: RequestInfo | URL): input is URL {
+  return typeof URL !== "undefined" && input instanceof URL;
+}
+
+function resolveRequestUrl(input: RequestInfo | URL, exactUrl?: string): string {
+  if (exactUrl) return exactUrl;
+  if (isRequestLike(input)) return input.url;
+  if (isURLLike(input)) return input.toString();
+  return typeof input === "string" ? input : String(input);
+}
+
+function shouldSanitizeCustomHeaders(endpoint: AIEndpoint): boolean {
+  return endpoint.provider === "custom";
+}
+
+function mergeRequestHeaders(input: RequestInfo | URL, init?: RequestInit): Headers | undefined {
+  const merged = new Headers();
+  let hasHeaders = false;
+
+  if (isRequestLike(input)) {
+    for (const [key, value] of input.headers.entries()) {
+      merged.set(key, value);
+      hasHeaders = true;
+    }
   }
 
-  const baseFetch = (_streamingFetch ?? globalThis.fetch).bind(globalThis);
-  return ((input: RequestInfo | URL, init?: RequestInit) => {
-    if (input instanceof Request) {
-      return baseFetch(new Request(exactUrl, input), init);
+  if (init?.headers) {
+    for (const [key, value] of new Headers(init.headers).entries()) {
+      merged.set(key, value);
+      hasHeaders = true;
     }
-    return baseFetch(exactUrl, init);
+  }
+
+  return hasHeaders ? merged : undefined;
+}
+
+function sanitizeCustomHeaders(headers?: Headers): Headers | undefined {
+  if (!headers) return undefined;
+
+  const sanitized = new Headers();
+  for (const key of ["accept", "authorization", "content-type"]) {
+    const value = headers.get(key);
+    if (value) sanitized.set(key, value);
+  }
+
+  return sanitized;
+}
+
+function getEndpointFetch(endpoint: AIEndpoint, model?: string): typeof globalThis.fetch {
+  const exactUrl = endpoint.useExactRequestUrl ? endpoint.baseUrl?.trim() : "";
+  const baseFetch = (_streamingFetch ?? globalThis.fetch).bind(globalThis);
+
+  return (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const finalInput = isRequestLike(input)
+      ? exactUrl
+        ? new Request(exactUrl, input)
+        : input
+      : exactUrl || input;
+    const requestUrl = resolveRequestUrl(input, exactUrl || undefined);
+    const requestMethod =
+      init?.method || (isRequestLike(finalInput) ? finalInput.method : undefined) || "GET";
+    let requestInput = finalInput;
+    let requestInit = init;
+
+    if (shouldSanitizeCustomHeaders(endpoint)) {
+      const sanitizedHeaders = sanitizeCustomHeaders(mergeRequestHeaders(finalInput, init));
+      if (sanitizedHeaders) {
+        if (isRequestLike(requestInput)) {
+          requestInput = new Request(requestInput, { headers: sanitizedHeaders });
+          requestInit = init ? { ...init, headers: sanitizedHeaders } : undefined;
+        } else {
+          requestInit = { ...(init ?? {}), headers: sanitizedHeaders };
+        }
+      }
+    }
+
+    logAIEndpointDebug("request", endpoint, {
+      action: "langchain-chat",
+      method: requestMethod,
+      requestUrl,
+      model,
+    });
+
+    try {
+      const response = await baseFetch(requestInput, requestInit);
+      const contentType = response.headers.get("content-type");
+
+      if (!response.ok) {
+        let responseBodyPreview = "";
+        let responseLength: number | undefined;
+
+        try {
+          const responseText = await response.clone().text();
+          responseLength = responseText.length;
+          responseBodyPreview = summarizeDebugText(responseText, 600);
+        } catch (readError) {
+          responseBodyPreview = summarizeDebugText(
+            readError instanceof Error ? readError.message : String(readError),
+            200,
+          );
+        }
+
+        logAIEndpointDebug("error", endpoint, {
+          action: "langchain-chat",
+          method: requestMethod,
+          requestUrl,
+          model,
+          status: response.status,
+          statusText: response.statusText,
+          contentType,
+          responseLength,
+          responseBodyPreview,
+        });
+        return response;
+      }
+
+      logAIEndpointDebug("response", endpoint, {
+        action: "langchain-chat",
+        method: requestMethod,
+        requestUrl,
+        model,
+        status: response.status,
+        statusText: response.statusText,
+        contentType,
+      });
+
+      return response;
+    } catch (error) {
+      logAIEndpointDebug("error", endpoint, {
+        action: "langchain-chat",
+        method: requestMethod,
+        requestUrl,
+        model,
+        responseBodyPreview: summarizeDebugText(
+          error instanceof Error ? error.message : String(error),
+          200,
+        ),
+      });
+      throw error;
+    }
   }) as typeof globalThis.fetch;
 }
 
@@ -97,6 +230,7 @@ export async function createChatModelFromEndpoint(
   const temperature = options.temperature ?? 0.7;
   const maxTokens = options.maxTokens ?? 4096;
   const streaming = options.streaming ?? true;
+  const endpointFetch = getEndpointFetch(endpoint, model);
 
   switch (endpoint.provider) {
     case "anthropic": {
@@ -110,7 +244,7 @@ export async function createChatModelFromEndpoint(
         streaming,
         clientOptions: {
           ...(endpoint.baseUrl ? { baseURL: endpoint.baseUrl } : {}),
-          ...(_streamingFetch ? { fetch: _streamingFetch } : {}),
+          fetch: endpointFetch,
         },
       };
 
@@ -204,7 +338,7 @@ export async function createChatModelFromEndpoint(
         apiKey,
         configuration: {
           ...(endpoint.baseUrl ? { baseURL: getEndpointBaseUrl(endpoint) } : {}),
-          ...(getEndpointFetch(endpoint) ? { fetch: getEndpointFetch(endpoint) } : {}),
+          fetch: endpointFetch,
         },
         temperature,
         maxTokens,
@@ -279,7 +413,7 @@ export async function createChatModelFromEndpoint(
           apiKey,
           configuration: {
             ...(endpoint.baseUrl ? { baseURL: getEndpointBaseUrl(endpoint) } : {}),
-            ...(getEndpointFetch(endpoint) ? { fetch: getEndpointFetch(endpoint) } : {}),
+            fetch: endpointFetch,
           },
           temperature,
           maxTokens,
@@ -294,7 +428,7 @@ export async function createChatModelFromEndpoint(
         apiKey,
         configuration: {
           baseURL: getEndpointBaseUrl(endpoint),
-          ...(getEndpointFetch(endpoint) ? { fetch: getEndpointFetch(endpoint) } : {}),
+          fetch: endpointFetch,
         },
         temperature,
         maxTokens,

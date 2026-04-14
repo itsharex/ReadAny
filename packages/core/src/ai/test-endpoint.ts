@@ -1,5 +1,6 @@
 import type { AIEndpoint } from "../types";
 import { getDefaultBaseUrl, providerRequiresApiKey } from "../utils";
+import { logAIEndpointDebug, summarizeDebugText } from "./request-debug";
 import {
   buildOpenAICompatibleUrl,
   buildProviderModelsUrl,
@@ -58,11 +59,52 @@ async function parseErrorBody(response: Response): Promise<string> {
   return text || `${response.status} ${response.statusText}`;
 }
 
-async function fetchJson(url: string, init?: RequestInit): Promise<any> {
+async function fetchJson(
+  url: string,
+  init?: RequestInit,
+  debug?: {
+    endpoint: AIEndpoint;
+    action: string;
+    model?: string;
+  },
+): Promise<any> {
+  if (debug) {
+    logAIEndpointDebug("request", debug.endpoint, {
+      action: debug.action,
+      method: init?.method || "GET",
+      requestUrl: url,
+      model: debug.model,
+    });
+  }
+
   const response = await fetch(url, init);
   if (!response.ok) {
     const errorBody = await parseErrorBody(response);
+    if (debug) {
+      logAIEndpointDebug("error", debug.endpoint, {
+        action: debug.action,
+        method: init?.method || "GET",
+        requestUrl: url,
+        model: debug.model,
+        status: response.status,
+        statusText: response.statusText,
+        contentType: response.headers.get("content-type"),
+        responseLength: errorBody.length,
+        responseBodyPreview: summarizeDebugText(errorBody),
+      });
+    }
     throw new Error(`${response.status} ${response.statusText}: ${errorBody}`);
+  }
+  if (debug) {
+    logAIEndpointDebug("response", debug.endpoint, {
+      action: debug.action,
+      method: init?.method || "GET",
+      requestUrl: url,
+      model: debug.model,
+      status: response.status,
+      statusText: response.statusText,
+      contentType: response.headers.get("content-type"),
+    });
   }
   return response.json();
 }
@@ -80,7 +122,10 @@ async function listOpenAICompatibleModels(endpoint: AIEndpoint): Promise<string[
     headers.Authorization = `Bearer ${endpoint.apiKey}`;
   }
 
-  const data = await fetchJson(requestUrl, { headers });
+  const data = await fetchJson(requestUrl, { headers }, {
+    endpoint,
+    action: "list-models",
+  });
   return (data.data || [])
     .map((model: { id: string }) => model.id)
     .filter(Boolean)
@@ -96,13 +141,20 @@ async function listAnthropicModels(endpoint: AIEndpoint): Promise<string[]> {
   );
 
   try {
-    const data = await fetchJson(requestUrl, {
-      headers: {
-        "x-api-key": endpoint.apiKey,
-        "anthropic-version": "2023-06-01",
-        "anthropic-dangerous-direct-browser-access": "true",
+    const data = await fetchJson(
+      requestUrl,
+      {
+        headers: {
+          "x-api-key": endpoint.apiKey,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true",
+        },
       },
-    });
+      {
+        endpoint,
+        action: "list-models",
+      },
+    );
 
     return (data.data || [])
       .map((model: { id: string }) => model.id)
@@ -126,7 +178,10 @@ async function listGoogleModels(endpoint: AIEndpoint): Promise<string[]> {
   );
 
   try {
-    const data = await fetchJson(requestUrl);
+    const data = await fetchJson(requestUrl, undefined, {
+      endpoint,
+      action: "list-models",
+    });
     return (data.models || [])
       .filter((model: { supportedGenerationMethods?: string[] }) =>
         model.supportedGenerationMethods?.includes("generateContent"),
@@ -144,9 +199,16 @@ async function listGoogleModels(endpoint: AIEndpoint): Promise<string[]> {
 }
 
 async function listOllamaModels(endpoint: AIEndpoint): Promise<string[]> {
-  const data = await fetchJson(
-    buildProviderModelsUrl("ollama", endpoint.baseUrl, endpoint.apiKey, endpoint.useExactRequestUrl),
+  const requestUrl = buildProviderModelsUrl(
+    "ollama",
+    endpoint.baseUrl,
+    endpoint.apiKey,
+    endpoint.useExactRequestUrl,
   );
+  const data = await fetchJson(requestUrl, undefined, {
+    endpoint,
+    action: "list-models",
+  });
   return (data.models || [])
     .map((model: { name: string }) => model.name)
     .filter(Boolean)
@@ -154,14 +216,16 @@ async function listOllamaModels(endpoint: AIEndpoint): Promise<string[]> {
 }
 
 async function listLMStudioModels(endpoint: AIEndpoint): Promise<string[]> {
-  const data = await fetchJson(
-    buildProviderModelsUrl(
-      "lmstudio",
-      endpoint.baseUrl,
-      endpoint.apiKey,
-      endpoint.useExactRequestUrl,
-    ),
+  const requestUrl = buildProviderModelsUrl(
+    "lmstudio",
+    endpoint.baseUrl,
+    endpoint.apiKey,
+    endpoint.useExactRequestUrl,
   );
+  const data = await fetchJson(requestUrl, undefined, {
+    endpoint,
+    action: "list-models",
+  });
   return (data.data || [])
     .map((model: { id: string }) => model.id)
     .filter(Boolean)
@@ -253,6 +317,10 @@ async function testAnthropic(endpoint: AIEndpoint, model: string): Promise<strin
       temperature: 0,
       messages: [{ role: "user", content: OPENAI_COMPATIBLE_TEST_PROMPT }],
     }),
+  }, {
+    endpoint,
+    action: "test-connection",
+    model,
   });
 
   if (!data?.id) {
@@ -282,6 +350,10 @@ async function testGoogle(endpoint: AIEndpoint, model: string): Promise<string> 
         maxOutputTokens: 4,
       },
     }),
+  }, {
+    endpoint,
+    action: "test-connection",
+    model: normalizedModel,
   });
 
   if (!Array.isArray(data?.candidates) || data.candidates.length === 0) {
@@ -309,6 +381,10 @@ async function testOpenAICompatible(endpoint: AIEndpoint, model: string): Promis
       temperature: 0,
       max_tokens: 4,
     }),
+  }, {
+    endpoint,
+    action: "test-connection",
+    model,
   });
 
   if (!Array.isArray(data?.choices) || data.choices.length === 0) {

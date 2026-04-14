@@ -3,6 +3,7 @@
  */
 import type { AIConfig, AIEndpoint, ReadSettings } from "@readany/core/types";
 import type { TranslationConfig, TranslationTargetLang } from "@readany/core/types/translation";
+import { logAIEndpointDebug, summarizeDebugText } from "@readany/core/ai/request-debug";
 import { buildProviderModelsUrl, providerSupportsExactRequestUrl } from "@readany/core/utils/api";
 import { create } from "zustand";
 import { deleteSecure, loadSecure, saveSecure, withPersist } from "./persist";
@@ -109,10 +110,26 @@ async function fetchOpenAIModels(endpoint: AIEndpoint): Promise<string[]> {
     endpoint.useExactRequestUrl,
   );
   if (!requestUrl) return [];
+  logAIEndpointDebug("request", endpoint, {
+    action: "fetch-models",
+    method: "GET",
+    requestUrl,
+  });
   const response = await fetch(requestUrl, {
     headers: { Authorization: `Bearer ${endpoint.apiKey}` },
   });
   if (!response.ok) {
+    const errorBody = await response.text();
+    logAIEndpointDebug("error", endpoint, {
+      action: "fetch-models",
+      method: "GET",
+      requestUrl,
+      status: response.status,
+      statusText: response.statusText,
+      contentType: response.headers.get("content-type"),
+      responseLength: errorBody.length,
+      responseBodyPreview: summarizeDebugText(errorBody),
+    });
     throw new Error(`Failed to fetch models: ${response.status} ${response.statusText}`);
   }
   const rawBody = await response.text();
@@ -121,20 +138,51 @@ async function fetchOpenAIModels(endpoint: AIEndpoint): Promise<string[]> {
   try {
     data = JSON.parse(rawBody);
   } catch {
+    logAIEndpointDebug("error", endpoint, {
+      action: "fetch-models",
+      method: "GET",
+      requestUrl,
+      status: response.status,
+      statusText: response.statusText,
+      contentType: response.headers.get("content-type"),
+      responseLength: rawBody.length,
+      responseBodyPreview: summarizeDebugText(rawBody),
+    });
     throw new Error(
       "The endpoint did not return JSON. Check whether the base URL points to the API root instead of a console page.",
     );
   }
 
   if (!Array.isArray(data.data)) {
+    logAIEndpointDebug("error", endpoint, {
+      action: "fetch-models",
+      method: "GET",
+      requestUrl,
+      status: response.status,
+      statusText: response.statusText,
+      contentType: response.headers.get("content-type"),
+      responseLength: rawBody.length,
+      responseBodyPreview: summarizeDebugText(rawBody),
+    });
     throw new Error(
       "The endpoint returned an unexpected models response. Check whether the base URL points to the OpenAI-compatible API root.",
     );
   }
 
-  return data.data
+  const models = data.data
     .map((m: { id: string }) => m.id)
     .sort((a: string, b: string) => a.localeCompare(b));
+  logAIEndpointDebug("response", endpoint, {
+    action: "fetch-models",
+    method: "GET",
+    requestUrl,
+    status: response.status,
+    statusText: response.statusText,
+    contentType: response.headers.get("content-type"),
+    responseLength: rawBody.length,
+    modelCount: models.length,
+  });
+  return models;
 }
 
 async function fetchAnthropicModels(endpoint: AIEndpoint): Promise<string[]> {
