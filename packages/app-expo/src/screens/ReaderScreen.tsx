@@ -91,9 +91,14 @@ type TTSSegment = VisibleTTSSegment;
 
 // ──────────────────────────── helpers ────────────────────────────
 
-function buildCustomFontFaceCSS(fonts: import("@readany/core/types/font").CustomFont[]): string {
+function buildCustomFontFaceCSS(
+  fonts: import("@readany/core/types/font").CustomFont[],
+  selectedFontId: string | null,
+): string {
+  if (!selectedFontId) return "";
   const platform = getPlatformService();
   return fonts
+    .filter((f) => f.id === selectedFontId)
     .map((f) => {
       // CSS-based remote fonts: @import into the reader iframe
       if (f.source === "remote" && f.remoteCssUrl) {
@@ -221,8 +226,8 @@ export function ReaderScreen({ route, navigation }: Props) {
     return customFonts.find((f) => f.id === selectedFontId)?.fontFamily;
   }, [customFonts, selectedFontId]);
   const customFontFaceCSS = useMemo(
-    () => buildCustomFontFaceCSS(customFonts),
-    [customFonts],
+    () => buildCustomFontFaceCSS(customFonts, selectedFontId),
+    [customFonts, selectedFontId],
   );
 
   const controlsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -410,8 +415,13 @@ export function ReaderScreen({ route, navigation }: Props) {
       setLoading(false);
       const settings = useSettingsStore.getState().readSettings;
       const { fonts, selectedFontId: selId } = useFontStore.getState();
-      const fontCSS = buildCustomFontFaceCSS(fonts);
+      const fontCSS = buildCustomFontFaceCSS(fonts, selId);
       const fontFamily = selId ? fonts.find((f) => f.id === selId)?.fontFamily : undefined;
+      console.log("[ReaderScreen][Font] selection", {
+        selectedFontId: selId,
+        fontFamily,
+        fontCSSLength: fontCSS.length,
+      });
       bridge.applySettings({
         fontSize: settings.fontSize,
         lineHeight: settings.lineHeight,
@@ -671,7 +681,7 @@ export function ReaderScreen({ route, navigation }: Props) {
       updateReadSettings(updates);
       const currentSettings = useSettingsStore.getState().readSettings;
       const { fonts, selectedFontId: selId } = useFontStore.getState();
-      const fontCSS = buildCustomFontFaceCSS(fonts);
+      const fontCSS = buildCustomFontFaceCSS(fonts, selId);
       const fontFamily = selId ? fonts.find((f) => f.id === selId)?.fontFamily : undefined;
       bridge.applySettings({ ...currentSettings, ...updates, customFontFaceCSS: fontCSS, customFontFamily: fontFamily });
     },

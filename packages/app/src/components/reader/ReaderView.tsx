@@ -344,30 +344,57 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
       ? customFonts.find((f) => f.id === selectedFontId)
       : null;
     const customFontFamily = selectedFont?.fontFamily ?? null;
+    const customFontCssUrls =
+      selectedFont?.source === "remote" && selectedFont.remoteCssUrl
+        ? [selectedFont.remoteCssUrl]
+        : [];
 
-    const fontCSS = customFonts
-      .map((f) => {
-        // CSS-based remote fonts: inject @import (works inside foliate-js iframes)
-        if (f.source === "remote" && f.remoteCssUrl) {
-          return `@import url('${f.remoteCssUrl}');`;
+    const fontCSS = selectedFont
+      ? (() => {
+        if (selectedFont.source === "remote" && selectedFont.remoteCssUrl) {
+          return "";
         }
-        if (f.source === "remote") return getCSSFontFace(f);
-        const blobUrl = fontBlobUrls.get(f.id);
+        if (selectedFont.source === "remote") return getCSSFontFace(selectedFont);
+        const blobUrl = fontBlobUrls.get(selectedFont.id);
         if (!blobUrl) return "";
-        const cssFormat = f.format === "otf" ? "opentype"
-          : f.format === "woff" ? "woff"
-          : f.format === "woff2" ? "woff2"
+        const cssFormat = selectedFont.format === "otf" ? "opentype"
+          : selectedFont.format === "woff" ? "woff"
+          : selectedFont.format === "woff2" ? "woff2"
           : "truetype";
-        return `@font-face {\n  font-family: '${f.fontFamily}';\n  src: url('${blobUrl}') format('${cssFormat}');\n  font-weight: normal;\n  font-style: normal;\n}`;
-      })
-      .filter(Boolean)
-      .join("\n");
+        return `@font-face {\n  font-family: '${selectedFont.fontFamily}';\n  src: url('${blobUrl}') format('${cssFormat}');\n  font-weight: normal;\n  font-style: normal;\n}`;
+      })()
+      : "";
     return {
       ...viewSettings,
       ...(fontCSS ? { customFontFaceCSS: fontCSS } : {}),
+      ...(customFontCssUrls.length > 0 ? { customFontCssUrls } : {}),
       ...(customFontFamily ? { customFontFamily } : {}),
     };
   }, [viewSettings, customFonts, fontBlobUrls, selectedFontId]);
+
+  useEffect(() => {
+    const selectedFont = selectedFontId
+      ? customFonts.find((font) => font.id === selectedFontId) ?? null
+      : null;
+    console.log("[ReaderView][Font] selection", {
+      selectedFontId,
+      selectedFontName: selectedFont?.name ?? null,
+      selectedFontFamily: selectedFont?.fontFamily ?? null,
+      selectedFontSource: selectedFont?.source ?? null,
+      remoteCssUrl: selectedFont?.remoteCssUrl ?? null,
+      fontTheme: viewSettings.fontTheme,
+      resolvedCustomFontFamily: viewSettingsWithFonts.customFontFamily ?? null,
+      customFontCssUrls: viewSettingsWithFonts.customFontCssUrls ?? [],
+      customFontFaceCSSLength: viewSettingsWithFonts.customFontFaceCSS?.length ?? 0,
+    });
+  }, [
+    customFonts,
+    selectedFontId,
+    viewSettings.fontTheme,
+    viewSettingsWithFonts.customFontCssUrls,
+    viewSettingsWithFonts.customFontFaceCSS,
+    viewSettingsWithFonts.customFontFamily,
+  ]);
 
   const books = useLibraryStore((s) => s.books);
   const updateBook = useLibraryStore((s) => s.updateBook);

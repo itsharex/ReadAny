@@ -37,12 +37,14 @@ export default function FontSettingsScreen() {
   const colors = useColors();
 
   const fonts = useFontStore((s) => s.fonts);
+  const fontsHydrated = useFontStore((s) => s._hasHydrated);
   const addFont = useFontStore((s) => s.addFont);
   const removeFont = useFontStore((s) => s.removeFont);
 
   const installedPresetIds = new Set(
     fonts.filter((f) => f.id.startsWith("preset-")).map((f) => f.id),
   );
+  const availablePresetFonts = PRESET_FONTS.filter((preset) => !installedPresetIds.has(preset.id));
 
   const handleAddPreset = useCallback(
     (preset: (typeof PRESET_FONTS)[number]) => {
@@ -239,141 +241,151 @@ export default function FontSettingsScreen() {
           </Text>
         </View>
 
-        <View style={s.buttonRow}>
-          <TouchableOpacity
-            style={[s.importBtn, { backgroundColor: colors.primary }, s.importBtnHalf]}
-            onPress={handleImport}
-            disabled={importing}
-            activeOpacity={0.8}
-          >
-            {importing ? (
-              <ActivityIndicator size="small" color={colors.primaryForeground} />
-            ) : (
-              <>
-                <PlusIcon size={18} color={colors.primaryForeground} />
-                <Text style={[s.importBtnText, { color: colors.primaryForeground }]}>
-                  {t("fonts.fromFile", "本地文件")}
-                </Text>
-              </>
-            )}
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[s.importBtn, { backgroundColor: colors.primary }, s.importBtnHalf]}
-            onPress={() => setUrlModalVisible(true)}
-            disabled={importing}
-            activeOpacity={0.8}
-          >
-            <LinkIcon size={18} color={colors.primaryForeground} />
-            <Text style={[s.importBtnText, { color: colors.primaryForeground }]}>
-              {t("fonts.fromUrl", "在线链接")}
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Preset fonts */}
-        <View style={{ gap: 8 }}>
-          <Text style={[s.hint, { color: colors.mutedForeground, fontWeight: fontWeight.medium }]}>
-            {t("fonts.presets", "推荐字体（在线，点击即可添加）")}
-          </Text>
-          {PRESET_FONTS.map((preset) => {
-            const installed = installedPresetIds.has(preset.id);
-            const name = i18n.language === "zh" ? preset.name : preset.nameEn;
-            const desc = i18n.language === "zh" ? preset.description : preset.descriptionEn;
-            return (
-              <View
-                key={preset.id}
-                style={[s.fontCard, { backgroundColor: colors.card, borderColor: colors.border }]}
-              >
-                <View style={s.fontHeader}>
-                  <View style={s.fontInfo}>
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                      <Text style={[s.fontName, { color: colors.foreground }]}>{name}</Text>
-                      <View style={[s.remoteBadge, { backgroundColor: `${colors.primary}22` }]}>
-                        <Text style={[s.remoteBadgeText, { color: colors.primary }]}>{preset.license}</Text>
-                      </View>
-                    </View>
-                    <Text style={[s.fontMetaText, { color: colors.mutedForeground }]} numberOfLines={2}>
-                      {desc}
-                    </Text>
-                  </View>
-                  <TouchableOpacity
-                    style={[
-                      { paddingHorizontal: 12, paddingVertical: 6, borderRadius: radius.md, marginLeft: 8 },
-                      installed
-                        ? { backgroundColor: colors.muted }
-                        : { backgroundColor: colors.primary },
-                    ]}
-                    disabled={installed}
-                    onPress={() => handleAddPreset(preset)}
-                  >
-                    <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: installed ? colors.mutedForeground : colors.primaryForeground }}>
-                      {installed ? t("fonts.added", "已添加") : t("fonts.add", "添加")}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            );
-          })}
-        </View>
-
-        {fonts.length === 0 ? (
-          <View style={s.emptyState}>
-            <TypeIcon size={48} color={colors.mutedForeground} />
-            <Text style={[s.emptyText, { color: colors.mutedForeground }]}>
-              {t("fonts.empty", "暂无自定义字体")}
-            </Text>
-            <Text style={[s.emptyHint, { color: colors.mutedForeground }]}>
-              {t("fonts.emptyHint", "点击上方按钮导入字体文件")}
+        {!fontsHydrated ? (
+          <View style={s.loadingState}>
+            <ActivityIndicator size="small" color={colors.primary} />
+            <Text style={[s.loadingText, { color: colors.mutedForeground }]}>
+              {t("common.loading", "加载中...")}
             </Text>
           </View>
         ) : (
-          <View style={s.fontList}>
-            {fonts.map((font) => (
-              <View
-                key={font.id}
-                style={[s.fontCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+          <>
+
+            <View style={s.buttonRow}>
+              <TouchableOpacity
+                style={[s.importBtn, { backgroundColor: colors.primary }, s.importBtnHalf]}
+                onPress={handleImport}
+                disabled={importing}
+                activeOpacity={0.8}
               >
-                <View style={s.fontHeader}>
-                  <View style={s.fontInfo}>
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                      <Text style={[s.fontName, { color: colors.foreground }]}>{font.name}</Text>
-                      {font.source === "remote" && (
-                        <View style={[s.remoteBadge, { backgroundColor: `${colors.primary}22` }]}>
-                          <GlobeIcon size={12} color={colors.primary} />
-                          <Text style={[s.remoteBadgeText, { color: colors.primary }]}>
-                            {t("fonts.remote", "在线")}
+                {importing ? (
+                  <ActivityIndicator size="small" color={colors.primaryForeground} />
+                ) : (
+                  <>
+                    <PlusIcon size={18} color={colors.primaryForeground} />
+                    <Text style={[s.importBtnText, { color: colors.primaryForeground }]}>
+                      {t("fonts.fromFile", "本地文件")}
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[s.importBtn, { backgroundColor: colors.primary }, s.importBtnHalf]}
+                onPress={() => setUrlModalVisible(true)}
+                disabled={importing}
+                activeOpacity={0.8}
+              >
+                <LinkIcon size={18} color={colors.primaryForeground} />
+                <Text style={[s.importBtnText, { color: colors.primaryForeground }]}>
+                  {t("fonts.fromUrl", "在线链接")}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Preset fonts */}
+            {availablePresetFonts.length > 0 && (
+              <View style={{ gap: 8 }}>
+                <Text style={[s.hint, { color: colors.mutedForeground, fontWeight: fontWeight.medium }]}>
+                  {t("fonts.presets", "推荐字体（在线，点击即可添加）")}
+                </Text>
+                {availablePresetFonts.map((preset) => {
+                  const name = i18n.language === "zh" ? preset.name : preset.nameEn;
+                  const desc = i18n.language === "zh" ? preset.description : preset.descriptionEn;
+                  return (
+                    <View
+                      key={preset.id}
+                      style={[s.fontCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+                    >
+                      <View style={s.fontHeader}>
+                        <View style={s.fontInfo}>
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                            <Text style={[s.fontName, { color: colors.foreground }]}>{name}</Text>
+                            <View style={[s.remoteBadge, { backgroundColor: `${colors.primary}22` }]}>
+                              <Text style={[s.remoteBadgeText, { color: colors.primary }]}>{preset.license}</Text>
+                            </View>
+                          </View>
+                          <Text style={[s.fontMetaText, { color: colors.mutedForeground }]} numberOfLines={2}>
+                            {desc}
                           </Text>
                         </View>
-                      )}
+                        <TouchableOpacity
+                          style={[
+                            { paddingHorizontal: 12, paddingVertical: 6, borderRadius: radius.md, marginLeft: 8 },
+                            { backgroundColor: colors.primary },
+                          ]}
+                          onPress={() => handleAddPreset(preset)}
+                        >
+                          <Text style={{ fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.primaryForeground }}>
+                            {t("fonts.add", "添加")}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
                     </View>
-                    <View style={s.fontMeta}>
-                      <Text style={[s.fontMetaText, { color: colors.mutedForeground }]}>
-                        {font.format.toUpperCase()}
-                      </Text>
-                      <Text style={[s.fontMetaDot, { color: colors.mutedForeground }]}>·</Text>
-                      <Text style={[s.fontMetaText, { color: colors.mutedForeground }]}>
-                        {formatSize(font.size)}
+                  );
+                })}
+              </View>
+            )}
+
+            {fonts.length === 0 ? (
+              <View style={s.emptyState}>
+                <TypeIcon size={48} color={colors.mutedForeground} />
+                <Text style={[s.emptyText, { color: colors.mutedForeground }]}>
+                  {t("fonts.empty", "暂无自定义字体")}
+                </Text>
+                <Text style={[s.emptyHint, { color: colors.mutedForeground }]}>
+                  {t("fonts.emptyHint", "点击上方按钮导入字体文件")}
+                </Text>
+              </View>
+            ) : (
+              <View style={s.fontList}>
+                {fonts.map((font) => (
+                  <View
+                    key={font.id}
+                    style={[s.fontCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+                  >
+                    <View style={s.fontHeader}>
+                      <View style={s.fontInfo}>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                          <Text style={[s.fontName, { color: colors.foreground }]}>{font.name}</Text>
+                          {font.source === "remote" && (
+                            <View style={[s.remoteBadge, { backgroundColor: `${colors.primary}22` }]}>
+                              <GlobeIcon size={12} color={colors.primary} />
+                              <Text style={[s.remoteBadgeText, { color: colors.primary }]}>
+                                {t("fonts.remote", "在线")}
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+                        <View style={s.fontMeta}>
+                          <Text style={[s.fontMetaText, { color: colors.mutedForeground }]}>
+                            {font.format.toUpperCase()}
+                          </Text>
+                          <Text style={[s.fontMetaDot, { color: colors.mutedForeground }]}>·</Text>
+                          <Text style={[s.fontMetaText, { color: colors.mutedForeground }]}>
+                            {formatSize(font.size)}
+                          </Text>
+                        </View>
+                      </View>
+                      <TouchableOpacity
+                        style={s.deleteBtn}
+                        onPress={() => handleDelete(font)}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Trash2Icon size={20} color={colors.destructive} />
+                      </TouchableOpacity>
+                    </View>
+
+                    <View style={[s.previewBox, { backgroundColor: colors.muted, borderColor: colors.border }]}>
+                      <Text style={[s.previewText, { color: colors.foreground }]}>
+                        {t("fonts.preview", "预览文字：阅读改变世界 The quick brown fox")}
                       </Text>
                     </View>
                   </View>
-                  <TouchableOpacity
-                    style={s.deleteBtn}
-                    onPress={() => handleDelete(font)}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  >
-                    <Trash2Icon size={20} color={colors.destructive} />
-                  </TouchableOpacity>
-                </View>
-
-                <View style={[s.previewBox, { backgroundColor: colors.muted, borderColor: colors.border }]}>
-                  <Text style={[s.previewText, { color: colors.foreground }]}>
-                    {t("fonts.preview", "预览文字：阅读改变世界 The quick brown fox")}
-                  </Text>
-                </View>
+                ))}
               </View>
-            ))}
-          </View>
+            )}
+          </>
         )}
       </ScrollView>
 
@@ -501,6 +513,14 @@ function makeStyles(colors: ReturnType<typeof useColors>) {
     scrollContent: { padding: spacing.lg, gap: 16, paddingBottom: 48 },
     section: { gap: 8 },
     hint: { fontSize: fontSize.sm, lineHeight: 20 },
+    loadingState: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 8,
+      paddingVertical: 20,
+    },
+    loadingText: { fontSize: fontSize.sm },
     buttonRow: { flexDirection: "row", gap: 12 },
     importBtn: {
       flexDirection: "row", alignItems: "center", justifyContent: "center",

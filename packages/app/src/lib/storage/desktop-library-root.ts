@@ -94,7 +94,7 @@ async function collectDirRelativePaths(root: string, subDir: string): Promise<st
   if (!(await exists(dir))) return [];
   const entries = await readDir(dir);
   return entries
-    .filter((e) => !e.children)
+    .filter((e) => e.isFile)
     .map((e) => `${subDir}/${e.name}`);
 }
 

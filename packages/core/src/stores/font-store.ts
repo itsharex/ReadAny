@@ -3,7 +3,7 @@
  */
 import type { CustomFont, FontFormat, FontPreset } from "../types/font";
 import { create } from "zustand";
-import { getPlatformService } from "../services/platform";
+import { getPlatformService, waitForPlatformService } from "../services/platform";
 
 const FONTS_DIR = "readany-fonts";
 const FONTS_INDEX_FILE = "custom-fonts.json";
@@ -27,13 +27,8 @@ async function saveFontIndex(fonts: CustomFont[], selectedFontId: string | null)
   }
 }
 
-let saveFontIndexTimer: ReturnType<typeof setTimeout> | null = null;
-function debouncedSaveFontIndex(fonts: CustomFont[], selectedFontId: string | null): void {
-  if (saveFontIndexTimer) clearTimeout(saveFontIndexTimer);
-  saveFontIndexTimer = setTimeout(() => {
-    saveFontIndexTimer = null;
-    void saveFontIndex(fonts, selectedFontId);
-  }, 300);
+function persistFontIndex(fonts: CustomFont[], selectedFontId: string | null): void {
+  void saveFontIndex(fonts, selectedFontId);
 }
 
 async function loadFontIndex(): Promise<FontIndex | null> {
@@ -190,8 +185,9 @@ export const useFontStore = create<FontState>((set, get) => ({
 
   addFont: (font) => {
     set((state) => {
-      const newFonts = [...state.fonts, font];
-      debouncedSaveFontIndex(newFonts, state.selectedFontId);
+      const nextFonts = state.fonts.filter((item) => item.id !== font.id);
+      const newFonts = [...nextFonts, font];
+      persistFontIndex(newFonts, state.selectedFontId);
       return { fonts: newFonts };
     });
   },
@@ -204,14 +200,14 @@ export const useFontStore = create<FontState>((set, get) => ({
     set((state) => {
       const newFonts = state.fonts.filter((f) => f.id !== id);
       const newSelectedId = state.selectedFontId === id ? null : state.selectedFontId;
-      debouncedSaveFontIndex(newFonts, newSelectedId);
+      persistFontIndex(newFonts, newSelectedId);
       return { fonts: newFonts, selectedFontId: newSelectedId };
     });
   },
 
   setSelectedFont: (id) => {
     set((state) => {
-      debouncedSaveFontIndex(state.fonts, id);
+      persistFontIndex(state.fonts, id);
       return { selectedFontId: id };
     });
   },
@@ -261,23 +257,42 @@ async function loadFontIndexLegacy(): Promise<CustomFont[] | null> {
   }
 }
 
-loadFontIndex().then(async (index) => {
-  if (index?.fonts) {
-    useFontStore.setState({
-      fonts: index.fonts,
-      selectedFontId: index.selectedFontId ?? null,
-      _hasHydrated: true,
-    });
-    return;
-  }
-  // Try migrating from legacy location
-  const legacyFonts = await loadFontIndexLegacy();
-  if (legacyFonts && legacyFonts.length > 0) {
-    useFontStore.setState({ fonts: legacyFonts, selectedFontId: null, _hasHydrated: true });
-    void saveFontIndex(legacyFonts, null);
-  } else {
+async function hydrateFontStore(): Promise<void> {
+  try {
+    await waitForPlatformService();
+
+    const index = await loadFontIndex();
+    if (index?.fonts) {
+      useFontStore.setState({
+        fonts: index.fonts,
+        selectedFontId: index.selectedFontId ?? null,
+        _hasHydrated: true,
+      });
+      console.log("[FontStore] hydrated from index", {
+        fontCount: index.fonts.length,
+        selectedFontId: index.selectedFontId ?? null,
+      });
+      return;
+    }
+
+    const legacyFonts = await loadFontIndexLegacy();
+    if (legacyFonts && legacyFonts.length > 0) {
+      useFontStore.setState({ fonts: legacyFonts, selectedFontId: null, _hasHydrated: true });
+      void saveFontIndex(legacyFonts, null);
+      console.log("[FontStore] hydrated from legacy index", {
+        fontCount: legacyFonts.length,
+      });
+      return;
+    }
+
+    useFontStore.setState({ _hasHydrated: true });
+    console.log("[FontStore] hydrated empty");
+  } catch (err) {
+    console.error("[FontStore] hydrate failed:", err);
     useFontStore.setState({ _hasHydrated: true });
   }
-});
+}
+
+void hydrateFontStore();
 
 export { generateFontId, getFontFormat };

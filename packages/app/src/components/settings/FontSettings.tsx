@@ -3,7 +3,7 @@
  */
 import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Download, FileText, Globe, Plus, Trash2 } from "lucide-react";
+import { Download, FileText, Globe, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -44,6 +44,7 @@ export function FontSettings() {
   const installedPresetIds = new Set(
     fonts.filter((f) => f.id.startsWith("preset-")).map((f) => f.id),
   );
+  const availablePresetFonts = PRESET_FONTS.filter((preset) => !installedPresetIds.has(preset.id));
 
   const handleAddPreset = useCallback(
     (preset: (typeof PRESET_FONTS)[number]) => {
@@ -226,13 +227,12 @@ export function FontSettings() {
       </section>
 
       {/* Preset fonts */}
-      <section className="space-y-2">
-        <h3 className="text-xs font-medium text-muted-foreground">
-          {t("fonts.presets", "推荐字体（在线，点击即可添加）")}
-        </h3>
-        {PRESET_FONTS.map((preset) => {
-          const installed = installedPresetIds.has(preset.id);
-          return (
+      {availablePresetFonts.length > 0 && (
+        <section className="space-y-2">
+          <h3 className="text-xs font-medium text-muted-foreground">
+            {t("fonts.presets", "推荐字体（在线，点击即可添加）")}
+          </h3>
+          {availablePresetFonts.map((preset) => (
             <div
               key={preset.id}
               className="flex items-center justify-between rounded-lg border border-border bg-card p-3"
@@ -252,24 +252,18 @@ export function FontSettings() {
               </div>
               <Button
                 size="sm"
-                variant={installed ? "outline" : "default"}
                 className="ml-3 flex-shrink-0 gap-1.5"
-                disabled={installed}
                 onClick={() => handleAddPreset(preset)}
               >
-                {installed ? (
-                  t("fonts.added", "已添加")
-                ) : (
-                  <>
-                    <Download className="h-3.5 w-3.5" />
-                    {t("fonts.add", "添加")}
-                  </>
-                )}
+                <>
+                  <Download className="h-3.5 w-3.5" />
+                  {t("fonts.add", "添加")}
+                </>
               </Button>
             </div>
-          );
-        })}
-      </section>
+          ))}
+        </section>
+      )}
 
       {/* Font list */}
       <section className="space-y-2">

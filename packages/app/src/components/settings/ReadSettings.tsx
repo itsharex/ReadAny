@@ -15,7 +15,7 @@ import { useTranslation } from "react-i18next";
 import { useFontStore } from "@readany/core/stores";
 
 export function ReadSettingsPanel() {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const { readSettings, updateReadSettings } = useSettingsStore();
   const customFonts = useFontStore((s) => s.fonts);
   const selectedFontId = useFontStore((s) => s.selectedFontId);

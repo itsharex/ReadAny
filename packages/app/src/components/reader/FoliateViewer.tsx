@@ -50,6 +50,8 @@ function getThemeColors(theme: AppTheme) {
   return THEME_COLORS[theme];
 }
 
+const REMOTE_FONT_LINK_ATTR = "data-readany-remote-font-link";
+
 function normalizeTTSSegmentText(text?: string | null) {
   return String(text || "")
     .replace(/\s+/g, " ")
@@ -1610,6 +1612,7 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
       viewSettings.fontTheme,
       viewSettings.customFontFamily,
       viewSettings.customFontFaceCSS,
+      viewSettings.customFontCssUrls,
       viewSettings.paragraphSpacing,
       isFixedLayout,
       appTheme,
@@ -1701,12 +1704,50 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
 
 // --- Helper functions ---
 
+function syncRemoteFontStylesInDocument(doc: Document, urls: string[] | undefined) {
+  const head = doc.head || doc.documentElement;
+  if (!head) return;
+  const nextUrls = Array.from(new Set((urls || []).filter(Boolean)));
+
+  Array.from(doc.querySelectorAll(`link[${REMOTE_FONT_LINK_ATTR}]`)).forEach((node) => {
+    const href = (node as HTMLLinkElement).href;
+    if (!nextUrls.some((url) => href.includes(url))) {
+      node.remove();
+    }
+  });
+
+  for (const url of nextUrls) {
+    const existing = Array.from(
+      doc.querySelectorAll(`link[${REMOTE_FONT_LINK_ATTR}]`),
+    ).find((node) => (node as HTMLLinkElement).href.includes(url));
+    if (existing) continue;
+    const link = doc.createElement("link");
+    link.rel = "stylesheet";
+    link.href = url;
+    link.setAttribute(REMOTE_FONT_LINK_ATTR, "true");
+    head.appendChild(link);
+  }
+}
+
+function syncRemoteFontStyles(view: FoliateView, settings: ViewSettings) {
+  const contents = view.renderer?.getContents?.();
+  if (!Array.isArray(contents)) return;
+  for (const content of contents) {
+    const doc = content?.doc as Document | undefined;
+    if (doc) {
+      syncRemoteFontStylesInDocument(doc, settings.customFontCssUrls);
+    }
+  }
+}
+
 /** Apply CSS styles to a loaded section document */
-function applyDocumentStyles(doc: Document, _settings: ViewSettings, isFixedLayout: boolean) {
+function applyDocumentStyles(doc: Document, settings: ViewSettings, isFixedLayout: boolean) {
   if (isFixedLayout) {
     // PDF/CBZ: don't inject styles that would break layout
     return;
   }
+
+  syncRemoteFontStylesInDocument(doc, settings.customFontCssUrls);
 
   // Basic styles for images
   const images = doc.querySelectorAll("img");
@@ -1782,6 +1823,7 @@ function getRendererStyles(settings: ViewSettings, theme: AppTheme): string {
 
   return `${settings.customFontFaceCSS ? `/* Custom font faces */\n${settings.customFontFaceCSS}\n\n` : ""}/* Font styles */
 html {
+  --readany-font-family: ${fontFamily};
   --serif-font: "${fontTheme.serif}";
   --sans-serif-font: "${fontTheme.sansSerif}";
   --cjk-font: "${fontTheme.cjk}";
@@ -1790,10 +1832,18 @@ html {
 html, body {
   background-color: ${bgColor} !important;
   color: ${fgColor} !important;
-  font-family: ${fontFamily} !important;
+  font-family: var(--readany-font-family) !important;
   font-size: ${settings.fontSize}px !important;
   -webkit-text-size-adjust: none;
   text-size-adjust: none;
+}
+
+body *:not(svg):not(svg *):not(math):not(math *):not(pre):not(pre *):not(code):not(code *):not(kbd):not(kbd *):not(samp):not(samp *) {
+  font-family: var(--readany-font-family) !important;
+}
+
+pre, code, kbd, samp {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
 }
 
 /* Line height for text blocks */
@@ -1873,6 +1923,15 @@ function applyRendererStyles(
   }
 
   // Apply CSS string styles
+  syncRemoteFontStyles(view, settings);
+  console.log("[FoliateViewer][Font] apply-renderer-styles", {
+    fontTheme: settings.fontTheme,
+    customFontFamily: settings.customFontFamily ?? null,
+    customFontCssUrls: settings.customFontCssUrls ?? [],
+    customFontFaceCSSLength: settings.customFontFaceCSS?.length ?? 0,
+    fontSize: settings.fontSize,
+    lineHeight: settings.lineHeight,
+  });
   const styles = getRendererStyles(settings, theme);
   renderer.setStyles(styles);
 }
