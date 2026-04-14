@@ -1608,6 +1608,8 @@ export const FoliateViewer = forwardRef<FoliateViewerHandle, FoliateViewerProps>
       viewSettings.fontSize,
       viewSettings.lineHeight,
       viewSettings.fontTheme,
+      viewSettings.customFontFamily,
+      viewSettings.customFontFaceCSS,
       viewSettings.paragraphSpacing,
       isFixedLayout,
       appTheme,
@@ -1773,8 +1775,10 @@ function getRendererStyles(settings: ViewSettings, theme: AppTheme): string {
   // Get font theme
   const fontTheme = getFontTheme(settings.fontTheme);
 
-  // Use CJK font for Chinese/Japanese/Korean text, serif for others
-  const fontFamily = `'${fontTheme.cjk}', '${fontTheme.serif}', serif`;
+  // Custom font takes precedence over font theme
+  const fontFamily = settings.customFontFamily
+    ? settings.customFontFamily
+    : `'${fontTheme.cjk}', '${fontTheme.serif}', serif`;
 
   return `
 /* Font styles */
@@ -1842,6 +1846,7 @@ pre {
   white-space: pre-wrap !important;
   tab-size: 2;
 }
+${settings.customFontFaceCSS ? `\n/* Custom font faces */\n${settings.customFontFaceCSS}` : ""}
 `;
 }
 

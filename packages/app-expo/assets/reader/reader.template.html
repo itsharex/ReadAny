@@ -153,6 +153,8 @@
     let currentThemeColors = { bg: '#1c1c1e', fg: '#e8e8ed', muted: '#7c7c82', primary: '#3b82f6' };
     let lastRendererStyles = '';
     let currentViewMode = 'paginated';
+    let currentCustomFontFaceCSS = '';
+    let currentCustomFontFamily = '';
     let tapNavigationInFlight = false;
     let tapNavigationResetTimer = null;
     let readerElement = null;
@@ -1008,17 +1010,30 @@
       if (!view || !view.renderer) return;
       const renderer = view.renderer;
 
-      if (settings.fontSize || settings.lineHeight || settings.fontTheme || settings.paragraphSpacing) {
+      // Update custom font state
+      if (settings.customFontFaceCSS !== undefined) {
+        currentCustomFontFaceCSS = settings.customFontFaceCSS || '';
+        injectCustomFontFace(currentCustomFontFaceCSS);
+      }
+      if (settings.customFontFamily !== undefined) {
+        currentCustomFontFamily = settings.customFontFamily || '';
+      }
+
+      if (settings.fontSize || settings.lineHeight || settings.fontTheme || settings.paragraphSpacing
+          || settings.customFontFamily !== undefined || settings.customFontFaceCSS !== undefined) {
         const fontThemes = {
-          default: { cjk: 'system-ui', serif: '-apple-system' },
-          classic: { cjk: 'STSong', serif: 'Georgia' },
-          modern: { cjk: 'PingFang SC', serif: 'Helvetica Neue' },
-          elegant: { cjk: 'STKaiti', serif: 'Palatino' },
-          literary: { cjk: 'STFangsong', serif: 'Baskerville' },
+          default: { cjk: 'system-ui', serif: 'system-ui' },
+          system: { cjk: 'system-ui', serif: 'system-ui' },
+          literata: { cjk: "'Noto Serif SC', 'Source Han Serif SC', serif", serif: "Literata, Georgia, serif" },
         };
 
-        const theme = fontThemes[settings.fontTheme] || fontThemes.default;
-        const fontFamily = "'" + theme.cjk + "', '" + theme.serif + "', serif";
+        let fontFamily;
+        if (currentCustomFontFamily) {
+          fontFamily = currentCustomFontFamily;
+        } else {
+          const theme = fontThemes[settings.fontTheme] || fontThemes.default;
+          fontFamily = "'" + theme.cjk + "', '" + theme.serif + "', serif";
+        }
         const fSize = settings.fontSize || 16;
         const lh = settings.lineHeight || 1.6;
         const ps = settings.paragraphSpacing || 8;
@@ -1063,6 +1078,18 @@
           renderer.setAttribute('max-inline-size', '100%');
         }
       }
+    }
+
+    function injectCustomFontFace(css) {
+      // Inject @font-face CSS into the main document head
+      const styleId = '__readany_custom_font_face__';
+      let el = document.getElementById(styleId);
+      if (!el) {
+        el = document.createElement('style');
+        el.id = styleId;
+        document.head.appendChild(el);
+      }
+      el.textContent = css || '';
     }
 
     function setThemeColors(colors) {

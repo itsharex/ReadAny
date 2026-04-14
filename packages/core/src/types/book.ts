@@ -50,6 +50,8 @@ export interface ViewSettings {
   fontSize: number; // 12-32
   lineHeight: number; // 1.2-2.5
   fontTheme: string; // FontTheme id
+  customFontFamily?: string; // custom font family (overrides fontTheme)
+  customFontFaceCSS?: string; // @font-face CSS to inject (not persisted in store)
   viewMode: ViewMode;
   paginatedLayout: PaginatedLayout;
   pageMargin: number; // px

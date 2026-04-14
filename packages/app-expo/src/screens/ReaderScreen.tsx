@@ -27,6 +27,7 @@ import {
   useSettingsStore,
   useTTSStore,
 } from "@/stores";
+import { useFontStore, getCSSFontFace } from "@readany/core/stores";
 import { useTheme } from "@/styles/ThemeContext";
 import { useColors } from "@/styles/theme";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -87,6 +88,30 @@ const READER_HTML_ASSET = Asset.fromModule(require("../../assets/reader/reader.h
 
 type Props = NativeStackScreenProps<RootStackParamList, "Reader">;
 type TTSSegment = VisibleTTSSegment;
+
+// ──────────────────────────── helpers ────────────────────────────
+
+function buildCustomFontFaceCSS(fonts: import("@readany/core/types/font").CustomFont[]): string {
+  const platform = getPlatformService();
+  return fonts
+    .map((f) => {
+      // CSS-based remote fonts: @import into the reader iframe
+      if (f.source === "remote" && f.remoteCssUrl) {
+        return `@import url('${f.remoteCssUrl}');`;
+      }
+      if (f.source === "remote") return getCSSFontFace(f);
+      if (!f.filePath) return "";
+      const fileUrl = platform.convertFileSrc(f.filePath);
+      const cssFormat =
+        f.format === "otf" ? "opentype"
+        : f.format === "woff" ? "woff"
+        : f.format === "woff2" ? "woff2"
+        : "truetype";
+      return `@font-face {\n  font-family: '${f.fontFamily}';\n  src: url('${fileUrl}') format('${cssFormat}');\n  font-weight: normal;\n  font-style: normal;\n}`;
+    })
+    .filter(Boolean)
+    .join("\n");
+}
 
 // ──────────────────────────── ReaderScreen ────────────────────────────
 export function ReaderScreen({ route, navigation }: Props) {
@@ -187,6 +212,18 @@ export function ReaderScreen({ route, navigation }: Props) {
   const showTopTitleProgress = readSettings.showTopTitleProgress !== false;
   const showBottomTimeBattery = readSettings.showBottomTimeBattery !== false;
   const volumeButtonsPageTurn = readSettings.volumeButtonsPageTurn === true;
+
+  // Custom fonts — build @font-face CSS per-font using individual filePath
+  const customFonts = useFontStore((s) => s.fonts);
+  const selectedFontId = useFontStore((s) => s.selectedFontId);
+  const customFontFamily = useMemo(() => {
+    if (!selectedFontId) return undefined;
+    return customFonts.find((f) => f.id === selectedFontId)?.fontFamily;
+  }, [customFonts, selectedFontId]);
+  const customFontFaceCSS = useMemo(
+    () => buildCustomFontFaceCSS(customFonts),
+    [customFonts],
+  );
 
   const controlsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const TOOLBAR_HIDE_OFFSET = 100;
@@ -372,12 +409,17 @@ export function ReaderScreen({ route, navigation }: Props) {
     onLoaded: () => {
       setLoading(false);
       const settings = useSettingsStore.getState().readSettings;
+      const { fonts, selectedFontId: selId } = useFontStore.getState();
+      const fontCSS = buildCustomFontFaceCSS(fonts);
+      const fontFamily = selId ? fonts.find((f) => f.id === selId)?.fontFamily : undefined;
       bridge.applySettings({
         fontSize: settings.fontSize,
         lineHeight: settings.lineHeight,
         paragraphSpacing: settings.paragraphSpacing,
         fontTheme: settings.fontTheme,
         viewMode: settings.viewMode,
+        customFontFaceCSS: fontCSS,
+        customFontFamily: fontFamily,
       });
     },
     onRelocate: (detail: RelocateEvent) => {
@@ -628,7 +670,10 @@ export function ReaderScreen({ route, navigation }: Props) {
       const updates = { [key]: value } as Partial<ReadSettings>;
       updateReadSettings(updates);
       const currentSettings = useSettingsStore.getState().readSettings;
-      bridge.applySettings({ ...currentSettings, ...updates });
+      const { fonts, selectedFontId: selId } = useFontStore.getState();
+      const fontCSS = buildCustomFontFaceCSS(fonts);
+      const fontFamily = selId ? fonts.find((f) => f.id === selId)?.fontFamily : undefined;
+      bridge.applySettings({ ...currentSettings, ...updates, customFontFaceCSS: fontCSS, customFontFamily: fontFamily });
     },
     [bridge, updateReadSettings],
   );
@@ -753,6 +798,15 @@ export function ReaderScreen({ route, navigation }: Props) {
       primary: colors.primary,
     });
   }, [themeMode, webViewReady]);
+
+  // Re-apply font settings when custom fonts or selected font changes
+  useEffect(() => {
+    if (!webViewReady) return;
+    bridge.applySettings({
+      customFontFaceCSS: customFontFaceCSS,
+      customFontFamily: customFontFamily,
+    });
+  }, [customFontFaceCSS, customFontFamily, webViewReady]);
 
   // Load annotations into reader when ready
   useEffect(() => {
