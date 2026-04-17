@@ -1,0 +1,155 @@
+/**
+ * BadgeIconMobile.tsx — Rich SVG badge renderer for React Native.
+ *
+ * Gradient coin base + decorative ring + large center icon + number tag.
+ * Mirrors the desktop BadgeIcon but uses react-native-svg primitives.
+ */
+import { useColors, withOpacity } from "@/styles/theme";
+import {
+  BookOpenIcon, ClockIcon, FlameIcon, TrendingUpIcon,
+} from "@/components/ui/Icon";
+import type { BadgeDefinition } from "@readany/core/stats";
+import { BADGE_NUMBERS } from "@readany/core/stats";
+import { Text, View } from "react-native";
+import Svg, { Circle, Defs, Ellipse, RadialGradient, Stop } from "react-native-svg";
+
+const ICON_MAP: Record<string, React.ComponentType<{ size?: number; color?: string }>> = {
+  flame: FlameIcon, library: BookOpenIcon, clock: ClockIcon, trophy: TrendingUpIcon,
+  brain: ClockIcon, moon: ClockIcon, sunrise: FlameIcon, swords: TrendingUpIcon, "book-open": BookOpenIcon,
+};
+
+interface TierPalette {
+  baseFrom: string; baseTo: string;
+  innerFrom: string; innerTo: string;
+  ringStroke: string;
+  numBg: string; numText: string;
+  iconColor: string;
+  glow: string;
+}
+
+const PALETTES: Record<string, TierPalette> = {
+  bronze: {
+    baseFrom: "#d4954a", baseTo: "#8b5e3c",
+    innerFrom: "#f5deb3", innerTo: "#cdaa7d",
+    ringStroke: "rgba(139,94,60,0.4)",
+    numBg: "#8b5e3c", numText: "#fff8ee",
+    iconColor: "#6b4226",
+    glow: "rgba(180,120,50,0.35)",
+  },
+  silver: {
+    baseFrom: "#b8bcc5", baseTo: "#7a7d85",
+    innerFrom: "#e8eaef", innerTo: "#b0b3bb",
+    ringStroke: "rgba(120,125,133,0.35)",
+    numBg: "#6b6e76", numText: "#f0f1f3",
+    iconColor: "#4a4d54",
+    glow: "rgba(150,153,165,0.35)",
+  },
+  gold: {
+    baseFrom: "#f0c030", baseTo: "#b8860b",
+    innerFrom: "#fff8d6", innerTo: "#f0d060",
+    ringStroke: "rgba(184,134,11,0.35)",
+    numBg: "#9a7209", numText: "#fffdf0",
+    iconColor: "#7a5a08",
+    glow: "rgba(240,192,48,0.4)",
+  },
+};
+
+export function BadgeIconMobile({
+  badge,
+  isEarned,
+  size = 72,
+}: {
+  badge: BadgeDefinition;
+  isEarned: boolean;
+  size?: number;
+}) {
+  const colors = useColors();
+  const p = PALETTES[badge.tier] ?? PALETTES.bronze;
+  const Icon = ICON_MAP[badge.icon] ?? FlameIcon;
+  const num = BADGE_NUMBERS[badge.id];
+  const c = size / 2;
+  const outerR = size * 0.46;
+  const innerR = size * 0.36;
+  const ringR = size * 0.41;
+  const iconSize = size * 0.3;
+  const bid = `b-${badge.id}`;
+
+  if (!isEarned) {
+    return (
+      <View style={{ width: size, height: size, position: "relative" }}>
+        <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+          <Circle cx={c} cy={c} r={outerR} fill="#e4e4e7" />
+          <Circle cx={c} cy={c} r={innerR} fill="#f4f4f5" />
+          <Circle cx={c} cy={c} r={ringR} fill="none" strokeWidth={0.8} stroke="#d4d4d8" strokeDasharray="3 3" />
+        </Svg>
+        <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, alignItems: "center", justifyContent: "center", opacity: 0.2 }}>
+          <Icon size={iconSize} color="#a1a1aa" />
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View style={{
+      width: size, height: size, position: "relative",
+      shadowColor: p.glow, shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 1, shadowRadius: 12, elevation: 6,
+    }}>
+      <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        <Defs>
+          <RadialGradient id={`${bid}-base`} cx="35%" cy="30%" r="70%">
+            <Stop offset="0%" stopColor={p.baseFrom} />
+            <Stop offset="100%" stopColor={p.baseTo} />
+          </RadialGradient>
+          <RadialGradient id={`${bid}-inner`} cx="40%" cy="35%" r="65%">
+            <Stop offset="0%" stopColor={p.innerFrom} />
+            <Stop offset="100%" stopColor={p.innerTo} />
+          </RadialGradient>
+        </Defs>
+
+        {/* Outer coin */}
+        <Circle cx={c} cy={c} r={outerR} fill={`url(#${bid}-base)`} />
+
+        {/* Decorative ring */}
+        <Circle cx={c} cy={c} r={ringR} fill="none" strokeWidth={1} stroke={p.ringStroke} strokeDasharray="4 2" />
+
+        {/* Inner disc */}
+        <Circle cx={c} cy={c} r={innerR} fill={`url(#${bid}-inner)`} />
+
+        {/* Top-left highlight */}
+        <Ellipse cx={c - size * 0.1} cy={c - size * 0.12} rx={size * 0.12} ry={size * 0.07}
+          fill="rgba(255,255,255,0.35)" />
+      </Svg>
+
+      {/* Center icon — bigger when no number tag */}
+      <View style={{
+        position: "absolute", top: 0, left: 0, right: 0, bottom: num ? size * 0.06 : 0,
+        alignItems: "center", justifyContent: "center",
+      }}>
+        <Icon size={num ? iconSize : iconSize * 1.2} color={p.iconColor} />
+      </View>
+
+      {/* Number tag — only when there's an actual number */}
+      {num ? (
+        <View style={{
+          position: "absolute",
+          bottom: size * 0.04,
+          alignSelf: "center",
+          left: "50%",
+          transform: [{ translateX: -(size * 0.16) }],
+          minWidth: size * 0.32,
+          height: size * 0.2,
+          borderRadius: size * 0.1,
+          backgroundColor: p.numBg,
+          alignItems: "center",
+          justifyContent: "center",
+          paddingHorizontal: 4,
+        }}>
+          <Text style={{ fontSize: size * 0.13, fontWeight: "800", color: p.numText }}>
+            {num}
+          </Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}

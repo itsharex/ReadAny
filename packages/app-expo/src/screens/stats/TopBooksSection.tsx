@@ -1,0 +1,108 @@
+/**
+ * TopBooksSection.tsx — Top books section with expand/collapse.
+ * Extracted from StatsSections.tsx.
+ */
+import { useColors, withOpacity } from "@/styles/theme";
+import type { TopBookEntry } from "@readany/core/stats";
+import { ChevronDownIcon, ChevronUpIcon } from "@/components/ui/Icon";
+import { useState } from "react";
+import { Text, TouchableOpacity, View } from "react-native";
+import { makeStyles } from "./stats-styles";
+import { formatTimeLocalized } from "./stats-utils";
+import type { StatsCopy } from "./StatsSections";
+import { StatsBookCover } from "./StatsBookCover";
+
+const TOP_BOOKS_COLLAPSED = 3;
+
+export function TopBooksSection({
+  books,
+  resolvedCovers,
+  isZh,
+  copy,
+}: {
+  books: TopBookEntry[];
+  resolvedCovers: Map<string, string>;
+  isZh: boolean;
+  copy: StatsCopy;
+}) {
+  const colors = useColors();
+  const s = makeStyles(colors);
+  const [expanded, setExpanded] = useState(false);
+
+  if (books.length === 0) {
+    return (
+      <Text style={{ fontSize: 13, color: withOpacity(colors.mutedForeground, 0.45), textAlign: "center", paddingVertical: 20 }}>
+        {copy.noTopBooks}
+      </Text>
+    );
+  }
+
+  const canExpand = books.length > TOP_BOOKS_COLLAPSED;
+  const visibleBooks = expanded ? books : books.slice(0, TOP_BOOKS_COLLAPSED);
+
+  return (
+    <View>
+      {visibleBooks.map((book, index) => {
+        const isFirst = index === 0;
+        const coverUrl = resolvedCovers.get(book.bookId) || book.coverUrl;
+        return (
+          <View
+            key={book.bookId}
+            style={[s.bookItem, isFirst && s.bookItemFirst]}
+          >
+            {/* Rank */}
+            <View style={[s.bookRank, isFirst ? s.bookRankFirst : s.bookRankDefault]}>
+              <Text style={[s.bookRankText, isFirst ? s.bookRankTextFirst : s.bookRankTextDefault]}>
+                {index + 1}
+              </Text>
+            </View>
+
+            {/* Cover — library-style */}
+            <StatsBookCover
+              coverUrl={coverUrl}
+              title={book.title}
+              width={isFirst ? 52 : 36}
+            />
+
+            {/* Info */}
+            <View style={s.bookInfo}>
+              {isFirst && <Text style={s.bookLeadBadge}>{copy.topBookLead}</Text>}
+              <Text style={[s.bookTitle, isFirst && s.bookTitleFirst]} numberOfLines={1}>
+                {book.title}
+              </Text>
+              <Text style={s.bookAuthor} numberOfLines={1}>
+                {book.author || copy.unknownAuthor}
+              </Text>
+              <View style={s.bookStatsRow}>
+                <Text style={[s.bookTime, isFirst ? s.bookTimeFirst : s.bookTimeDefault]}>
+                  {formatTimeLocalized(book.totalTime, isZh)}
+                </Text>
+                <Text style={s.bookMeta}>
+                  {book.pagesRead > 0 && `${book.pagesRead} ${copy.pagesReadSuffix} · `}
+                  {book.sessionsCount} {copy.sessionsSuffix}
+                </Text>
+              </View>
+            </View>
+          </View>
+        );
+      })}
+
+      {canExpand && (
+        <TouchableOpacity
+          onPress={() => setExpanded((v) => !v)}
+          style={s.expandBtn}
+          activeOpacity={0.6}
+        >
+          <Text style={s.expandBtnText}>
+            {expanded
+              ? isZh ? "收起" : "Show less"
+              : isZh ? `查看全部 ${books.length} 本` : `Show all ${books.length} books`}
+          </Text>
+          {expanded
+            ? <ChevronUpIcon size={14} color={withOpacity(colors.mutedForeground, 0.5)} />
+            : <ChevronDownIcon size={14} color={withOpacity(colors.mutedForeground, 0.5)} />}
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+}

@@ -18,11 +18,16 @@ import { useReadingSessionStore } from "@/stores/reading-session-store";
 import {
   getWeekStartDate,
   readingReportsService,
+  getAllGoalProgress,
+  evaluateBadges,
+  ALL_BADGE_DEFINITIONS,
+  buildStatsSummary,
   type StatsDimension,
   type StatsReport,
 } from "@readany/core/stats";
 import { cn } from "@readany/core/utils";
 import { eventBus } from "@readany/core/utils/event-bus";
+import { useGoalsStore } from "@readany/core/stores";
 import {
   BookOpenText,
   CalendarDays,
@@ -53,6 +58,7 @@ import { EmptyState, MetricTile, SectionHeader, StatsCard } from "./StatsShared"
 import {
   ChartSurface,
   DaySummaryPanel,
+  GoalsSection,
   InsightsSection,
   JourneySummaryPanel,
   MonthCalendarSection,
@@ -60,6 +66,8 @@ import {
   TopBooksSection,
   YearlySnapshotsSection,
 } from "./StatsSections";
+import { BadgesPreview } from "./BadgesPreview";
+import { BadgesDialog } from "./BadgesDialog";
 import { formatDateLabel } from "./stats-utils";
 
 /* ─── Hero metric builder (kept here because it uses lucide icons) ─── */
@@ -71,6 +79,12 @@ function buildHeroMetrics(
 ): MetricTileData[] {
   const metrics: MetricTileData[] = [];
 
+  // Build comparison lookup from previousPeriodComparison
+  const compMap = new Map<string, { delta?: number; deltaLabel?: string }>();
+  for (const c of report.previousPeriodComparison ?? []) {
+    compMap.set(c.label, { delta: c.delta, deltaLabel: c.deltaLabel });
+  }
+
   if (report.dimension === "lifetime") {
     metrics.push({
       id: "days-together",
@@ -80,14 +94,21 @@ function buildHeroMetrics(
       icon: <CalendarDays className="h-4 w-4" />,
     });
   } else {
+    const rtComp = compMap.get("readingTime");
     metrics.push({
       id: "reading-time",
       label: copy.readingTime,
       value: formatMinutes(report.summary.totalReadingTime, isZh),
       sublabel: copy.dimensionTitles[report.dimension],
       icon: <Clock3 className="h-4 w-4" />,
+      delta: rtComp?.delta,
+      deltaLabel: rtComp?.deltaLabel,
     });
   }
+
+  const adComp = compMap.get("activeDays");
+  const ssComp = compMap.get("sessions");
+  const bkComp = compMap.get("books");
 
   metrics.push(
     {
@@ -96,6 +117,8 @@ function buildHeroMetrics(
       value: `${report.summary.activeDays.toLocaleString()} ${copy.daysSuffix}`,
       sublabel: copy.avgActiveDay,
       icon: <TrendingUp className="h-4 w-4" />,
+      delta: adComp?.delta,
+      deltaLabel: adComp?.deltaLabel,
     },
     {
       id: "sessions",
@@ -103,6 +126,8 @@ function buildHeroMetrics(
       value: `${report.summary.totalSessions.toLocaleString()} ${copy.sessionsSuffix}`,
       sublabel: formatMinutes(report.summary.avgSessionTime, isZh),
       icon: <Layers3 className="h-4 w-4" />,
+      delta: ssComp?.delta,
+      deltaLabel: ssComp?.deltaLabel,
     },
     {
       id: "books",
@@ -110,6 +135,8 @@ function buildHeroMetrics(
       value: report.summary.booksTouched.toLocaleString(),
       sublabel: `${report.summary.totalPagesRead.toLocaleString()} ${copy.pagesReadSuffix}`,
       icon: <LibraryBig className="h-4 w-4" />,
+      delta: bkComp?.delta,
+      deltaLabel: bkComp?.deltaLabel,
     },
     {
       id: "streak",
@@ -230,6 +257,42 @@ export function ReadingStatsPanel() {
         : [],
     [report, copy, isZh],
   );
+
+  /* ── Goals ── */
+  const goals = useGoalsStore((s) => s.goals);
+  const removeGoal = useGoalsStore((s) => s.removeGoal);
+  const addGoalAction = useGoalsStore((s) => s.addGoal);
+  const [allFacts, setAllFacts] = useState<import("@readany/core/stats").DailyReadingFact[]>([]);
+
+  useEffect(() => {
+    if (report) {
+      readingReportsService.getAllDailyFacts(currentSession).then(setAllFacts).catch(() => {});
+    }
+  }, [currentSession, report]);
+
+  const goalProgress = useMemo(
+    () => (goals.length > 0 && allFacts.length > 0 ? getAllGoalProgress(goals, allFacts) : []),
+    [goals, allFacts],
+  );
+
+  const handleAddGoal = (type: "books" | "time" | "pages", target: number, period: "monthly" | "yearly") => {
+    addGoalAction({
+      id: `goal-${Date.now()}`,
+      type,
+      target,
+      period,
+      createdAt: Date.now(),
+    });
+  };
+
+  /* ── Badges ── */
+  const earnedBadges = useMemo(() => {
+    if (allFacts.length === 0) return [];
+    const lifetimeSummary = buildStatsSummary(allFacts);
+    return evaluateBadges(allFacts, lifetimeSummary);
+  }, [allFacts]);
+
+  const [badgesDialogOpen, setBadgesDialogOpen] = useState(false);
 
   /* ── Period picker handlers ── */
   const onPickPeriod = (event: ChangeEvent<HTMLInputElement>) => {
@@ -519,10 +582,49 @@ export function ReadingStatsPanel() {
                       <JourneySummaryPanel report={report} copy={copy} isZh={isZh} />
                     </StatsCard>
                   )}
+
+                  {/* Badges preview — lifetime only */}
+                  {report.dimension === "lifetime" && (
+                    <StatsCard>
+                      <SectionHeader
+                        title={copy.badges}
+                        description={copy.badgesDesc}
+                        action={
+                          <button
+                            onClick={() => setBadgesDialogOpen(true)}
+                            className="flex items-center gap-0.5 text-[12px] font-medium text-primary/60 transition-colors hover:text-primary/80"
+                          >
+                            {t("stats.desktop.viewAllBadges")}
+                            <ChevronRight className="h-3.5 w-3.5" />
+                          </button>
+                        }
+                      />
+                      <BadgesPreview
+                        earned={earnedBadges}
+                        copy={copy}
+                        t={t}
+                        onViewAll={() => setBadgesDialogOpen(true)}
+                      />
+                    </StatsCard>
+                  )}
                 </div>
 
                 {/* ─── Sidebar ─── */}
                 <aside className="min-w-0 space-y-6">
+                  {/* Reading goals */}
+                  {(goals.length > 0 || dimension === "lifetime" || dimension === "year" || dimension === "month") && (
+                    <StatsCard>
+                      <SectionHeader title={copy.goals} description={copy.goalsDesc} />
+                      <GoalsSection
+                        progress={goalProgress}
+                        copy={copy}
+                        onAddGoal={handleAddGoal}
+                        onRemoveGoal={removeGoal}
+                        currentDimension={dimension}
+                      />
+                    </StatsCard>
+                  )}
+
                   {/* Top books — featured variant */}
                   <StatsCard variant="featured">
                     <SectionHeader title={copy.topBooks} description={copy.topBooksDesc} />
@@ -542,12 +644,22 @@ export function ReadingStatsPanel() {
                       <InsightsSection insights={localizedMilestones} copy={copy} />
                     </StatsCard>
                   )}
+
                 </aside>
               </div>
             </>
           )}
         </div>
       </div>
+
+      {/* Badges full dialog */}
+      <BadgesDialog
+        open={badgesDialogOpen}
+        onOpenChange={setBadgesDialogOpen}
+        earned={earnedBadges}
+        allBadges={ALL_BADGE_DEFINITIONS}
+        t={t}
+      />
     </TooltipProvider>
   );
 }

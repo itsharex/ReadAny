@@ -28,6 +28,8 @@ import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import {
   fromLocalDateKey,
   readingReportsService,
+  evaluateBadges,
+  buildStatsSummary,
   type StatsDimension,
   type StatsReport,
 } from "@readany/core/stats";
@@ -57,6 +59,7 @@ import {
   TopBooksSection,
   YearlySnapshotsSection,
 } from "./stats/StatsSections";
+import { BadgesPreview } from "./stats/BadgesPreview";
 
 const DIMENSIONS: StatsDimension[] = ["day", "week", "month", "year", "lifetime"];
 
@@ -178,10 +181,17 @@ export default function StatsScreen() {
 
   const supportMetrics = useMemo(() => {
     if (!report) return [];
+    const compMap = new Map<string, { delta?: number; deltaLabel?: string }>();
+    for (const c of report.previousPeriodComparison ?? []) {
+      compMap.set(c.label, { delta: c.delta, deltaLabel: c.deltaLabel });
+    }
+    const adC = compMap.get("activeDays");
+    const ssC = compMap.get("sessions");
+    const bkC = compMap.get("books");
     return [
-      { label: t("stats.desktop.activeDays"), value: `${report.summary.activeDays}${isZh ? "天" : "d"}` },
-      { label: t("stats.desktop.sessions"), value: `${report.summary.totalSessions}${isZh ? "次" : ""}` },
-      { label: t("stats.desktop.books"), value: String(report.summary.booksTouched), sublabel: `${report.summary.totalPagesRead} ${t("stats.desktop.pagesReadSuffix")}` },
+      { label: t("stats.desktop.activeDays"), value: `${report.summary.activeDays}${isZh ? "天" : "d"}`, delta: adC?.delta, deltaLabel: adC?.deltaLabel },
+      { label: t("stats.desktop.sessions"), value: `${report.summary.totalSessions}${isZh ? "次" : ""}`, delta: ssC?.delta, deltaLabel: ssC?.deltaLabel },
+      { label: t("stats.desktop.books"), value: String(report.summary.booksTouched), sublabel: `${report.summary.totalPagesRead} ${t("stats.desktop.pagesReadSuffix")}`, delta: bkC?.delta, deltaLabel: bkC?.deltaLabel },
       { label: t("stats.desktop.streak"), value: `${report.dimension === "lifetime" ? report.summary.longestStreak : report.summary.currentStreak}${isZh ? "天" : "d"}` },
       { label: t("stats.desktop.avgActiveDay"), value: formatTimeLocalized(report.summary.avgActiveDayTime, isZh) },
     ];
@@ -198,6 +208,21 @@ export default function StatsScreen() {
       : [],
     [report, t, isZh],
   );
+
+  /* ── Badges ── */
+  const [allFacts, setAllFacts] = useState<import("@readany/core/stats").DailyReadingFact[]>([]);
+
+  useEffect(() => {
+    if (report) {
+      readingReportsService.getAllDailyFacts(currentSession).then(setAllFacts).catch(() => {});
+    }
+  }, [currentSession, report]);
+
+  const earnedBadges = useMemo(() => {
+    if (allFacts.length === 0) return [];
+    const lifetimeSummary = buildStatsSummary(allFacts);
+    return evaluateBadges(allFacts, lifetimeSummary);
+  }, [allFacts]);
 
   const copy = useMemo(() => ({
     heatmapLegendLow: t("stats.desktop.heatmapLegendLow", isZh ? "少" : "Less"),
@@ -355,7 +380,7 @@ export default function StatsScreen() {
               {/* Supporting metrics grid */}
               <View style={s.metricsGrid}>
                 {supportMetrics.map((m) => (
-                  <MetricTile key={m.label} label={m.label} value={m.value} sublabel={m.sublabel} />
+                  <MetricTile key={m.label} label={m.label} value={m.value} sublabel={m.sublabel} delta={m.delta} deltaLabel={m.deltaLabel} />
                 ))}
               </View>
             </View>
@@ -485,22 +510,32 @@ export default function StatsScreen() {
               </SectionCard>
             )}
 
-            {/* ═══ Longest streak ═══ */}
-            {report.summary.longestStreak > 0 && (
-              <View style={s.streakCard}>
-                <View style={s.streakIconWrap}>
-                  <FlameIcon size={16} color={colors.amber} />
-                </View>
-                <View style={s.streakInfo}>
-                  <Text style={s.streakLabel}>
-                    {t("stats.longestStreak", { days: report.summary.longestStreak })}
-                  </Text>
-                  <Text style={s.streakDesc}>
-                    {t("stats.longestStreakDesc", "历史最长连续阅读记录")}
-                  </Text>
-                </View>
-              </View>
+            {/* ═══ Badges preview — lifetime only ═══ */}
+            {report.dimension === "lifetime" && (
+              <SectionCard
+                title={t("stats.desktop.badges")}
+                description={t("stats.desktop.badgesDesc")}
+                action={
+                  <TouchableOpacity
+                    onPress={() => (nav as any).navigate("Badges")}
+                    style={{ flexDirection: "row", alignItems: "center", gap: 2 }}
+                    activeOpacity={0.6}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: "500", color: withOpacity(colors.primary, 0.6) }}>
+                      {t("stats.desktop.viewAllBadges")}
+                    </Text>
+                    <ChevronRightIcon size={14} color={withOpacity(colors.primary, 0.6)} />
+                  </TouchableOpacity>
+                }
+              >
+                <BadgesPreview
+                  earned={earnedBadges}
+                  t={t}
+                  onViewAll={() => (nav as any).navigate("Badges")}
+                />
+              </SectionCard>
             )}
+
           </>
         )}
       </ScrollView>

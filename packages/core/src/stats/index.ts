@@ -11,10 +11,28 @@ export {
   buildLifetimeReport,
   buildMonthReport,
   buildStatsSummary,
+  buildPeriodComparison,
   buildTopBooksFromFacts,
   buildWeekReport,
   buildYearReport,
 } from "./report-builder";
+export {
+  getGoalProgress,
+  getAllGoalProgress,
+} from "./goals-service";
+export {
+  evaluateBadges,
+  ALL_BADGE_DEFINITIONS,
+  BADGE_NUMBERS,
+  BADGE_CATEGORIES,
+  groupBadgesByCategory,
+} from "./badges";
+export type {
+  BadgeTier,
+  BadgeCategory,
+  BadgeDefinition,
+  EarnedBadge,
+} from "./badges";
 export {
   mergeCurrentSessionIntoDailyFacts,
 } from "./live-facts";
@@ -82,4 +100,8 @@ export type {
   TopBookEntry,
   WeekReport,
   YearReport,
+  GoalType,
+  GoalPeriod,
+  ReadingGoal,
+  GoalProgress,
 } from "./schema";

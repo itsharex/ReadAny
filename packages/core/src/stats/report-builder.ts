@@ -10,6 +10,7 @@ import type {
   StatsDimension,
   StatsInsight,
   StatsMetricCard,
+  StatsMetricComparison,
   StatsNavigation,
   StatsPeriodRef,
   StatsShareCardModel,
@@ -199,6 +200,48 @@ function buildInsights(summary: StatsSummary, topBooks: TopBookEntry[]): StatsIn
   }
 
   return insights.slice(0, 3);
+}
+
+/* ─── Period comparison ─── */
+
+function computeDelta(current: number, previous: number): { delta: number; deltaLabel: string } {
+  if (previous <= 0) {
+    return current > 0
+      ? { delta: 100, deltaLabel: "+∞" }
+      : { delta: 0, deltaLabel: "—" };
+  }
+  const pct = Math.round(((current - previous) / previous) * 100);
+  if (pct === 0) return { delta: 0, deltaLabel: "—" };
+  return { delta: pct, deltaLabel: pct > 0 ? `+${pct}%` : `${pct}%` };
+}
+
+export function buildPeriodComparison(
+  current: StatsSummary,
+  previous: StatsSummary,
+): StatsMetricComparison[] {
+  return [
+    { label: "readingTime", value: current.totalReadingTime, ...computeDelta(current.totalReadingTime, previous.totalReadingTime) },
+    { label: "activeDays", value: current.activeDays, ...computeDelta(current.activeDays, previous.activeDays) },
+    { label: "sessions", value: current.totalSessions, ...computeDelta(current.totalSessions, previous.totalSessions) },
+    { label: "books", value: current.booksTouched, ...computeDelta(current.booksTouched, previous.booksTouched) },
+    { label: "avgSessionTime", value: current.avgSessionTime, ...computeDelta(current.avgSessionTime, previous.avgSessionTime) },
+  ];
+}
+
+function getPreviousPeriodFacts(
+  facts: DailyReadingFact[],
+  dimension: StatsDimension,
+  date: Date,
+): DailyReadingFact[] {
+  if (dimension === "lifetime") return [];
+  const prevDate = new Date(date);
+  if (dimension === "day") prevDate.setDate(prevDate.getDate() - 1);
+  else if (dimension === "week") prevDate.setDate(prevDate.getDate() - 7);
+  else if (dimension === "month") prevDate.setMonth(prevDate.getMonth() - 1);
+  else if (dimension === "year") prevDate.setFullYear(prevDate.getFullYear() - 1);
+
+  const prevPeriod = buildPeriodRef(dimension, prevDate);
+  return filterFactsByPeriod(facts, prevPeriod);
 }
 
 function createShareCard(
@@ -581,6 +624,8 @@ export function buildDayReport(
   const dayFact = periodFacts[0] ?? null;
   const summary = buildStatsSummary(periodFacts);
   const topBooks = buildTopBooksFromFacts(periodFacts, options.limitTopBooks);
+  const prevFacts = getPreviousPeriodFacts(facts, "day", date);
+  const prevSummary = buildStatsSummary(prevFacts);
 
   return {
     dimension: "day",
@@ -593,6 +638,7 @@ export function buildDayReport(
     hourlyTimeline: null,
     dayFact,
     comparisonToPreviousDay: [],
+    previousPeriodComparison: buildPeriodComparison(summary, prevSummary),
     shareCard: createShareCard("day", period.label, summary, topBooks[0]),
   };
 }
@@ -607,6 +653,8 @@ export function buildWeekReport(
   const summary = buildStatsSummary(periodFacts);
   const topBooks = buildTopBooksFromFacts(periodFacts, options.limitTopBooks);
   const weekdayDistribution = buildDailyTimeChart(periodFacts, period, "Reading by day");
+  const prevFacts = getPreviousPeriodFacts(facts, "week", date);
+  const prevSummary = buildStatsSummary(prevFacts);
 
   return {
     dimension: "week",
@@ -619,6 +667,7 @@ export function buildWeekReport(
     dailyFacts: periodFacts,
     weekdayDistribution,
     workingDayComparison: [],
+    previousPeriodComparison: buildPeriodComparison(summary, prevSummary),
     shareCard: createShareCard("week", period.label, summary, topBooks[0]),
   };
 }
@@ -638,6 +687,8 @@ export function buildMonthReport(
     date,
     options.now ?? new Date(),
   );
+  const prevFacts = getPreviousPeriodFacts(facts, "month", date);
+  const prevSummary = buildStatsSummary(prevFacts);
 
   return {
     dimension: "month",
@@ -651,6 +702,7 @@ export function buildMonthReport(
     heatmap,
     weeklyBreakdown: undefined,
     readingCalendar,
+    previousPeriodComparison: buildPeriodComparison(summary, prevSummary),
     shareCard: createShareCard("month", period.label, summary, topBooks[0]),
   };
 }
@@ -671,6 +723,8 @@ export function buildYearReport(
     `year-${date.getFullYear()}-category-distribution`,
     "Book distribution",
   );
+  const prevFacts = getPreviousPeriodFacts(facts, "year", date);
+  const prevSummary = buildStatsSummary(prevFacts);
   const strongestMonth = monthlyChart.data.reduce<StatsMetricCard | undefined>((best, current) => {
     if (!best || Number(best.sublabel ?? "0") < current.value) {
       return createMetricCard("strongest-month", "Strongest month", current.label, String(current.value));
@@ -695,6 +749,7 @@ export function buildYearReport(
           value: Number(strongestMonth.sublabel ?? "0"),
         }
       : undefined,
+    previousPeriodComparison: buildPeriodComparison(summary, prevSummary),
     shareCard: createShareCard("year", period.label, summary, topBooks[0]),
   };
 }

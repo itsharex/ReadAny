@@ -210,6 +210,8 @@ export interface BaseStatsReport {
   charts: StatsChartBlock[];
   topBooks: TopBookEntry[];
   shareCard: StatsShareCardModel;
+  /** Comparison to the previous period (e.g. this month vs last month) */
+  previousPeriodComparison?: StatsMetricComparison[];
 }
 
 export interface DayReport extends BaseStatsReport {
@@ -267,3 +269,24 @@ export type StatsReport =
   | MonthReport
   | YearReport
   | LifetimeReport;
+
+/* ─── Reading Goals ─── */
+
+export type GoalType = "books" | "time" | "pages";
+export type GoalPeriod = "monthly" | "yearly";
+
+export interface ReadingGoal {
+  id: string;
+  type: GoalType;
+  target: number;
+  period: GoalPeriod;
+  createdAt: number; // timestamp
+}
+
+export interface GoalProgress {
+  goal: ReadingGoal;
+  current: number;
+  percentage: number; // 0–100
+  remaining: number;
+  onTrack: boolean;
+}

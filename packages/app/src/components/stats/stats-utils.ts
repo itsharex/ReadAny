@@ -22,6 +22,10 @@ export type MetricTileData = {
   value: string;
   sublabel?: string;
   icon: ReactNode;
+  /** Delta from previous period, e.g. "+23%" or "-5%" */
+  deltaLabel?: string;
+  /** Positive = up, negative = down, 0 = no change */
+  delta?: number;
 };
 
 export const DIMENSIONS: StatsDimension[] = ["day", "week", "month", "year", "lifetime"];

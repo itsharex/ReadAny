@@ -68,8 +68,18 @@ export function MetricTile({ metric }: { metric: MetricTileData }) {
         </span>
         <span>{metric.label}</span>
       </div>
-      <div className="mt-1.5 truncate text-[20px] font-bold tabular-nums tracking-tight text-foreground/85 transition-colors group-hover:text-foreground">
-        {metric.value}
+      <div className="mt-1.5 flex items-baseline gap-2">
+        <span className="truncate text-[20px] font-bold tabular-nums tracking-tight text-foreground/85 transition-colors group-hover:text-foreground">
+          {metric.value}
+        </span>
+        {metric.deltaLabel && metric.delta !== undefined && metric.delta !== 0 && (
+          <span className={cn(
+            "shrink-0 text-[11px] font-semibold tabular-nums",
+            metric.delta > 0 ? "text-emerald-500/70" : "text-red-400/70",
+          )}>
+            {metric.delta > 0 ? "↑" : "↓"} {metric.deltaLabel}
+          </span>
+        )}
       </div>
       {metric.sublabel && (
         <p className="mt-0.5 text-[12px] text-muted-foreground/40">{metric.sublabel}</p>
