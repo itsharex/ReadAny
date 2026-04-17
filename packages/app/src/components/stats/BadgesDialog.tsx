@@ -14,7 +14,7 @@ import { BADGE_CATEGORIES, groupBadgesByCategory } from "@readany/core/stats";
 import { cn } from "@readany/core/utils";
 import { Trophy } from "lucide-react";
 import { useState } from "react";
-import { BadgeIcon } from "./BadgeIcon";
+import { BadgeBackIcon, BadgeIcon } from "./BadgeIcon";
 
 export function BadgesDialog({
   open,
@@ -105,7 +105,7 @@ export function BadgesDialog({
   );
 }
 
-/* ─── Badge Detail with spin animation ─── */
+/* ─── Badge Detail with front/back flip animation ─── */
 
 function BadgeDetailContent({
   badge,
@@ -118,20 +118,98 @@ function BadgeDetailContent({
 }) {
   return (
     <div className="flex flex-col items-center gap-5 py-4">
-      {/* Badge with CSS spin animation on mount */}
+      {/* Badge with front/back flip animation on mount */}
       <style>{`
-        @keyframes badge-spin {
-          0% { transform: rotateY(0deg); }
-          100% { transform: rotateY(360deg); }
+        .badge-flip-stage {
+          position: relative;
+          width: 120px;
+          height: 120px;
+          perspective: 1400px;
+          transform-style: preserve-3d;
         }
-        .badge-spin-enter {
-          animation: badge-spin 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
-          perspective: 600px;
+        .badge-flip-stage::after {
+          content: "";
+          position: absolute;
+          inset: 18px;
+          z-index: 0;
+          border-radius: 999px;
+          background: radial-gradient(circle, rgba(255,255,255,0.14) 0%, transparent 72%);
+          opacity: 0.85;
+          filter: blur(10px);
+          transform: translateZ(0);
+          pointer-events: none;
+        }
+        .badge-flip-layer {
+          position: absolute;
+          inset: 0;
+          z-index: 1;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transform-style: preserve-3d;
+          backface-visibility: hidden;
+          -webkit-backface-visibility: hidden;
+          transform: translateZ(0);
+          will-change: transform, opacity;
+          transform-origin: 50% 50%;
+        }
+        .badge-flip-shell {
+          position: absolute;
+          inset: 0;
+          z-index: 1;
+          transform-style: preserve-3d;
+          will-change: transform;
+          animation: badge-shell-turn 1660ms both;
+        }
+        .badge-flip-face {
+          position: absolute;
+          inset: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          backface-visibility: hidden;
+          -webkit-backface-visibility: hidden;
+          transform-style: preserve-3d;
+        }
+        .badge-flip-face.back {
+          transform: rotateY(180deg);
+        }
+        @keyframes badge-shell-turn {
+          0% {
+            transform: translateY(6px) scale(0.965) rotateY(0deg);
+            animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+          }
+          10% {
+            transform: translateY(0px) scale(1) rotateY(0deg);
+            animation-timing-function: linear;
+          }
+          28% {
+            transform: translateY(0px) scale(1) rotateY(0deg);
+            animation-timing-function: cubic-bezier(0.22, 0.61, 0.36, 1);
+          }
+          50% {
+            transform: translateY(-1px) scale(1.022) rotateY(180deg);
+            animation-timing-function: linear;
+          }
+          68% {
+            transform: translateY(-1px) scale(1.022) rotateY(180deg);
+            animation-timing-function: cubic-bezier(0.22, 0.61, 0.36, 1);
+          }
+          100% {
+            transform: translateY(0px) scale(1) rotateY(360deg);
+          }
         }
       `}</style>
-      <div className="badge-spin-enter">
-        {/* Always show colorful (earned) version to attract user */}
-        <BadgeIcon badge={badge} isEarned size={120} />
+
+      <div className="badge-flip-stage">
+        <div className="badge-flip-shell">
+          <div className="badge-flip-face front">
+            <BadgeIcon badge={badge} isEarned size={120} />
+          </div>
+          <div className="badge-flip-face back">
+            <BadgeBackIcon badge={badge} isEarned={isEarned} size={120} />
+          </div>
+        </div>
       </div>
 
       <div className="space-y-2 text-center">

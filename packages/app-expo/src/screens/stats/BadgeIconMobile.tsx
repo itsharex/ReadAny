@@ -4,18 +4,36 @@
  * Gradient coin base + decorative ring + large center icon + number tag.
  * Mirrors the desktop BadgeIcon but uses react-native-svg primitives.
  */
-import { useColors, withOpacity } from "@/styles/theme";
 import {
-  BookOpenIcon, ClockIcon, FlameIcon, TrendingUpIcon,
+  BookOpenIcon,
+  BrainIcon,
+  CalendarIcon,
+  ClockIcon,
+  EditIcon,
+  FlameIcon,
+  MoonIcon,
+  SunIcon,
+  SwordsIcon,
+  TrendingUpIcon,
+  TrophyIcon,
 } from "@/components/ui/Icon";
 import type { BadgeDefinition } from "@readany/core/stats";
 import { BADGE_NUMBERS } from "@readany/core/stats";
 import { Text, View } from "react-native";
-import Svg, { Circle, Defs, Ellipse, RadialGradient, Stop } from "react-native-svg";
+import Svg, { Circle, Defs, Ellipse, Path, RadialGradient, Stop } from "react-native-svg";
 
 const ICON_MAP: Record<string, React.ComponentType<{ size?: number; color?: string }>> = {
-  flame: FlameIcon, library: BookOpenIcon, clock: ClockIcon, trophy: TrendingUpIcon,
-  brain: ClockIcon, moon: ClockIcon, sunrise: FlameIcon, swords: TrendingUpIcon, "book-open": BookOpenIcon,
+  flame: FlameIcon,
+  library: BookOpenIcon,
+  clock: ClockIcon,
+  trophy: TrophyIcon,
+  brain: BrainIcon,
+  moon: MoonIcon,
+  sunrise: SunIcon,
+  swords: SwordsIcon,
+  calendar: CalendarIcon,
+  pencil: EditIcon,
+  "book-open": BookOpenIcon,
 };
 
 interface TierPalette {
@@ -87,7 +105,6 @@ export function BadgeIconMobile({
   isEarned: boolean;
   size?: number;
 }) {
-  const colors = useColors();
   const p = PALETTES[badge.tier] ?? PALETTES.bronze;
   const Icon = ICON_MAP[badge.icon] ?? FlameIcon;
   const num = BADGE_NUMBERS[badge.id];
@@ -194,6 +211,125 @@ export function BadgeIconMobile({
           </Text>
         </View>
       ) : null}
+    </View>
+  );
+}
+
+export function BadgeBackIconMobile({
+  badge,
+  isEarned,
+  size = 72,
+}: {
+  badge: BadgeDefinition;
+  isEarned: boolean;
+  size?: number;
+}) {
+  const p = PALETTES[badge.tier] ?? PALETTES.bronze;
+  const c = size / 2;
+  const outerR = size * 0.46;
+  const innerR = size * 0.36;
+  const ringR = size * 0.41;
+  const crestR = size * 0.12;
+  const studR = size * 0.022;
+  const bid = `bb-${badge.id}`;
+
+  if (!isEarned) {
+    return (
+      <View style={{ width: size, height: size, position: "relative" }}>
+        <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+          <Circle cx={c} cy={c} r={outerR} fill="#e4e4e7" />
+          <Circle cx={c} cy={c} r={innerR} fill="#f4f4f5" />
+          <Circle cx={c} cy={c} r={ringR} fill="none" strokeWidth={0.8} stroke="#d4d4d8" strokeDasharray="3 3" />
+          <Circle cx={c} cy={c} r={crestR} fill="#e5e7eb" />
+          <Circle cx={c} cy={c} r={crestR * 1.55} fill="none" strokeWidth={1} stroke="#d4d4d8" />
+        </Svg>
+        <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, alignItems: "center", justifyContent: "center", opacity: 0.2 }}>
+          <TrendingUpIcon size={size * 0.18} color="#a1a1aa" />
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View style={{ width: size, height: size, position: "relative" }}>
+      <View
+        pointerEvents="none"
+        style={{
+          position: "absolute",
+          top: size * 0.14,
+          right: size * 0.14,
+          bottom: size * 0.14,
+          left: size * 0.14,
+          borderRadius: 999,
+          backgroundColor: p.glow,
+          opacity: 0.42,
+          transform: [{ scale: 1.18 }],
+          shadowColor: p.glow,
+          shadowOffset: { width: 0, height: 0 },
+          shadowOpacity: 0.95,
+          shadowRadius: 14,
+          elevation: 8,
+        }}
+      />
+
+      <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ zIndex: 1 }}>
+        <Defs>
+          <RadialGradient id={`${bid}-base`} cx="60%" cy="35%" r="72%">
+            <Stop offset="0%" stopColor={p.baseTo} />
+            <Stop offset="100%" stopColor={p.baseFrom} />
+          </RadialGradient>
+          <RadialGradient id={`${bid}-inner`} cx="55%" cy="38%" r="68%">
+            <Stop offset="0%" stopColor={p.innerTo} />
+            <Stop offset="100%" stopColor={p.innerFrom} />
+          </RadialGradient>
+        </Defs>
+
+        <Circle cx={c} cy={c} r={outerR} fill={`url(#${bid}-base)`} />
+        <Circle
+          cx={c}
+          cy={c}
+          r={outerR * 0.92}
+          fill="none"
+          strokeWidth={0.9}
+          stroke="rgba(255,255,255,0.14)"
+          strokeDasharray="1.4 3.6"
+        />
+        <Circle cx={c} cy={c} r={ringR} fill="none" strokeWidth={1} stroke={p.ringStroke} strokeDasharray="2.5 3" />
+        <Circle cx={c} cy={c} r={innerR} fill={`url(#${bid}-inner)`} />
+        <Circle
+          cx={c}
+          cy={c}
+          r={innerR * 0.72}
+          fill="none"
+          strokeWidth={0.8}
+          stroke="rgba(255,255,255,0.12)"
+          strokeDasharray="3 2.4"
+        />
+        <Circle cx={c} cy={c} r={crestR * 1.55} fill="none" strokeWidth={1.2} stroke="rgba(255,255,255,0.22)" />
+        <Circle cx={c} cy={c} r={crestR} fill="rgba(255,255,255,0.12)" />
+        <Circle cx={c} cy={c - ringR * 0.82} r={studR} fill="rgba(255,255,255,0.24)" />
+        <Circle cx={c + ringR * 0.82} cy={c} r={studR} fill="rgba(255,255,255,0.18)" />
+        <Circle cx={c} cy={c + ringR * 0.82} r={studR} fill="rgba(255,255,255,0.2)" />
+        <Circle cx={c - ringR * 0.82} cy={c} r={studR} fill="rgba(255,255,255,0.16)" />
+        <Ellipse
+          cx={c - size * 0.08}
+          cy={c - size * 0.11}
+          rx={size * 0.1}
+          ry={size * 0.06}
+          fill="rgba(255,255,255,0.16)"
+        />
+        <Path
+          d={`M ${c - size * 0.16} ${c + size * 0.2} Q ${c} ${c + size * 0.26} ${c + size * 0.16} ${c + size * 0.2}`}
+          fill="none"
+          stroke="rgba(255,255,255,0.16)"
+          strokeWidth={1}
+          strokeLinecap="round"
+        />
+      </Svg>
+
+      <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, alignItems: "center", justifyContent: "center", zIndex: 2 }}>
+        <TrendingUpIcon size={size * 0.18} color="rgba(255,255,255,0.32)" />
+      </View>
     </View>
   );
 }

@@ -30,7 +30,6 @@ interface TierPalette {
   numText: string;    // number tag text
   iconColor: string;  // center icon
   glow: string;       // drop-shadow
-  glowStrength: string;
 }
 
 const PALETTES: Record<string, TierPalette> = {
@@ -41,7 +40,6 @@ const PALETTES: Record<string, TierPalette> = {
     numBg: "#7a4f2e", numText: "#fff8ee",
     iconColor: "#5c3a1e",
     glow: "rgba(184,115,51,0.3)",
-    glowStrength: "drop-shadow(0 4px 12px rgba(184,115,51,0.3))",
   },
   silver: {
     baseFrom: "#b8bcc5", baseTo: "#7a7d85",
@@ -50,7 +48,6 @@ const PALETTES: Record<string, TierPalette> = {
     numBg: "#6b6e76", numText: "#f0f1f3",
     iconColor: "#4a4d54",
     glow: "rgba(150,153,165,0.35)",
-    glowStrength: "drop-shadow(0 4px 14px rgba(150,153,165,0.35))",
   },
   gold: {
     baseFrom: "#f0c030", baseTo: "#b8860b",
@@ -59,7 +56,6 @@ const PALETTES: Record<string, TierPalette> = {
     numBg: "#9a7209", numText: "#fffdf0",
     iconColor: "#7a5a08",
     glow: "rgba(240,192,48,0.4)",
-    glowStrength: "drop-shadow(0 4px 16px rgba(240,192,48,0.4))",
   },
   platinum: {
     baseFrom: "#e8ecf0", baseTo: "#a0b0c0",
@@ -68,7 +64,6 @@ const PALETTES: Record<string, TierPalette> = {
     numBg: "#708090", numText: "#f8fafc",
     iconColor: "#4a6070",
     glow: "rgba(120,160,200,0.35)",
-    glowStrength: "drop-shadow(0 4px 14px rgba(120,160,200,0.35))",
   },
   diamond: {
     baseFrom: "#7dd3fc", baseTo: "#0284c7",
@@ -77,7 +72,6 @@ const PALETTES: Record<string, TierPalette> = {
     numBg: "#0369a1", numText: "#f0f9ff",
     iconColor: "#075985",
     glow: "rgba(56,189,248,0.4)",
-    glowStrength: "drop-shadow(0 4px 18px rgba(56,189,248,0.4))",
   },
   legendary: {
     baseFrom: "#c084fc", baseTo: "#7c3aed",
@@ -86,7 +80,6 @@ const PALETTES: Record<string, TierPalette> = {
     numBg: "#6d28d9", numText: "#faf5ff",
     iconColor: "#5b21b6",
     glow: "rgba(167,139,250,0.45)",
-    glowStrength: "drop-shadow(0 4px 20px rgba(167,139,250,0.45)) drop-shadow(0 0 8px rgba(250,204,21,0.2))",
   },
 };
 
@@ -202,6 +195,143 @@ export function BadgeIcon({
           </span>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+export function BadgeBackIcon({
+  badge,
+  isEarned,
+  size = 72,
+}: {
+  badge: BadgeDefinition;
+  isEarned: boolean;
+  size?: number;
+}) {
+  const p = PALETTES[badge.tier] ?? PALETTES.bronze;
+  const c = size / 2;
+  const outerR = size * 0.46;
+  const innerR = size * 0.36;
+  const ringR = size * 0.41;
+  const crestR = size * 0.12;
+  const studR = size * 0.022;
+  const baseId = `badge-back-${badge.id}`;
+
+  if (!isEarned) {
+    return (
+      <div className="relative" style={{ width: size, height: size }}>
+        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+          <circle cx={c} cy={c} r={outerR} fill="#e4e4e7" />
+          <circle cx={c} cy={c} r={innerR} fill="#f4f4f5" />
+          <circle cx={c} cy={c} r={ringR} fill="none" strokeWidth={0.8} stroke="#d4d4d8" strokeDasharray="3 3" />
+          <circle cx={c} cy={c} r={crestR} fill="#e5e7eb" />
+          <circle cx={c} cy={c} r={crestR * 1.55} fill="none" strokeWidth={1} stroke="#d4d4d8" />
+        </svg>
+        <div className="absolute inset-0 flex items-center justify-center opacity-18">
+          <Trophy style={{ width: size * 0.18, height: size * 0.18, color: "#a1a1aa" }} />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative" style={{ width: size, height: size }}>
+      <div
+        aria-hidden
+        className="pointer-events-none absolute rounded-full"
+        style={{
+          inset: size * 0.14,
+          background: `radial-gradient(circle, ${p.glow} 0%, ${p.glow} 48%, transparent 76%)`,
+          filter: "blur(10px)",
+          opacity: 0.9,
+          transform: "scale(1.18)",
+        }}
+      />
+
+      <svg
+        width={size}
+        height={size}
+        viewBox={`0 0 ${size} ${size}`}
+        className="relative z-[1]"
+      >
+        <defs>
+          <radialGradient id={`${baseId}-base`} cx="60%" cy="35%" r="72%">
+            <stop offset="0%" stopColor={p.baseTo} />
+            <stop offset="100%" stopColor={p.baseFrom} />
+          </radialGradient>
+          <radialGradient id={`${baseId}-inner`} cx="55%" cy="38%" r="68%">
+            <stop offset="0%" stopColor={p.innerTo} />
+            <stop offset="100%" stopColor={p.innerFrom} />
+          </radialGradient>
+        </defs>
+
+        <circle cx={c} cy={c} r={outerR} fill={`url(#${baseId}-base)`} />
+        <circle
+          cx={c}
+          cy={c}
+          r={outerR * 0.92}
+          fill="none"
+          strokeWidth={0.9}
+          stroke="rgba(255,255,255,0.14)"
+          strokeDasharray="1.4 3.6"
+        />
+        <circle
+          cx={c}
+          cy={c}
+          r={ringR}
+          fill="none"
+          strokeWidth={1}
+          stroke={p.ringStroke}
+          strokeDasharray="2.5 3"
+        />
+        <circle cx={c} cy={c} r={innerR} fill={`url(#${baseId}-inner)`} />
+        <circle
+          cx={c}
+          cy={c}
+          r={innerR * 0.72}
+          fill="none"
+          strokeWidth={0.8}
+          stroke="rgba(255,255,255,0.12)"
+          strokeDasharray="3 2.4"
+        />
+        <circle
+          cx={c}
+          cy={c}
+          r={crestR * 1.55}
+          fill="none"
+          strokeWidth={1.2}
+          stroke="rgba(255,255,255,0.22)"
+        />
+        <circle cx={c} cy={c} r={crestR} fill="rgba(255,255,255,0.12)" />
+        <circle cx={c} cy={c - ringR * 0.82} r={studR} fill="rgba(255,255,255,0.24)" />
+        <circle cx={c + ringR * 0.82} cy={c} r={studR} fill="rgba(255,255,255,0.18)" />
+        <circle cx={c} cy={c + ringR * 0.82} r={studR} fill="rgba(255,255,255,0.2)" />
+        <circle cx={c - ringR * 0.82} cy={c} r={studR} fill="rgba(255,255,255,0.16)" />
+        <ellipse
+          cx={c - size * 0.08}
+          cy={c - size * 0.11}
+          rx={size * 0.1}
+          ry={size * 0.06}
+          fill="rgba(255,255,255,0.16)"
+        />
+        <path
+          d={`M ${c - size * 0.16} ${c + size * 0.2} Q ${c} ${c + size * 0.26} ${c + size * 0.16} ${c + size * 0.2}`}
+          fill="none"
+          stroke="rgba(255,255,255,0.16)"
+          strokeWidth={1}
+          strokeLinecap="round"
+        />
+      </svg>
+
+      <div className="absolute inset-0 z-[2] flex items-center justify-center">
+        <Trophy
+          style={{
+            width: size * 0.18,
+            height: size * 0.18,
+            color: "rgba(255,255,255,0.32)",
+          }}
+        />
+      </div>
     </div>
   );
 }
