@@ -18,7 +18,7 @@ export function BarChart({
   const BAR_HEIGHT = 140;
   const Y_AXIS_WIDTH = 32;
 
-  const yTicks = [0, maxVal * 0.5, maxVal].map((v) => ({
+  const yTicks = [maxVal, maxVal * 0.5, 0].map((v) => ({
     value: v,
     label: v < 60 ? `${Math.round(v)}m` : `${(v / 60).toFixed(1)}h`,
   }));

@@ -9,15 +9,19 @@ import {
 
 export const makeStyles = (colors: ThemeColors) =>
   StyleSheet.create({
+    /* ── Root ── */
     container: { flex: 1, backgroundColor: colors.background },
     loadingWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
+    scrollContent: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 40 },
+
+    /* ── Header ── */
     header: {
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
       paddingHorizontal: 12,
       paddingVertical: 10,
-      borderBottomWidth: 0.5,
+      borderBottomWidth: StyleSheet.hairlineWidth,
       borderBottomColor: colors.border,
     },
     backBtn: {
@@ -32,77 +36,178 @@ export const makeStyles = (colors: ThemeColors) =>
       fontWeight: fontWeight.semibold,
       color: colors.foreground,
     },
-    scrollContent: { padding: 16 },
 
-    statsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12, marginBottom: 12 },
-    statCard: {
-      width: "47%",
-      backgroundColor: colors.card,
-      borderRadius: radius.xl,
-      borderWidth: 0.5,
-      borderColor: colors.border,
-      padding: 14,
+    /* ── Dimension tabs ── */
+    dimTabs: {
+      flexDirection: "row",
+      borderRadius: radius.lg,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: withOpacity(colors.border, 0.5),
+      backgroundColor: withOpacity(colors.muted, 0.3),
+      padding: 2,
+      marginBottom: 16,
     },
-    statCardHeader: {
+    dimTab: {
+      flex: 1,
+      paddingVertical: 7,
+      borderRadius: radius.md,
+      alignItems: "center",
+    },
+    dimTabActive: {
+      backgroundColor: colors.background,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.04,
+      shadowRadius: 1,
+      elevation: 1,
+    },
+    dimTabText: {
+      fontSize: 13,
+      fontWeight: fontWeight.medium,
+      color: withOpacity(colors.mutedForeground, 0.6),
+    },
+    dimTabTextActive: { color: colors.foreground },
+
+    /* ── Hero section ── */
+    heroCard: {
+      backgroundColor: colors.card,
+      borderRadius: radius.xxl,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: withOpacity(colors.border, 0.4),
+      padding: 20,
+      marginBottom: 16,
+    },
+    heroPeriodRow: {
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
-      marginBottom: 6,
+      marginBottom: 20,
     },
-    statCardTitle: { fontSize: fontSize.xs, color: colors.mutedForeground },
-    statCardBody: { flexDirection: "row", alignItems: "baseline", gap: 4 },
-    statCardValue: {
-      fontSize: fontSize["2xl"],
+    heroDimLabel: {
+      fontSize: 10,
+      fontWeight: fontWeight.semibold,
+      color: withOpacity(colors.primary, 0.5),
+      textTransform: "uppercase",
+      letterSpacing: 1.5,
+    },
+    heroPeriodLabel: {
+      fontSize: 15,
+      fontWeight: fontWeight.semibold,
+      color: withOpacity(colors.foreground, 0.85),
+      marginTop: 2,
+    },
+    heroNavRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 2,
+    },
+    heroNavBtn: {
+      width: 30,
+      height: 30,
+      borderRadius: radius.md,
+      alignItems: "center",
+      justifyContent: "center",
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: withOpacity(colors.border, 0.3),
+      backgroundColor: withOpacity(colors.background, 0.5),
+    },
+    heroValue: {
+      fontSize: 48,
       fontWeight: fontWeight.bold,
       color: colors.foreground,
+      letterSpacing: -2,
+      lineHeight: 52,
     },
-    statCardUnit: { fontSize: fontSize.sm, color: colors.mutedForeground },
-
-    section: { marginBottom: 12 },
-    sectionCard: {
-      backgroundColor: colors.card,
-      borderRadius: radius.xl,
-      borderWidth: 0.5,
-      borderColor: colors.border,
-      padding: 14,
-    },
-    sectionCardTitle: {
-      fontSize: fontSize.sm,
-      fontWeight: fontWeight.medium,
-      color: colors.mutedForeground,
-      marginBottom: 12,
-    },
-
-    chartHeaderRow: {
+    heroSubRow: {
       flexDirection: "row",
       alignItems: "center",
-      justifyContent: "space-between",
+      gap: 6,
+      marginTop: 6,
+    },
+    heroSubText: {
+      fontSize: 13,
+      color: withOpacity(colors.mutedForeground, 0.55),
+    },
+    heroNarrative: {
+      fontSize: 13,
+      color: withOpacity(colors.mutedForeground, 0.45),
+      lineHeight: 20,
+      marginTop: 8,
+    },
+
+    /* ── Metrics grid (2x3 or 3x2) ── */
+    metricsGrid: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 8,
+      marginTop: 20,
+    },
+    metricTile: {
+      width: "31%",
+      backgroundColor: withOpacity(colors.muted, 0.12),
+      borderRadius: radius.lg,
+      paddingHorizontal: 10,
+      paddingVertical: 10,
+    },
+    metricLabel: {
+      fontSize: 9,
+      fontWeight: fontWeight.medium,
+      color: withOpacity(colors.mutedForeground, 0.45),
+      textTransform: "uppercase",
+      letterSpacing: 1,
+    },
+    metricValue: {
+      fontSize: 18,
+      fontWeight: fontWeight.bold,
+      color: withOpacity(colors.foreground, 0.85),
+      marginTop: 4,
+    },
+    metricSub: {
+      fontSize: 10,
+      color: withOpacity(colors.mutedForeground, 0.4),
+      marginTop: 1,
+    },
+
+    /* ── Section cards ── */
+    sectionCard: {
+      backgroundColor: colors.card,
+      borderRadius: radius.xxl,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: withOpacity(colors.border, 0.3),
+      padding: 16,
       marginBottom: 12,
     },
-    chartHeaderLabel: {
-      fontSize: fontSize.sm,
-      fontWeight: fontWeight.medium,
-      color: colors.mutedForeground,
+    sectionFeatured: {
+      borderColor: withOpacity(colors.primary, 0.1),
     },
+    sectionTitle: {
+      fontSize: 15,
+      fontWeight: fontWeight.semibold,
+      color: withOpacity(colors.foreground, 0.9),
+    },
+    sectionDesc: {
+      fontSize: 13,
+      color: withOpacity(colors.mutedForeground, 0.5),
+      lineHeight: 18,
+      marginTop: 2,
+    },
+    sectionHeader: { marginBottom: 14 },
+
+    /* ── Chart toggle ── */
     toggleRow: {
       flexDirection: "row",
       borderRadius: radius.md,
-      borderWidth: 0.5,
-      borderColor: colors.border,
-      backgroundColor: colors.muted,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: withOpacity(colors.border, 0.5),
+      backgroundColor: withOpacity(colors.muted, 0.3),
       padding: 2,
     },
-    toggleBtn: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: radius.sm },
+    toggleBtn: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.sm },
     toggleBtnActive: { backgroundColor: colors.background },
     toggleBtnText: { fontSize: 12, fontWeight: fontWeight.medium, color: colors.mutedForeground },
     toggleBtnTextActive: { color: colors.foreground },
 
-    barControlsRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      marginBottom: 12,
-    },
+    /* ── Period nav ── */
     periodNav: { flexDirection: "row", alignItems: "center", gap: 2 },
     periodNavBtn: { padding: 4, borderRadius: radius.sm },
     periodLabel: {
@@ -112,17 +217,24 @@ export const makeStyles = (colors: ThemeColors) =>
       minWidth: 80,
       textAlign: "center",
     },
+    barControlsRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: 12,
+    },
 
+    /* ── Heatmap ── */
     heatmapLegend: {
       flexDirection: "row",
       alignItems: "center",
-      justifyContent: "flex-end",
       gap: 4,
-      marginTop: 10,
+      marginTop: 0,
     },
     legendText: { fontSize: 9, color: colors.mutedForeground },
     legendCell: { width: 10, height: 10, borderRadius: 2 },
 
+    /* ── Bar chart ── */
     barChartWrap: { height: 180 },
     barChartContent: { alignItems: "flex-end", gap: 4, paddingBottom: 4 },
     barCol: { alignItems: "center", width: 28 },
@@ -142,76 +254,90 @@ export const makeStyles = (colors: ThemeColors) =>
     },
     tooltipText: { fontSize: 9, color: colors.cardForeground, fontWeight: "500" },
 
-    trendContent: { alignItems: "flex-end", gap: 1 },
-    trendCol: { alignItems: "center", width: 10 },
-    trendTrack: { justifyContent: "flex-end", width: 6 },
-    trendBar: { width: 6, borderTopLeftRadius: 2, borderTopRightRadius: 2 },
-    trendLabel: { fontSize: 7, color: colors.mutedForeground, marginTop: 2 },
-
-    periodBooksEmpty: {
-      fontSize: fontSize.xs,
-      color: colors.mutedForeground,
-      textAlign: "center",
-      paddingVertical: 16,
-    },
-    bookRow: {
+    /* ── Top books ── */
+    bookItem: {
       flexDirection: "row",
-      alignItems: "center",
-      gap: 10,
-      paddingVertical: 6,
-      paddingHorizontal: 6,
+      alignItems: "flex-start",
+      gap: 12,
+      paddingVertical: 10,
+      paddingHorizontal: 8,
       borderRadius: radius.lg,
     },
-    bookCoverPlaceholder: {
-      width: 28,
-      height: 40,
+    bookItemFirst: {
+      backgroundColor: withOpacity(colors.primary, 0.03),
+    },
+    bookRank: {
+      width: 22,
+      height: 22,
       borderRadius: radius.sm,
-      backgroundColor: colors.muted,
       alignItems: "center",
       justifyContent: "center",
+      marginTop: 2,
     },
-    bookCover: {
-      width: 28,
-      height: 40,
-      borderRadius: radius.sm,
-      backgroundColor: colors.muted,
+    bookRankFirst: { backgroundColor: withOpacity(colors.primary, 0.08) },
+    bookRankDefault: { backgroundColor: withOpacity(colors.muted, 0.25) },
+    bookRankText: { fontSize: 11, fontWeight: fontWeight.bold },
+    bookRankTextFirst: { color: withOpacity(colors.primary, 0.6) },
+    bookRankTextDefault: { color: withOpacity(colors.mutedForeground, 0.35) },
+    bookInfo: { flex: 1, paddingTop: 1 },
+    bookLeadBadge: {
+      fontSize: 9,
+      fontWeight: fontWeight.semibold,
+      color: withOpacity(colors.primary, 0.4),
+      textTransform: "uppercase",
+      letterSpacing: 1,
+      marginBottom: 2,
     },
-    bookCoverLetter: { fontSize: 12, color: colors.mutedForeground },
-    bookInfo: { flex: 1, gap: 4 },
-    bookTitleRow: {
+    bookTitle: { fontSize: 13, fontWeight: fontWeight.semibold, color: withOpacity(colors.foreground, 0.8) },
+    bookTitleFirst: { fontSize: 14 },
+    bookAuthor: { fontSize: 11, color: withOpacity(colors.mutedForeground, 0.4), marginTop: 2 },
+    bookStatsRow: { flexDirection: "row", alignItems: "baseline", gap: 6, marginTop: 6 },
+    bookTime: { fontWeight: fontWeight.bold, color: withOpacity(colors.foreground, 0.75) },
+    bookTimeFirst: { fontSize: 18 },
+    bookTimeDefault: { fontSize: 14 },
+    bookMeta: { fontSize: 10, color: withOpacity(colors.mutedForeground, 0.35) },
+    expandBtn: {
       flexDirection: "row",
       alignItems: "center",
-      justifyContent: "space-between",
+      justifyContent: "center",
       gap: 4,
+      paddingVertical: 8,
+      borderRadius: radius.md,
+      marginTop: 4,
     },
-    bookTitle: {
-      fontSize: fontSize.xs,
-      fontWeight: fontWeight.medium,
-      color: colors.foreground,
-      flex: 1,
-    },
-    bookAuthor: { fontSize: 11, color: colors.mutedForeground },
-    bookTime: { fontSize: 12, color: colors.mutedForeground },
-    progressRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-    progressTrack: {
-      flex: 1,
-      height: 4,
-      borderRadius: 2,
-      backgroundColor: colors.muted,
-      overflow: "hidden",
-    },
-    progressFill: { height: "100%", borderRadius: 2, backgroundColor: colors.emerald },
-    progressPercent: { fontSize: 11, color: colors.mutedForeground },
+    expandBtnText: { fontSize: 12, fontWeight: fontWeight.medium, color: withOpacity(colors.mutedForeground, 0.5) },
 
+    /* ── Insights ── */
+    insightItem: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      gap: 10,
+      paddingVertical: 10,
+      paddingHorizontal: 10,
+      borderRadius: radius.lg,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: withOpacity(colors.border, 0.2),
+      marginBottom: 6,
+    },
+    insightDot: { width: 7, height: 7, borderRadius: 4, marginTop: 5 },
+    insightDotCelebration: { backgroundColor: withOpacity(colors.primary, 0.6) },
+    insightDotWarning: { backgroundColor: withOpacity(colors.destructive, 0.45) },
+    insightDotPositive: { backgroundColor: withOpacity(colors.primary, 0.45) },
+    insightDotDefault: { backgroundColor: withOpacity(colors.border, 0.6) },
+    insightTitle: { fontSize: 13, fontWeight: fontWeight.semibold, color: withOpacity(colors.foreground, 0.75) },
+    insightBody: { fontSize: 13, color: withOpacity(colors.mutedForeground, 0.45), lineHeight: 18, marginTop: 2 },
+
+    /* ── Streak ── */
     streakCard: {
       flexDirection: "row",
       alignItems: "center",
       gap: 10,
       backgroundColor: colors.card,
-      borderRadius: radius.xl,
-      borderWidth: 0.5,
-      borderColor: colors.border,
-      padding: 12,
+      borderRadius: radius.xxl,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: withOpacity(colors.border, 0.3),
+      padding: 14,
+      marginBottom: 12,
     },
     streakIconWrap: {
       width: 32,
@@ -221,11 +347,344 @@ export const makeStyles = (colors: ThemeColors) =>
       alignItems: "center",
       justifyContent: "center",
     },
-    streakInfo: { gap: 2 },
-    streakLabel: {
-      fontSize: fontSize.xs,
-      fontWeight: fontWeight.semibold,
-      color: colors.foreground,
-    },
+    streakInfo: { gap: 2, flex: 1 },
+    streakLabel: { fontSize: fontSize.xs, fontWeight: fontWeight.semibold, color: colors.foreground },
     streakDesc: { fontSize: 12, color: colors.mutedForeground },
+
+    /* ── Empty state ── */
+    emptyWrap: { alignItems: "center", justifyContent: "center", paddingVertical: 40 },
+    emptyIcon: {
+      width: 52,
+      height: 52,
+      borderRadius: radius.xxl,
+      backgroundColor: withOpacity(colors.muted, 0.2),
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: withOpacity(colors.border, 0.3),
+      alignItems: "center",
+      justifyContent: "center",
+      marginBottom: 12,
+    },
+    emptyTitle: { fontSize: 16, fontWeight: fontWeight.semibold, color: withOpacity(colors.foreground, 0.75) },
+    emptyDesc: { fontSize: 13, color: withOpacity(colors.mutedForeground, 0.5), textAlign: "center", marginTop: 4, maxWidth: 240, lineHeight: 18 },
+
+    /* ── Day summary ── */
+    daySummaryGrid: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 8,
+    },
+    daySummaryChip: {
+      width: "48%",
+      backgroundColor: withOpacity(colors.muted, 0.12),
+      borderRadius: radius.lg,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+    },
+    daySummaryChipLabel: {
+      fontSize: 9,
+      fontWeight: fontWeight.medium,
+      color: withOpacity(colors.mutedForeground, 0.4),
+      textTransform: "uppercase",
+      letterSpacing: 1,
+    },
+    daySummaryChipValue: {
+      fontSize: 18,
+      fontWeight: fontWeight.bold,
+      color: withOpacity(colors.foreground, 0.85),
+      marginTop: 4,
+    },
+    dayTopFocus: {
+      backgroundColor: withOpacity(colors.primary, 0.02),
+      borderLeftWidth: 2,
+      borderLeftColor: withOpacity(colors.primary, 0.15),
+      borderRadius: radius.lg,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+    },
+    dayTopFocusLabel: {
+      fontSize: 9,
+      fontWeight: fontWeight.semibold,
+      color: withOpacity(colors.primary, 0.4),
+      textTransform: "uppercase",
+      letterSpacing: 1.5,
+      marginBottom: 4,
+    },
+    dayTopFocusTitle: {
+      fontSize: 16,
+      fontWeight: fontWeight.bold,
+      color: withOpacity(colors.foreground, 0.85),
+    },
+    dayTopFocusSub: {
+      fontSize: 13,
+      color: withOpacity(colors.mutedForeground, 0.45),
+      marginTop: 2,
+    },
+
+    /* ── Calendar ── */
+    calendarRow: {
+      flexDirection: "row",
+      gap: 3,
+    },
+    calendarHeaderCell: {
+      flex: 1,
+      alignItems: "center",
+      paddingVertical: 2,
+    },
+    calendarHeaderText: {
+      fontSize: 10,
+      fontWeight: fontWeight.medium,
+      color: withOpacity(colors.mutedForeground, 0.35),
+    },
+
+    /* Calendar cell — WITH cover (cover fills cell) */
+    calCoverCell: {
+      flex: 1,
+      aspectRatio: 28 / 41,
+      borderRadius: radius.sm,
+      overflow: "hidden",
+      position: "relative",
+      // Book shadow
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.15,
+      shadowRadius: 4,
+      elevation: 3,
+    },
+    calCoverCellToday: {
+      borderWidth: 1.5,
+      borderColor: withOpacity(colors.primary, 0.4),
+    },
+    calCoverImage: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      borderRadius: radius.sm,
+    },
+    calCoverFallback: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: withOpacity(colors.muted, 0.5),
+      alignItems: "center",
+      justifyContent: "center",
+      paddingHorizontal: 2,
+    },
+    calCoverFallbackText: {
+      fontSize: 8,
+      fontWeight: fontWeight.semibold,
+      color: withOpacity(colors.mutedForeground, 0.5),
+      textAlign: "center",
+    },
+    calSpineOverlay: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      bottom: 0,
+      width: "8%",
+      flexDirection: "row",
+      zIndex: 2,
+    },
+    calCoverTopScrim: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      right: 0,
+      height: "40%",
+      backgroundColor: "rgba(0,0,0,0.35)",
+      zIndex: 3,
+    },
+    calCoverBottomScrim: {
+      position: "absolute",
+      bottom: 0,
+      left: 0,
+      right: 0,
+      height: "30%",
+      backgroundColor: "rgba(0,0,0,0.25)",
+      zIndex: 3,
+    },
+    calCoverOverlay: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      zIndex: 4,
+      justifyContent: "space-between",
+      padding: 3,
+    },
+    calCoverTopRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "flex-start",
+    },
+    calCoverDay: {
+      fontSize: 10,
+      fontWeight: fontWeight.bold,
+      color: "#fff",
+      textShadowColor: "rgba(0,0,0,0.6)",
+      textShadowOffset: { width: 0, height: 1 },
+      textShadowRadius: 2,
+    },
+    calCoverTime: {
+      fontSize: 7,
+      fontWeight: fontWeight.bold,
+      color: "rgba(255,255,255,0.85)",
+      textShadowColor: "rgba(0,0,0,0.6)",
+      textShadowOffset: { width: 0, height: 1 },
+      textShadowRadius: 2,
+    },
+    calCoverPageBadge: {
+      alignSelf: "flex-end",
+      backgroundColor: "rgba(0,0,0,0.5)",
+      borderRadius: 3,
+      paddingHorizontal: 3,
+      paddingVertical: 1,
+    },
+    calCoverPageText: {
+      fontSize: 7,
+      fontWeight: fontWeight.bold,
+      color: "#fff",
+    },
+
+    /* Calendar cell — WITHOUT cover (plain intensity) */
+    calPlainCell: {
+      flex: 1,
+      aspectRatio: 28 / 41,
+      borderRadius: radius.sm,
+      borderWidth: StyleSheet.hairlineWidth,
+      padding: 3,
+      alignItems: "center",
+      gap: 2,
+    },
+    calPlainCellToday: {
+      borderWidth: 1.5,
+      borderColor: withOpacity(colors.primary, 0.25),
+    },
+    calPlainDay: {
+      fontSize: 11,
+      fontWeight: fontWeight.semibold,
+      color: withOpacity(colors.foreground, 0.75),
+      marginTop: 2,
+    },
+    calPlainTime: {
+      fontSize: 8,
+      fontWeight: fontWeight.medium,
+      color: withOpacity(colors.foreground, 0.45),
+    },
+    /* ── Rhythm profile ── */
+    rhythmSubTitle: {
+      fontSize: 14,
+      fontWeight: fontWeight.semibold,
+      color: withOpacity(colors.foreground, 0.85),
+    },
+    rhythmSubDesc: {
+      fontSize: 12,
+      color: withOpacity(colors.mutedForeground, 0.45),
+      lineHeight: 17,
+    },
+    categoryLabel: {
+      fontSize: 13,
+      fontWeight: fontWeight.medium,
+      color: withOpacity(colors.foreground, 0.75),
+    },
+    categoryValue: {
+      fontSize: 13,
+      color: withOpacity(colors.mutedForeground, 0.5),
+    },
+    categoryTrack: {
+      height: 5,
+      borderRadius: 3,
+      backgroundColor: withOpacity(colors.muted, 0.25),
+      overflow: "hidden",
+    },
+    categoryFill: {
+      height: "100%",
+      borderRadius: 3,
+      backgroundColor: withOpacity(colors.primary, 0.4),
+    },
+
+    /* ── Yearly snapshots ── */
+    snapshotRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      paddingVertical: 12,
+    },
+    snapshotRowBorder: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: withOpacity(colors.border, 0.2),
+    },
+    snapshotYear: {
+      width: 40,
+      fontSize: 13,
+      fontWeight: fontWeight.bold,
+      color: withOpacity(colors.foreground, 0.7),
+    },
+    snapshotTime: {
+      fontSize: 15,
+      fontWeight: fontWeight.bold,
+      color: withOpacity(colors.foreground, 0.85),
+    },
+    snapshotMeta: {
+      fontSize: 11,
+      color: withOpacity(colors.mutedForeground, 0.45),
+    },
+    snapshotTopBookTitle: {
+      fontSize: 11,
+      color: withOpacity(colors.foreground, 0.5),
+    },
+
+    /* ── Journey summary ── */
+    journeyBigNumber: {
+      fontSize: 42,
+      fontWeight: fontWeight.bold,
+      color: withOpacity(colors.foreground, 0.85),
+      letterSpacing: -2,
+      lineHeight: 44,
+    },
+    journeyBigSuffix: {
+      fontSize: 20,
+      fontWeight: fontWeight.semibold,
+      color: withOpacity(colors.mutedForeground, 0.5),
+    },
+    journeyNarrative: {
+      fontSize: 13,
+      color: withOpacity(colors.mutedForeground, 0.45),
+      lineHeight: 18,
+    },
+    journeyStartDate: {
+      fontSize: 12,
+      color: withOpacity(colors.mutedForeground, 0.4),
+    },
+    journeyMetricsRow: {
+      flexDirection: "row",
+      gap: 24,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: withOpacity(colors.border, 0.2),
+      paddingTop: 12,
+    },
+    journeyMetricLabel: {
+      fontSize: 9,
+      fontWeight: fontWeight.medium,
+      color: withOpacity(colors.mutedForeground, 0.35),
+      textTransform: "uppercase",
+      letterSpacing: 1,
+    },
+    journeyMetricValue: {
+      fontSize: 16,
+      fontWeight: fontWeight.bold,
+      color: withOpacity(colors.foreground, 0.8),
+    },
+
+    /* ── Hero narrative ── */
+    heroNarrative: {
+      fontSize: 13,
+      color: withOpacity(colors.mutedForeground, 0.45),
+      lineHeight: 18,
+      marginTop: 4,
+    },
   });
