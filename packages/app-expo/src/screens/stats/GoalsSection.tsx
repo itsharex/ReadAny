@@ -25,6 +25,10 @@ export function GoalsSection({
   const { t } = useTranslation();
   const colors = useColors();
   const [formOpen, setFormOpen] = useState(false);
+  const supportsGoalPeriod =
+    currentDimension === undefined ||
+    currentDimension === "month" ||
+    currentDimension === "year";
 
   const defaultPeriod: GoalPeriod = currentDimension === "year" ? "yearly" : "monthly";
 
@@ -68,7 +72,7 @@ export function GoalsSection({
         </Text>
       )}
 
-      {onAddGoal && (
+      {onAddGoal && supportsGoalPeriod && (
         <TouchableOpacity
           onPress={() => setFormOpen(true)}
           activeOpacity={0.7}
@@ -93,15 +97,17 @@ export function GoalsSection({
         </TouchableOpacity>
       )}
 
-      <GoalAddFormModal
-        visible={formOpen}
-        defaultPeriod={defaultPeriod}
-        onClose={() => setFormOpen(false)}
-        onSubmit={(type, target, period) => {
-          onAddGoal?.(type, target, period);
-          setFormOpen(false);
-        }}
-      />
+      {supportsGoalPeriod && (
+        <GoalAddFormModal
+          visible={formOpen}
+          defaultPeriod={defaultPeriod}
+          onClose={() => setFormOpen(false)}
+          onSubmit={(type, target, period) => {
+            onAddGoal?.(type, target, period);
+            setFormOpen(false);
+          }}
+        />
+      )}
     </View>
   );
 }

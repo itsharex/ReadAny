@@ -359,8 +359,8 @@ export function ReadingStatsPanel() {
 
           {/* ════════ Sticky Header ════════ */}
           <div className="sticky top-0 z-30 -mx-5 border-b border-border/10 bg-background/92 px-5 py-3 backdrop-blur-md sm:-mx-8 sm:px-8 sm:py-4">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between lg:gap-5">
-              <header className="min-w-0 space-y-1 lg:max-w-[720px] lg:flex-1">
+            <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-end md:gap-5">
+              <header className="min-w-0 space-y-1 md:max-w-[720px] md:pr-3">
                 <h1 className="text-[26px] font-bold tracking-tight text-foreground sm:text-[30px] lg:text-[34px]">
                   {copy.pageTitle}
                 </h1>
@@ -369,7 +369,7 @@ export function ReadingStatsPanel() {
                 </p>
               </header>
 
-              <nav className="-mx-1 flex w-full max-w-full items-center gap-1 overflow-x-auto rounded-xl border border-border/30 bg-muted/25 p-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:mx-0 lg:w-auto lg:min-w-[420px] lg:max-w-[540px] lg:justify-end">
+              <nav className="-mx-1 flex w-full max-w-full items-center gap-1 overflow-x-auto rounded-xl border border-border/30 bg-muted/25 p-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:mx-0 md:w-auto md:min-w-[420px] md:max-w-[560px] md:justify-end">
                 {DIMENSIONS.map((dim) => (
                   <button
                     key={dim}

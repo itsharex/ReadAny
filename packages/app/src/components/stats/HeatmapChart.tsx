@@ -1,53 +1,7 @@
 import type { StatsChartDatum } from "@readany/core/stats";
 import { cn } from "@readany/core/utils";
+import { useMemo, useState } from "react";
 import { formatCompactMinutes } from "./stats-utils";
-
-function startOfWeek(date: Date): Date {
-  const next = new Date(date);
-  const day = next.getDay();
-  const diff = day === 0 ? -6 : 1 - day;
-  next.setDate(next.getDate() + diff);
-  next.setHours(0, 0, 0, 0);
-  return next;
-}
-
-function endOfWeek(date: Date): Date {
-  const next = startOfWeek(date);
-  next.setDate(next.getDate() + 6);
-  return next;
-}
-
-function toDateKey(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function toLabel(date: Date, locale: string): string {
-  return new Intl.DateTimeFormat(locale, { month: "numeric", day: "numeric" }).format(date);
-}
-
-function getIntensity(value: number, maxValue: number): 0 | 1 | 2 | 3 | 4 {
-  if (value <= 0 || maxValue <= 0) return 0;
-  const ratio = value / maxValue;
-  if (ratio >= 0.75) return 4;
-  if (ratio >= 0.5) return 3;
-  if (ratio >= 0.3) return 2;
-  return 1;
-}
-
-function intensityClass(level: 0 | 1 | 2 | 3 | 4) {
-  const palette = [
-    "border-border/50 bg-muted/45",
-    "border-primary/8 bg-primary/[0.08]",
-    "border-primary/12 bg-primary/[0.14]",
-    "border-primary/20 bg-primary/[0.22]",
-    "border-primary/30 bg-primary/[0.32]",
-  ] as const;
-
-  return palette[level];
-}
 
 interface HeatmapChartProps {
   data: StatsChartDatum[];
@@ -56,6 +10,47 @@ interface HeatmapChartProps {
   lowLabel: string;
   highLabel: string;
   activeDaysLabel: (count: number) => string;
+}
+
+type HeatmapCell = {
+  day: number;
+  dateKey: string;
+  value: number;
+};
+
+function toDateKey(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function toMonthDayLabel(dateKey: string, locale: string) {
+  return new Intl.DateTimeFormat(locale, {
+    month: "numeric",
+    day: "numeric",
+  }).format(new Date(`${dateKey}T00:00:00`));
+}
+
+function getIntensityLevel(value: number, maxValue: number): 0 | 1 | 2 | 3 | 4 {
+  if (value <= 0 || maxValue <= 0) return 0;
+  const ratio = value / maxValue;
+  if (ratio < 0.2) return 1;
+  if (ratio < 0.4) return 2;
+  if (ratio < 0.6) return 3;
+  return 4;
+}
+
+function getIntensityClass(level: 0 | 1 | 2 | 3 | 4) {
+  const palette = [
+    "border-border/15 bg-muted/25 text-muted-foreground/35",
+    "border-primary/10 bg-primary/[0.10] text-foreground/72",
+    "border-primary/12 bg-primary/[0.18] text-foreground/78",
+    "border-primary/16 bg-primary/[0.30] text-foreground/84",
+    "border-primary/20 bg-primary/[0.44] text-foreground/90",
+  ] as const;
+
+  return palette[level];
 }
 
 export function HeatmapChart({
@@ -67,9 +62,82 @@ export function HeatmapChart({
   activeDaysLabel,
 }: HeatmapChartProps) {
   const locale = isZh ? "zh-CN" : "en-US";
-  const positiveData = data.filter((item) => item.value > 0);
 
-  if (data.length === 0 || positiveData.length === 0) {
+  const valueMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const item of data) map.set(item.key, item.value);
+    return map;
+  }, [data]);
+
+  const maxValue = useMemo(() => Math.max(...data.map((item) => item.value), 1), [data]);
+
+  const firstDateKey = data[0]?.key;
+  const year = firstDateKey ? Number(firstDateKey.slice(0, 4)) : new Date().getFullYear();
+  const month = firstDateKey ? Number(firstDateKey.slice(5, 7)) - 1 : new Date().getMonth();
+
+  const weeks = useMemo(() => {
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const totalDays = lastDay.getDate();
+    const startDow = (firstDay.getDay() + 6) % 7;
+
+    const rows: HeatmapCell[][] = [];
+    let currentRow: HeatmapCell[] = [];
+
+    for (let index = 0; index < startDow; index += 1) {
+      currentRow.push({ day: 0, dateKey: "", value: -1 });
+    }
+
+    for (let day = 1; day <= totalDays; day += 1) {
+      const mm = String(month + 1).padStart(2, "0");
+      const dd = String(day).padStart(2, "0");
+      const dateKey = `${year}-${mm}-${dd}`;
+      currentRow.push({
+        day,
+        dateKey,
+        value: valueMap.get(dateKey) ?? 0,
+      });
+
+      if (currentRow.length === 7) {
+        rows.push(currentRow);
+        currentRow = [];
+      }
+    }
+
+    if (currentRow.length > 0) {
+      while (currentRow.length < 7) {
+        currentRow.push({ day: 0, dateKey: "", value: -1 });
+      }
+      rows.push(currentRow);
+    }
+
+    return rows;
+  }, [month, valueMap, year]);
+
+  const weekdayLabels = useMemo(() => {
+    const monday = new Date(2024, 0, 1);
+    return Array.from({ length: 7 }, (_, index) => {
+      const date = new Date(monday);
+      date.setDate(monday.getDate() + index);
+      return new Intl.DateTimeFormat(locale, { weekday: "short" }).format(date);
+    });
+  }, [locale]);
+
+  const activeDays = useMemo(() => data.filter((item) => item.value > 0).length, [data]);
+
+  const todayKey = useMemo(() => toDateKey(new Date()), []);
+  const [selectedDateKey, setSelectedDateKey] = useState<string | null>(null);
+
+  const selectedCell = useMemo(() => {
+    if (!selectedDateKey) return null;
+    for (const week of weeks) {
+      const found = week.find((cell) => cell.dateKey === selectedDateKey);
+      if (found) return found;
+    }
+    return null;
+  }, [selectedDateKey, weeks]);
+
+  if (data.length === 0) {
     return (
       <div className="flex min-h-[220px] items-center justify-center text-sm text-muted-foreground">
         {emptyMessage}
@@ -77,120 +145,91 @@ export function HeatmapChart({
     );
   }
 
-  const sorted = [...data].sort((a, b) => a.key.localeCompare(b.key));
-  const firstDate = startOfWeek(new Date(`${sorted[0].key}T00:00:00`));
-  const lastDate = endOfWeek(new Date(`${sorted[sorted.length - 1].key}T00:00:00`));
-  const maxValue = Math.max(...positiveData.map((item) => item.value), 0);
-  const dataMap = new Map(sorted.map((item) => [item.key, item.value]));
-  const weeks: Array<{ label: string; cells: Array<{ key: string; date: Date; value: number; inRange: boolean }> }> = [];
-  const weekdayLabels = Array.from({ length: 7 }, (_, index) => {
-    const date = new Date(2024, 0, 1 + index);
-    return new Intl.DateTimeFormat(locale, { weekday: "short" }).format(date);
-  });
-
-  const cursor = new Date(firstDate);
-  while (cursor <= lastDate) {
-    const weekStart = new Date(cursor);
-    const cells: Array<{ key: string; date: Date; value: number; inRange: boolean }> = [];
-
-    for (let day = 0; day < 7; day += 1) {
-      const current = new Date(weekStart);
-      current.setDate(weekStart.getDate() + day);
-      const key = toDateKey(current);
-      cells.push({
-        key,
-        date: current,
-        value: dataMap.get(key) ?? 0,
-        inRange: dataMap.has(key),
-      });
-    }
-
-    weeks.push({
-      label: String(weekStart.getDate()),
-      cells,
-    });
-
-    cursor.setDate(cursor.getDate() + 7);
-  }
-
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-[52px_minmax(0,1fr)] gap-3 sm:grid-cols-[64px_minmax(0,1fr)]">
-        <div className="grid grid-rows-7 gap-3 pt-8">
-          {weekdayLabels.map((label, index) => (
-            <div
-              key={`${label}-${index}`}
-              className="flex h-10 items-center text-[11px] text-muted-foreground sm:h-11"
-            >
-              {label}
-            </div>
-          ))}
-        </div>
+    <div className="space-y-5">
+      <div className="rounded-[24px] border border-border/20 bg-gradient-to-b from-primary/[0.04] via-transparent to-transparent px-4 py-4 sm:px-5">
+        <div className="space-y-2">
+          <div className="grid grid-cols-7 gap-2 sm:gap-3">
+            {weekdayLabels.map((label) => (
+              <div
+                key={label}
+                className="text-center text-[11px] font-medium tracking-[0.04em] text-muted-foreground/45"
+              >
+                {label}
+              </div>
+            ))}
+          </div>
 
-        <div className="min-w-0">
-          <div className="grid w-full gap-3">
-            <div
-              className="grid gap-2"
-              style={{ gridTemplateColumns: `repeat(${weeks.length}, minmax(0, 1fr))` }}
-            >
-              {weeks.map((week, index) => (
-                <div
-                  key={`${week.label}-${index}`}
-                  className="text-center text-[11px] text-muted-foreground"
-                >
-                  {index === 0 || index % 2 === 1 ? week.label : ""}
-                </div>
-              ))}
-            </div>
+          <div className="space-y-2 sm:space-y-3">
+            {weeks.map((week, weekIndex) => (
+              <div key={`week-${weekIndex}`} className="grid grid-cols-7 gap-2 sm:gap-3">
+                {week.map((cell, cellIndex) => {
+                  if (cell.day === 0) {
+                    return <div key={`empty-${weekIndex}-${cellIndex}`} className="aspect-square" />;
+                  }
 
-            <div
-              className="grid gap-3"
-              style={{ gridTemplateColumns: `repeat(${weeks.length}, minmax(0, 1fr))` }}
-            >
-              {weeks.map((week) => (
-                <div
-                  key={`${week.label}-${week.cells[0]?.key ?? "week"}`}
-                  className="grid grid-rows-7 gap-3"
-                >
-                  {week.cells.map((cell) => {
-                    const intensity = getIntensity(cell.value, maxValue);
-                    const tooltipLabel = cell.inRange
-                      ? `${toLabel(cell.date, locale)} · ${formatCompactMinutes(cell.value, isZh)}`
-                      : toLabel(cell.date, locale);
+                  const intensity = getIntensityLevel(cell.value, maxValue);
+                  const isToday = cell.dateKey === todayKey;
+                  const isSelected = cell.dateKey === selectedDateKey;
 
-                    return (
-                      <div
-                        key={cell.key}
-                        title={tooltipLabel}
-                        className={cn(
-                          "h-10 w-full rounded-[16px] border transition-transform duration-150 hover:-translate-y-0.5 sm:h-11",
-                          cell.inRange ? intensityClass(intensity) : "border-transparent bg-transparent",
-                        )}
-                      />
-                    );
-                  })}
-                </div>
-              ))}
-            </div>
+                  return (
+                    <button
+                      key={cell.dateKey}
+                      type="button"
+                      onMouseEnter={() => setSelectedDateKey(cell.dateKey)}
+                      onFocus={() => setSelectedDateKey(cell.dateKey)}
+                      onClick={() =>
+                        setSelectedDateKey((current) =>
+                          current === cell.dateKey ? null : cell.dateKey,
+                        )
+                      }
+                      className={cn(
+                        "aspect-square rounded-[10px] border text-[12px] font-semibold tabular-nums transition-all duration-150",
+                        "hover:-translate-y-0.5 hover:shadow-[0_8px_20px_rgba(0,0,0,0.06)]",
+                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25",
+                        getIntensityClass(intensity),
+                        isToday && "ring-1 ring-primary/35 ring-offset-0",
+                        isSelected && "shadow-[0_8px_20px_rgba(0,0,0,0.08)]",
+                      )}
+                      title={`${toMonthDayLabel(cell.dateKey, locale)} · ${formatCompactMinutes(
+                        cell.value,
+                        isZh,
+                      )}`}
+                    >
+                      {cell.day}
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
           </div>
         </div>
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground/65">
           <span>{lowLabel}</span>
           <div className="flex items-center gap-1">
             {[0, 1, 2, 3, 4].map((level) => (
               <span
                 key={level}
-                className={cn("h-3 w-3 rounded-[4px] border", intensityClass(level as 0 | 1 | 2 | 3 | 4))}
+                className={cn(
+                  "h-3 w-3 rounded-[4px] border",
+                  getIntensityClass(level as 0 | 1 | 2 | 3 | 4),
+                )}
               />
             ))}
           </div>
           <span>{highLabel}</span>
         </div>
-        <div className="text-xs text-muted-foreground">
-          {activeDaysLabel(positiveData.length)}
+
+        <div className="text-xs text-muted-foreground/65">
+          {selectedCell
+            ? `${toMonthDayLabel(selectedCell.dateKey, locale)} · ${formatCompactMinutes(
+                selectedCell.value,
+                isZh,
+              )}`
+            : activeDaysLabel(activeDays)}
         </div>
       </div>
     </div>

@@ -42,7 +42,6 @@ export function ChartSurface({
   isZh: boolean;
 }) {
   if (chart.type === "heatmap") {
-    const peak = getPeakChartDatum(chart);
     return (
       <div className="space-y-5">
         <HeatmapChart
@@ -53,7 +52,6 @@ export function ChartSurface({
           highLabel={copy.heatmapLegendHigh}
           activeDaysLabel={copy.activeDaysSummary}
         />
-        {peak && <PeakBadge copy={copy} peak={peak} isZh={isZh} />}
       </div>
     );
   }
