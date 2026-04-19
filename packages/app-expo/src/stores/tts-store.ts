@@ -33,6 +33,7 @@ let _dashscopeTTS: ITTSPlayer | null = null;
 let _sessionSegments: string[] = [];
 let _sessionCurrentIndex = 0;
 let _sessionGeneration = 0;
+let _sleepTimerHandle: ReturnType<typeof setTimeout> | null = null;
 
 function getSystemTTS(): ITTSPlayer {
   if (!_systemTTS) _systemTTS = _factories.createSystemTTS();
@@ -47,6 +48,13 @@ function getEdgeTTS(): ITTSPlayer {
 function getDashScopeTTS(): ITTSPlayer {
   if (!_dashscopeTTS) _dashscopeTTS = _factories.createDashScopeTTS();
   return _dashscopeTTS;
+}
+
+function clearSleepTimerHandle(): void {
+  if (_sleepTimerHandle) {
+    clearTimeout(_sleepTimerHandle);
+    _sleepTimerHandle = null;
+  }
 }
 
 function detachAndStopPlayer(player: ITTSPlayer | null): void {
@@ -141,6 +149,8 @@ export interface TTSState {
   currentLocationCfi: string;
   currentChunkIndex: number;
   totalChunks: number;
+  sleepTimerEndsAt: number | null;
+  sleepTimerDurationMinutes: number | null;
 
   play: (text: string | string[]) => void;
   pause: () => void;
@@ -154,6 +164,8 @@ export interface TTSState {
   setCurrentLocation: (cfi?: string | null) => void;
   setChunkProgress: (index: number, total: number) => void;
   jumpToChunk: (index: number) => void;
+  setSleepTimer: (minutes: number) => void;
+  clearSleepTimer: () => void;
 }
 
 export const useTTSStore = create<TTSState>()(
@@ -171,6 +183,8 @@ export const useTTSStore = create<TTSState>()(
       currentLocationCfi: "",
       currentChunkIndex: 0,
       totalChunks: 0,
+      sleepTimerEndsAt: null,
+      sleepTimerDurationMinutes: null,
 
       play: (text: string | string[]) => {
         const segments = normalizeSegments(text);
@@ -244,6 +258,7 @@ export const useTTSStore = create<TTSState>()(
 
       stop: () => {
         console.log("[TTSStore] stop called");
+        clearSleepTimerHandle();
         _sessionGeneration += 1;
         detachAndStopAllPlayers();
         _sessionSegments = [];
@@ -259,6 +274,8 @@ export const useTTSStore = create<TTSState>()(
           currentChapterTitle: "",
           currentBookId: "",
           currentLocationCfi: "",
+          sleepTimerEndsAt: null,
+          sleepTimerDurationMinutes: null,
         });
       },
 
@@ -329,6 +346,33 @@ export const useTTSStore = create<TTSState>()(
 
         startPlayback(remainingSegments, config, index, set, get);
       },
+
+      setSleepTimer: (minutes: number) => {
+        const durationMinutes = Math.max(1, Math.round(minutes));
+        const endsAt = Date.now() + durationMinutes * 60_000;
+        clearSleepTimerHandle();
+        _sleepTimerHandle = setTimeout(() => {
+          _sleepTimerHandle = null;
+          if (get().sleepTimerEndsAt !== endsAt) return;
+          set({
+            sleepTimerEndsAt: null,
+            sleepTimerDurationMinutes: null,
+          });
+          get().pause();
+        }, durationMinutes * 60_000);
+        set({
+          sleepTimerEndsAt: endsAt,
+          sleepTimerDurationMinutes: durationMinutes,
+        });
+      },
+
+      clearSleepTimer: () => {
+        clearSleepTimerHandle();
+        set({
+          sleepTimerEndsAt: null,
+          sleepTimerDurationMinutes: null,
+        });
+      },
     }),
     {
       playState: "stopped" as const,
@@ -337,6 +381,8 @@ export const useTTSStore = create<TTSState>()(
       currentChunkIndex: 0,
       totalChunks: 0,
       currentLocationCfi: "",
+      sleepTimerEndsAt: null,
+      sleepTimerDurationMinutes: null,
     } as Partial<TTSState>,
     (persisted) => ({
       ...persisted,
