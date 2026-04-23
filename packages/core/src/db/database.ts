@@ -36,6 +36,8 @@ export {
 export {
   getBooks,
   getBook,
+  getDeletedBookByFileHash,
+  getDeletedBookByTitle,
   insertBook,
   updateBook,
   setBookSyncStatus,
