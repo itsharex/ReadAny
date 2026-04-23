@@ -260,7 +260,15 @@
     "currentModel": "Model",
     "notConfigured": "Please configure an AI model first",
     "notConfiguredDesc": "You need to set up an API key and select a model before using AI features.",
-    "goSettings": "Configure"
+    "goSettings": "Configure",
+    "export": "Export Chat",
+    "exportMarkdown": "Export as Markdown",
+    "exportJSON": "Export as JSON",
+    "copyAll": "Copy All",
+    "exportSuccess": "Export successful",
+    "copiedSuccess": "Copied to clipboard",
+    "roleUser": "You",
+    "roleAI": "AI"
   },
   "reader": {
     "untitled": "Untitled",
@@ -275,6 +283,10 @@
     "reimportDialogDescription": "Your notes and reading history are intact — just re-import to pick up where you left off.",
     "reimportDialogDescriptionDesktop": "Your notes and reading history are intact — just re-import to pick up where you left off.",
     "reimport": "Re-import",
+    "reimportMismatchTitle": "This file looks different from the original book",
+    "reimportMismatchDescription": "The original book \"{{originalTitle}}\" looks quite different from the selected file \"{{candidateTitle}}\". Do you still want to reconnect it to the existing notes and reading stats?",
+    "reimportContinue": "Reconnect anyway",
+    "reimportPickAnotherFile": "Choose another file",
     "reimportSelectFile": "Re-import",
     "reimporting": "Re-importing...",
     "reimportFailed": "Failed to re-import this book. Please try again.",

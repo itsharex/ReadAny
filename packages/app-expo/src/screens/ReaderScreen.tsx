@@ -27,6 +27,7 @@ import {
   useSettingsStore,
   useTTSStore,
 } from "@/stores";
+import { useMissingBookPromptStore } from "@/stores/missing-book-prompt-store";
 import { useFontStore, getCSSFontFace } from "@readany/core/stores";
 import { useTheme } from "@/styles/ThemeContext";
 import { useColors } from "@/styles/theme";
@@ -86,6 +87,46 @@ const BOOK_MIME_TYPES = [
   "text/plain",
   "application/octet-stream",
 ];
+
+function normalizeBookIdentityText(value?: string): string {
+  return (value || "").toLowerCase().replace(/[\s\p{P}\p{S}_-]+/gu, "");
+}
+
+function authorsLikelyMatch(a?: string, b?: string): boolean {
+  const left = normalizeBookIdentityText(a);
+  const right = normalizeBookIdentityText(b);
+  if (!left || !right) return true;
+  if (left === right || left.includes(right) || right.includes(left)) return true;
+  const leftParts = left.split(/[,，、/&]+/).filter((part) => part.length > 1);
+  const rightParts = right.split(/[,，、/&]+/).filter((part) => part.length > 1);
+  return leftParts.some((part) =>
+    rightParts.some((candidate) => part.includes(candidate) || candidate.includes(part)),
+  );
+}
+
+function shouldConfirmReimportCandidate(
+  originalBook: { meta: { title: string; author: string }; format: string; fileHash?: string },
+  candidate: { title: string; author: string; format: string; fileHash?: string },
+): boolean {
+  if (
+    candidate.fileHash &&
+    originalBook.fileHash &&
+    candidate.fileHash === originalBook.fileHash
+  ) {
+    return false;
+  }
+  const originalTitle = normalizeBookIdentityText(originalBook.meta.title);
+  const candidateTitle = normalizeBookIdentityText(candidate.title);
+  const titleMismatch =
+    !!originalTitle &&
+    !!candidateTitle &&
+    originalTitle !== candidateTitle &&
+    !originalTitle.includes(candidateTitle) &&
+    !candidateTitle.includes(originalTitle);
+  const authorMismatch = !authorsLikelyMatch(originalBook.meta.author, candidate.author);
+  const formatMismatch = originalBook.format !== candidate.format;
+  return titleMismatch || (formatMismatch && authorMismatch);
+}
 const NOTE_TOOLTIP_WIDTH = 300;
 const NOTE_TOOLTIP_SIDE_PADDING = 12;
 const NOTE_TOOLTIP_ABOVE_OFFSET = 2;
@@ -980,6 +1021,28 @@ export function ReaderScreen({ route, navigation }: Props) {
       });
       if (result.canceled || !result.assets || result.assets.length === 0) return;
       const selectedUri = result.assets[0].uri;
+      if (book) {
+        const candidate = await useLibraryStore.getState().inspectDeletedBookCandidate(bookId, {
+          uri: selectedUri,
+          name: result.assets[0].name,
+        });
+        if (candidate && shouldConfirmReimportCandidate(book, candidate)) {
+          const shouldContinue = await useMissingBookPromptStore.getState().showPrompt({
+            title: t("reader.reimportMismatchTitle", "这份文件看起来和原书不太一致"),
+            description: t(
+              "reader.reimportMismatchDescription",
+              "原书《{{originalTitle}}》与当前文件《{{candidateTitle}}》信息差异较大。仍要把它接回原来的笔记和阅读统计吗？",
+              {
+                originalTitle: book.meta.title,
+                candidateTitle: candidate.title || t("reader.unknownBook", "未命名书籍"),
+              },
+            ),
+            confirmLabel: t("reader.reimportContinue", "继续接回"),
+            cancelLabel: t("reader.reimportPickAnotherFile", "重新选择"),
+          });
+          if (!shouldContinue) return;
+        }
+      }
 
       const restoredBook = await useLibraryStore
         .getState()

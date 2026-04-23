@@ -66,6 +66,15 @@ export interface LibraryState {
   setSortField: (field: SortField) => void;
   setSortOrder: (order: SortOrder) => void;
   importBooks: (files: Array<{ uri: string; name?: string }>) => Promise<ImportBooksResult>;
+  inspectDeletedBookCandidate: (
+    bookId: string,
+    file: { uri: string; name?: string },
+  ) => Promise<{
+    title: string;
+    author: string;
+    format: Book["format"];
+    fileHash?: string;
+  } | null>;
   reimportDeletedBook: (
     bookId: string,
     file: { uri: string; name?: string },
@@ -374,6 +383,106 @@ async function restoreDeletedMobileBook(
     updatedAt: Date.now(),
     lastOpenedAt: Date.now(),
   };
+}
+
+async function inspectDeletedMobileBookCandidate(
+  bookId: string,
+  fileInfo: { uri: string; name?: string },
+): Promise<{
+  title: string;
+  author: string;
+  format: Book["format"];
+  fileHash?: string;
+} | null> {
+  await db.initDatabase();
+  const originalBook = await db.getBook(bookId, { includeDeleted: true });
+  if (!originalBook) return null;
+
+  const filePath = fileInfo.uri;
+  const originalName = fileInfo.name
+    ? decodeURIComponent(fileInfo.name)
+    : decodeURIComponent(filePath.split("/").pop() || "book");
+  const ext = originalName.split(".").pop()?.toLowerCase();
+  const formatMap: Record<string, Book["format"]> = {
+    epub: "epub",
+    pdf: "pdf",
+    mobi: "mobi",
+    azw: "azw",
+    azw3: "azw3",
+    cbz: "cbz",
+    cbr: "cbz",
+    fb2: "fb2",
+    fbz: "fbz",
+    txt: "txt",
+  };
+  const format: Book["format"] = formatMap[ext || ""] || "epub";
+  const fileName = originalName;
+  const platform = getPlatformService();
+  const sourceBytes = await platform.readFile(filePath);
+
+  let fileHash: string | undefined;
+  try {
+    fileHash = await hashBytes(sourceBytes);
+  } catch {
+    // Best effort.
+  }
+
+  if (ext === "txt") {
+    try {
+      const { TxtToEpubConverter } = await import("@readany/core/utils/txt-to-epub");
+      const bytes = ensureUtf8Bytes(sourceBytes);
+      const txtFile = {
+        name: fileName,
+        size: bytes.byteLength,
+        type: "text/plain",
+        arrayBuffer: () =>
+          Promise.resolve(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)),
+        slice: (start?: number, end?: number) => {
+          const sliced = bytes.slice(start ?? 0, end ?? bytes.byteLength);
+          return {
+            arrayBuffer: () =>
+              Promise.resolve(
+                sliced.buffer.slice(sliced.byteOffset, sliced.byteOffset + sliced.byteLength),
+              ),
+            size: sliced.byteLength,
+          };
+        },
+        stream: () =>
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(bytes);
+              controller.close();
+            },
+          }),
+      } as unknown as File;
+      const conversion = await new TxtToEpubConverter().convertToBytes({ file: txtFile });
+      return {
+        title: conversion.bookTitle || fileName.replace(/\.\w+$/i, "") || originalBook.meta.title,
+        author: "",
+        format: "epub",
+        fileHash,
+      };
+    } catch {
+      return {
+        title: fileName.replace(/\.\w+$/i, "") || originalBook.meta.title,
+        author: "",
+        format: "epub",
+        fileHash,
+      };
+    }
+  }
+
+  let title = fileName.replace(/\.\w+$/i, "") || originalBook.meta.title || "Untitled";
+  let author = "";
+  try {
+    const meta = await extractBookMetadata(sourceBytes, format, fileName);
+    if (meta.title) title = meta.title;
+    if (meta.author) author = meta.author;
+  } catch {
+    // Fallback to filename only.
+  }
+
+  return { title, author, format, fileHash };
 }
 
 export const useLibraryStore = create<LibraryState>((set, get) => ({
@@ -796,6 +905,9 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     }
     return result;
   },
+
+  inspectDeletedBookCandidate: async (bookId, file) =>
+    inspectDeletedMobileBookCandidate(bookId, file),
 
   reimportDeletedBook: async (bookId, file) => {
     const restoredBook = await restoreDeletedMobileBook(bookId, file);

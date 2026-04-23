@@ -367,6 +367,15 @@ export interface LibraryState {
   setSortField: (field: SortField) => void;
   setSortOrder: (order: SortOrder) => void;
   importBooks: (filePaths: string[]) => Promise<ImportBooksResult>;
+  inspectDeletedBookCandidate: (
+    bookId: string,
+    filePath: string,
+  ) => Promise<{
+    title: string;
+    author: string;
+    format: Book["format"];
+    fileHash?: string;
+  } | null>;
   reimportDeletedBook: (bookId: string, filePath: string) => Promise<Book | null>;
   // Tag management
   setActiveTag: (tag: string) => void;
@@ -498,6 +507,90 @@ async function restoreDeletedDesktopBook(
     updatedAt: Date.now(),
     lastOpenedAt: Date.now(),
   };
+}
+
+async function inspectDeletedDesktopBookCandidate(
+  bookId: string,
+  filePath: string,
+): Promise<{
+  title: string;
+  author: string;
+  format: Book["format"];
+  fileHash?: string;
+} | null> {
+  await db.initDatabase();
+  const originalBook = await db.getBook(bookId, { includeDeleted: true });
+  if (!originalBook) return null;
+
+  const fileName = decodeURIComponent(filePath.replace(/\\/g, "/").split("/").pop() || "book");
+  const ext = filePath.split(".").pop()?.toLowerCase() || "epub";
+  const formatMap: Record<string, Book["format"]> = {
+    epub: "epub",
+    pdf: "pdf",
+    mobi: "mobi",
+    azw: "azw",
+    azw3: "azw3",
+    cbz: "cbz",
+    cbr: "cbz",
+    fb2: "fb2",
+    fbz: "fbz",
+    txt: "txt",
+  };
+  const format: Book["format"] = formatMap[ext] || "epub";
+  let title = fileName.replace(/\.\w+$/i, "") || originalBook.meta.title || "Untitled";
+  let author = "";
+  let fileHash: string | undefined;
+
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    fileHash = await invoke<string>("sync_hash_file", { path: filePath });
+  } catch {
+    // Best effort.
+  }
+
+  if (ext === "txt") {
+    try {
+      const { TxtToEpubConverter } = await import("@readany/core/utils/txt-to-epub");
+      const { readFile } = await import("@tauri-apps/plugin-fs");
+      const rawBytes = await readFile(filePath);
+      const txtFile = new File(
+        [rawBytes],
+        filePath.replace(/\\/g, "/").split("/").pop() || "book.txt",
+        { type: "text/plain" },
+      );
+      const conversion = await new TxtToEpubConverter().convert({ file: txtFile });
+      title = conversion.bookTitle || title;
+    } catch {
+      // Fallback to filename.
+    }
+    return { title, author, format: "epub", fileHash };
+  }
+
+  try {
+    const { readFile } = await import("@tauri-apps/plugin-fs");
+    const fileBytes = await readFile(filePath);
+    const blob = new Blob([fileBytes]);
+    const file = new File([blob], fileName, {
+      type: blob.type || "application/octet-stream",
+    });
+    const { DocumentLoader } = await import("@/lib/reader/document-loader");
+    const loader = new DocumentLoader(file);
+    const { book: bookDoc } = await loader.open();
+    const meta = bookDoc.metadata;
+    if (meta) {
+      const rawTitle =
+        typeof meta.title === "string" ? meta.title : meta.title ? Object.values(meta.title)[0] : "";
+      if (rawTitle) title = rawTitle;
+
+      const rawAuthor =
+        typeof meta.author === "string" ? meta.author : meta.author?.name || "";
+      if (rawAuthor) author = rawAuthor;
+    }
+  } catch {
+    // Fallback to filename only.
+  }
+
+  return { title, author, format, fileHash };
 }
 
 export const useLibraryStore = create<LibraryState>((set, get) => ({
@@ -848,6 +941,9 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     }
     return result;
   },
+
+  inspectDeletedBookCandidate: async (bookId, filePath) =>
+    inspectDeletedDesktopBookCandidate(bookId, filePath),
 
   reimportDeletedBook: async (bookId, filePath) => {
     const restoredBook = await restoreDeletedDesktopBook(bookId, filePath);

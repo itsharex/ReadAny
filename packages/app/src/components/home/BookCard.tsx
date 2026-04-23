@@ -58,16 +58,25 @@ export const BookCard = memo(function BookCard({ book }: BookCardProps) {
   const coverRef = useRef<HTMLDivElement>(null);
   const menuBtnRef = useRef<HTMLButtonElement>(null);
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
+  const suppressOpenUntilRef = useRef(0);
   const progressPct = Math.round(book.progress * 100);
   const coverSrc = useResolvedSrc(book.meta.coverUrl);
 
   const handleOpen = async () => {
+    if (
+      showMenu ||
+      showDeleteDialog ||
+      Date.now() < suppressOpenUntilRef.current
+    ) {
+      return;
+    }
     await openDesktopBook({ book, t });
   };
 
   const handleDelete = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
+      suppressOpenUntilRef.current = Date.now() + 600;
       setShowMenu(false);
       setMenuPos(null);
       setPreserveDataOnDelete(true);
@@ -79,6 +88,7 @@ export const BookCard = memo(function BookCard({ book }: BookCardProps) {
   const handleVectorize = useCallback(
     async (e: React.MouseEvent) => {
       e.stopPropagation();
+      suppressOpenUntilRef.current = Date.now() + 400;
       setShowMenu(false);
       setMenuPos(null);
       if (vectorizing) return;
@@ -231,6 +241,7 @@ export const BookCard = memo(function BookCard({ book }: BookCardProps) {
           className="absolute right-1 bottom-1 z-20 rounded-md bg-black/30 p-0.5 opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100"
           onClick={(e) => {
             e.stopPropagation();
+            suppressOpenUntilRef.current = Date.now() + 300;
             if (showMenu) {
               setShowMenu(false);
               setMenuPos(null);
@@ -295,6 +306,7 @@ export const BookCard = memo(function BookCard({ book }: BookCardProps) {
                 className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-foreground hover:bg-muted"
                 onClick={(e) => {
                   e.stopPropagation();
+                  suppressOpenUntilRef.current = Date.now() + 300;
                   setShowTagMenu(!showTagMenu);
                 }}
               >
@@ -316,6 +328,7 @@ export const BookCard = memo(function BookCard({ book }: BookCardProps) {
                         className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-muted"
                         onClick={(e) => {
                           e.stopPropagation();
+                          suppressOpenUntilRef.current = Date.now() + 300;
                           if (hasTag) removeTagFromBook(book.id, tag);
                           else addTagToBook(book.id, tag);
                         }}
@@ -342,6 +355,7 @@ export const BookCard = memo(function BookCard({ book }: BookCardProps) {
                         onKeyDown={(e) => {
                           e.stopPropagation();
                           if (e.key === "Enter" && newTagInput.trim()) {
+                            suppressOpenUntilRef.current = Date.now() + 300;
                             addTag(newTagInput.trim());
                             addTagToBook(book.id, newTagInput.trim());
                             setNewTagInput("");
@@ -465,6 +479,7 @@ export const BookCard = memo(function BookCard({ book }: BookCardProps) {
               type="button"
               className="inline-flex h-9 items-center justify-center rounded-md bg-destructive px-4 text-sm font-medium text-destructive-foreground transition-colors hover:bg-destructive/90"
               onClick={async () => {
+                suppressOpenUntilRef.current = Date.now() + 600;
                 setShowDeleteDialog(false);
                 // Close any open reader tabs BEFORE removing the book from store,
                 // otherwise ReaderView will briefly render an error page.

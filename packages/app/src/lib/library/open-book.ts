@@ -16,6 +16,40 @@ interface OpenDesktopBookOptions {
   initialCfi?: string;
 }
 
+function normalizeBookIdentityText(value?: string): string {
+  return (value || "").toLowerCase().replace(/[\s\p{P}\p{S}_-]+/gu, "");
+}
+
+function authorsLikelyMatch(a?: string, b?: string): boolean {
+  const left = normalizeBookIdentityText(a);
+  const right = normalizeBookIdentityText(b);
+  if (!left || !right) return true;
+  if (left === right || left.includes(right) || right.includes(left)) return true;
+  const leftParts = left.split(/[,，、/&]+/).filter((part) => part.length > 1);
+  const rightParts = right.split(/[,，、/&]+/).filter((part) => part.length > 1);
+  return leftParts.some((part) => rightParts.some((candidate) => part.includes(candidate) || candidate.includes(part)));
+}
+
+function shouldConfirmReimportCandidate(
+  originalBook: Book,
+  candidate: { title: string; author: string; format: Book["format"]; fileHash?: string },
+): boolean {
+  if (candidate.fileHash && originalBook.fileHash && candidate.fileHash === originalBook.fileHash) {
+    return false;
+  }
+  const originalTitle = normalizeBookIdentityText(originalBook.meta.title);
+  const candidateTitle = normalizeBookIdentityText(candidate.title);
+  const titleMismatch =
+    !!originalTitle &&
+    !!candidateTitle &&
+    originalTitle !== candidateTitle &&
+    !originalTitle.includes(candidateTitle) &&
+    !candidateTitle.includes(originalTitle);
+  const authorMismatch = !authorsLikelyMatch(originalBook.meta.author, candidate.author);
+  const formatMismatch = originalBook.format !== candidate.format;
+  return titleMismatch || (formatMismatch && authorMismatch);
+}
+
 const pendingDownloads = new Set<string>();
 const BOOK_IMPORT_FILTERS = [
   {
@@ -47,7 +81,8 @@ export async function openDesktopBook({
   t,
   initialCfi,
 }: OpenDesktopBookOptions): Promise<boolean> {
-  const { books, setBooks, loadBooks, reimportDeletedBook } = useLibraryStore.getState();
+  const { books, setBooks, loadBooks, inspectDeletedBookCandidate, reimportDeletedBook } =
+    useLibraryStore.getState();
 
   if (pendingDownloads.has(book.id) || book.syncStatus === "downloading") {
     return false;
@@ -132,6 +167,26 @@ export async function openDesktopBook({
     const selectedPath = Array.isArray(picked) ? picked[0] : picked;
     if (!selectedPath) {
       return false;
+    }
+
+    const candidate = await inspectDeletedBookCandidate(book.id, selectedPath);
+    if (candidate && shouldConfirmReimportCandidate(book, candidate)) {
+      const shouldContinue = await useMissingBookPromptStore.getState().showPrompt({
+        title: t("reader.reimportMismatchTitle", "这份文件看起来和原书不太一致"),
+        description: t(
+          "reader.reimportMismatchDescription",
+          "原书《{{originalTitle}}》与当前文件《{{candidateTitle}}》信息差异较大。仍要把它接回原来的笔记和阅读统计吗？",
+          {
+            originalTitle: book.meta.title,
+            candidateTitle: candidate.title || t("reader.unknownBook", "未命名书籍"),
+          },
+        ),
+        confirmLabel: t("reader.reimportContinue", "继续接回"),
+        cancelLabel: t("reader.reimportPickAnotherFile", "重新选择"),
+      });
+      if (!shouldContinue) {
+        return false;
+      }
     }
 
     const restoredBook = await reimportDeletedBook(book.id, selectedPath);

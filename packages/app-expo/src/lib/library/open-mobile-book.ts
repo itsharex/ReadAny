@@ -46,6 +46,40 @@ async function pickBookFile(): Promise<DocumentPicker.DocumentPickerResult> {
 
 let reimportInFlight = false;
 
+function normalizeBookIdentityText(value?: string): string {
+  return (value || "").toLowerCase().replace(/[\s\p{P}\p{S}_-]+/gu, "");
+}
+
+function authorsLikelyMatch(a?: string, b?: string): boolean {
+  const left = normalizeBookIdentityText(a);
+  const right = normalizeBookIdentityText(b);
+  if (!left || !right) return true;
+  if (left === right || left.includes(right) || right.includes(left)) return true;
+  const leftParts = left.split(/[,，、/&]+/).filter((part) => part.length > 1);
+  const rightParts = right.split(/[,，、/&]+/).filter((part) => part.length > 1);
+  return leftParts.some((part) => rightParts.some((candidate) => part.includes(candidate) || candidate.includes(part)));
+}
+
+function shouldConfirmReimportCandidate(
+  originalBook: Book,
+  candidate: { title: string; author: string; format: Book["format"]; fileHash?: string },
+): boolean {
+  if (candidate.fileHash && originalBook.fileHash && candidate.fileHash === originalBook.fileHash) {
+    return false;
+  }
+  const originalTitle = normalizeBookIdentityText(originalBook.meta.title);
+  const candidateTitle = normalizeBookIdentityText(candidate.title);
+  const titleMismatch =
+    !!originalTitle &&
+    !!candidateTitle &&
+    originalTitle !== candidateTitle &&
+    !originalTitle.includes(candidateTitle) &&
+    !candidateTitle.includes(originalTitle);
+  const authorMismatch = !authorsLikelyMatch(originalBook.meta.author, candidate.author);
+  const formatMismatch = originalBook.format !== candidate.format;
+  return titleMismatch || (formatMismatch && authorMismatch);
+}
+
 function isLikelyRelativeAppPath(path: string): boolean {
   if (!path) return false;
   return !/^(\/|file:\/\/|content:\/\/|ph:\/\/|asset:\/\/|https?:\/\/)/i.test(path);
@@ -128,10 +162,34 @@ export async function openMobileBook({
       return false;
     }
     const selectedUri = result.assets[0].uri;
+    const store = useLibraryStore.getState();
+    const candidate = await store.inspectDeletedBookCandidate(bookId, {
+      uri: selectedUri,
+      name: result.assets[0].name,
+    });
+    if (candidate && shouldConfirmReimportCandidate(book, candidate)) {
+      const shouldContinue = await useMissingBookPromptStore.getState().showPrompt({
+        title: t("reader.reimportMismatchTitle", "这份文件看起来和原书不太一致"),
+        description: t(
+          "reader.reimportMismatchDescription",
+          "原书《{{originalTitle}}》与当前文件《{{candidateTitle}}》信息差异较大。仍要把它接回原来的笔记和阅读统计吗？",
+          {
+            originalTitle: book.meta.title,
+            candidateTitle: candidate.title || t("reader.unknownBook", "未命名书籍"),
+          },
+        ),
+        confirmLabel: t("reader.reimportContinue", "继续接回"),
+        cancelLabel: t("reader.reimportPickAnotherFile", "重新选择"),
+      });
+      if (!shouldContinue) {
+        return false;
+      }
+    }
 
-    const restoredBook = await useLibraryStore
-      .getState()
-      .reimportDeletedBook(bookId, { uri: selectedUri, name: result.assets[0].name });
+    const restoredBook = await store.reimportDeletedBook(bookId, {
+      uri: selectedUri,
+      name: result.assets[0].name,
+    });
 
     if (!restoredBook) {
       return false;

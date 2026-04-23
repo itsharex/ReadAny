@@ -258,7 +258,15 @@
     "currentModel": "模型",
     "notConfigured": "请先配置 AI 模型",
     "notConfiguredDesc": "需要配置 API 密钥和选择模型后才能使用 AI 功能。",
-    "goSettings": "去配置"
+    "goSettings": "去配置",
+    "export": "导出对话",
+    "exportMarkdown": "导出 Markdown",
+    "exportJSON": "导出 JSON",
+    "copyAll": "复制全部",
+    "exportSuccess": "导出成功",
+    "copiedSuccess": "已复制到剪贴板",
+    "roleUser": "你",
+    "roleAI": "AI"
   },
   "reader": {
     "untitled": "无标题",
@@ -273,6 +281,10 @@
     "reimportDialogDescription": "笔记和阅读记录都还在，重新导入即可继续。",
     "reimportDialogDescriptionDesktop": "笔记和阅读记录都还在，重新导入即可继续。",
     "reimport": "重新导入",
+    "reimportMismatchTitle": "这份文件看起来和原书不太一致",
+    "reimportMismatchDescription": "原书《{{originalTitle}}》与当前文件《{{candidateTitle}}》信息差异较大。仍要把它接回原来的笔记和阅读统计吗？",
+    "reimportContinue": "继续接回",
+    "reimportPickAnotherFile": "重新选择",
     "reimportSelectFile": "重新导入",
     "reimporting": "正在重新导入...",
     "reimportFailed": "重新导入失败，请稍后再试。",

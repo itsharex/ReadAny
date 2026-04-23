@@ -78,6 +78,7 @@ export const BookCard = memo(function BookCard({
   const [resolvedCoverUrl, setResolvedCoverUrl] = useState<string | undefined>(undefined);
   const coverRef = useRef<View>(null);
   const menuTriggerRef = useRef<View>(null);
+  const suppressOpenUntilRef = useRef(0);
 
   // Resolve relative coverUrl to absolute path
   useEffect(() => {
@@ -142,6 +143,7 @@ export const BookCard = memo(function BookCard({
   }, []);
 
   const openActions = useCallback(async () => {
+    suppressOpenUntilRef.current = Date.now() + 700;
     const anchor = await measureAnchor();
     setActionAnchor(anchor);
     setShowActions(true);
@@ -151,7 +153,10 @@ export const BookCard = memo(function BookCard({
     <>
       <TouchableOpacity
         style={s.container}
-        onPress={() => onOpen(book)}
+        onPress={() => {
+          if (showActions || Date.now() < suppressOpenUntilRef.current) return;
+          onOpen(book);
+        }}
         onLongPress={() => {
           void openActions();
         }}
@@ -279,6 +284,7 @@ export const BookCard = memo(function BookCard({
               activeOpacity={0.85}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               onPress={() => {
+                suppressOpenUntilRef.current = Date.now() + 700;
                 void openActions();
               }}
             >
@@ -337,6 +343,7 @@ export const BookCard = memo(function BookCard({
         anchor={actionAnchor}
         book={book}
         onClose={() => {
+          suppressOpenUntilRef.current = Date.now() + 300;
           setShowActions(false);
         }}
         onManageTags={onManageTags}

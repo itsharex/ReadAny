@@ -24,6 +24,7 @@ import { resolveDesktopDataPath } from "@/lib/storage/desktop-library-root";
 import { useAnnotationStore } from "@/stores/annotation-store";
 import { useAppStore } from "@/stores/app-store";
 import { useLibraryStore } from "@/stores/library-store";
+import { useMissingBookPromptStore } from "@/stores/missing-book-prompt-store";
 import { useNotebookStore } from "@/stores/notebook-store";
 import { useReaderStore } from "@/stores/reader-store";
 import { useSettingsStore } from "@/stores/settings-store";
@@ -944,13 +945,58 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
 
     try {
       const platform = getPlatformService();
-      const { reimportDeletedBook } = useLibraryStore.getState();
+      const { reimportDeletedBook, inspectDeletedBookCandidate } = useLibraryStore.getState();
       const picked = await platform.pickFile({
         multiple: false,
         filters: BOOK_IMPORT_FILTERS,
       });
       const selectedPath = Array.isArray(picked) ? picked[0] : picked;
       if (!selectedPath) return;
+
+      if (book) {
+        const candidate = await inspectDeletedBookCandidate(bookId, selectedPath);
+        if (candidate) {
+          const normalize = (value?: string) =>
+            (value || "").toLowerCase().replace(/[\s\p{P}\p{S}_-]+/gu, "");
+          const authorsMatch = (() => {
+            const left = normalize(book.meta.author);
+            const right = normalize(candidate.author);
+            if (!left || !right) return true;
+            return left === right || left.includes(right) || right.includes(left);
+          })();
+          const titleMismatch = (() => {
+            const originalTitle = normalize(book.meta.title);
+            const candidateTitle = normalize(candidate.title);
+            return (
+              !!originalTitle &&
+              !!candidateTitle &&
+              originalTitle !== candidateTitle &&
+              !originalTitle.includes(candidateTitle) &&
+              !candidateTitle.includes(originalTitle)
+            );
+          })();
+          const formatMismatch = book.format !== candidate.format;
+          if (
+            !(candidate.fileHash && book.fileHash && candidate.fileHash === book.fileHash) &&
+            (titleMismatch || (formatMismatch && !authorsMatch))
+          ) {
+            const shouldContinue = await useMissingBookPromptStore.getState().showPrompt({
+              title: t("reader.reimportMismatchTitle", "这份文件看起来和原书不太一致"),
+              description: t(
+                "reader.reimportMismatchDescription",
+                "原书《{{originalTitle}}》与当前文件《{{candidateTitle}}》信息差异较大。仍要把它接回原来的笔记和阅读统计吗？",
+                {
+                  originalTitle: book.meta.title,
+                  candidateTitle: candidate.title || t("reader.unknownBook", "未命名书籍"),
+                },
+              ),
+              confirmLabel: t("reader.reimportContinue", "继续接回"),
+              cancelLabel: t("reader.reimportPickAnotherFile", "重新选择"),
+            });
+            if (!shouldContinue) return;
+          }
+        }
+      }
 
       const restoredBook = await reimportDeletedBook(bookId, selectedPath);
       if (!restoredBook) {
