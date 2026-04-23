@@ -367,6 +367,7 @@ export interface LibraryState {
   setSortField: (field: SortField) => void;
   setSortOrder: (order: SortOrder) => void;
   importBooks: (filePaths: string[]) => Promise<ImportBooksResult>;
+  reimportDeletedBook: (bookId: string, filePath: string) => Promise<Book | null>;
   // Tag management
   setActiveTag: (tag: string) => void;
   addTag: (tag: string) => void;
@@ -374,6 +375,129 @@ export interface LibraryState {
   renameTag: (oldName: string, newName: string) => void;
   addTagToBook: (bookId: string, tag: string) => void;
   removeTagFromBook: (bookId: string, tag: string) => void;
+}
+
+async function restoreDeletedDesktopBook(
+  bookId: string,
+  filePath: string,
+): Promise<Book | null> {
+  await db.initDatabase();
+  const originalBook = await db.getBook(bookId, { includeDeleted: true });
+  if (!originalBook) return null;
+
+  const fileName = decodeURIComponent(filePath.replace(/\\/g, "/").split("/").pop() || "book");
+  const ext = filePath.split(".").pop()?.toLowerCase() || "epub";
+  const formatMap: Record<string, Book["format"]> = {
+    epub: "epub",
+    pdf: "pdf",
+    mobi: "mobi",
+    azw: "azw",
+    azw3: "azw3",
+    cbz: "cbz",
+    cbr: "cbz",
+    fb2: "fb2",
+    fbz: "fbz",
+    txt: "txt",
+  };
+  const format: Book["format"] = formatMap[ext] || "epub";
+  let title = originalBook.meta.title || fileName.replace(/\.\w+$/i, "") || "Untitled";
+  let author = originalBook.meta.author || "";
+  let coverUrl = originalBook.meta.coverUrl;
+  let fileHash: string | undefined;
+
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    fileHash = await invoke<string>("sync_hash_file", { path: filePath });
+  } catch {
+    // Hash calculation is best effort.
+  }
+
+  const { relativePath, fileBytes } =
+    ext === "txt"
+      ? await (async () => {
+          const { TxtToEpubConverter } = await import("@readany/core/utils/txt-to-epub");
+          const { readFile, writeFile, mkdir } = await import("@tauri-apps/plugin-fs");
+          const { join } = await import("@tauri-apps/api/path");
+          const rawBytes = await readFile(filePath);
+          const txtFile = new File(
+            [rawBytes],
+            filePath.replace(/\\/g, "/").split("/").pop() || "book.txt",
+            {
+              type: "text/plain",
+            },
+          );
+          const converter = new TxtToEpubConverter();
+          const conversion = await converter.convert({ file: txtFile });
+          title = conversion.bookTitle || title;
+          const epubBytes = new Uint8Array(await conversion.file.arrayBuffer());
+          await mkdir(await join(await getDesktopLibraryRoot(), "books"), { recursive: true });
+          const relPath = `books/${bookId}.epub`;
+          await writeFile(await resolveAppPath(relPath), epubBytes);
+          return { relativePath: relPath, fileBytes: epubBytes };
+        })()
+      : await copyBookToAppData(bookId, ext, filePath);
+
+  const blob = new Blob([fileBytes]);
+  const effectiveFileName = ext === "txt" ? fileName.replace(/\.txt$/i, ".epub") : fileName;
+  const file = new File([blob], effectiveFileName, {
+    type: blob.type || "application/octet-stream",
+  });
+
+  try {
+    const { DocumentLoader } = await import("@/lib/reader/document-loader");
+    const loader = new DocumentLoader(file);
+    const { book: bookDoc } = await loader.open();
+    const meta = bookDoc.metadata;
+    if (meta) {
+      const rawTitle =
+        typeof meta.title === "string" ? meta.title : meta.title ? Object.values(meta.title)[0] : "";
+      if (rawTitle) title = rawTitle;
+
+      const rawAuthor =
+        typeof meta.author === "string" ? meta.author : meta.author?.name || "";
+      if (rawAuthor) author = rawAuthor;
+    }
+
+    try {
+      const coverBlob = await bookDoc.getCover();
+      if (coverBlob) {
+        coverUrl = await saveCoverToAppData(bookId, coverBlob);
+      }
+    } catch (err) {
+      console.warn("[restoreDeletedDesktopBook] getCover failed:", err);
+    }
+  } catch (err) {
+    console.warn("[restoreDeletedDesktopBook] DocumentLoader failed, falling back:", err);
+    if (format === "pdf") {
+      try {
+        const coverBlob = await generatePdfCover(fileBytes);
+        if (coverBlob) {
+          coverUrl = await saveCoverToAppData(bookId, coverBlob);
+        }
+      } catch {
+        // Non-critical.
+      }
+    }
+  }
+
+  return {
+    ...originalBook,
+    filePath: relativePath,
+    format,
+    meta: {
+      ...originalBook.meta,
+      title,
+      author,
+      coverUrl,
+    },
+    deletedAt: undefined,
+    fileHash,
+    syncStatus: "local",
+    isVectorized: false,
+    vectorizeProgress: 0,
+    updatedAt: Date.now(),
+    lastOpenedAt: Date.now(),
+  };
 }
 
 export const useLibraryStore = create<LibraryState>((set, get) => ({
@@ -723,6 +847,43 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       set({ isImporting: false });
     }
     return result;
+  },
+
+  reimportDeletedBook: async (bookId, filePath) => {
+    const restoredBook = await restoreDeletedDesktopBook(bookId, filePath);
+    if (!restoredBook) return null;
+
+    set((state) => {
+      const exists = state.books.some((book) => book.id === restoredBook.id);
+      return {
+        books: exists
+          ? state.books.map((book) => (book.id === restoredBook.id ? restoredBook : book))
+          : [...state.books, restoredBook],
+      };
+    });
+
+    try {
+      await db.updateBook(restoredBook.id, {
+        filePath: restoredBook.filePath,
+        format: restoredBook.format,
+        meta: restoredBook.meta,
+        deletedAt: undefined,
+        progress: restoredBook.progress,
+        currentCfi: restoredBook.currentCfi,
+        isVectorized: false,
+        vectorizeProgress: 0,
+        tags: restoredBook.tags,
+        fileHash: restoredBook.fileHash,
+        syncStatus: "local",
+        lastOpenedAt: restoredBook.lastOpenedAt,
+      });
+      debouncedSave("library-books", get().books);
+    } catch (err) {
+      console.error("Failed to restore deleted book from database:", err);
+      return null;
+    }
+
+    return restoredBook;
   },
 
   // ── Tag management ──

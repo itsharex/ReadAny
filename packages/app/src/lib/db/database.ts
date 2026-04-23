@@ -8,6 +8,7 @@ export {
   getBooks,
   getBook,
   getDeletedBookByFileHash,
+  getDeletedBookByTitle,
   insertBook,
   updateBook,
   deleteBook,

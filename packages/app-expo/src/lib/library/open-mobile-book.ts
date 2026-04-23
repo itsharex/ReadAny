@@ -4,7 +4,6 @@ import { getBook } from "@readany/core/db/database";
 import { getPlatformService } from "@readany/core/services";
 import type { Book } from "@readany/core/types";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { Alert } from "react-native";
 import type { TFunction } from "i18next";
 import * as DocumentPicker from "expo-document-picker";
 import { useMissingBookPromptStore } from "@/stores/missing-book-prompt-store";
@@ -89,11 +88,6 @@ export async function openMobileBook({
 }): Promise<boolean> {
   const book = await resolveBookForOpen(bookId);
   if (!book) {
-    Alert.alert(
-      t("reader.bookNotFound", "书籍未找到"),
-      t("reader.reimportMissingPrompt", "这本书的本地文件已经不在了，要不要现在重新导入？"),
-      [{ text: t("common.ok", "确定") }],
-    );
     return false;
   }
 
@@ -135,48 +129,13 @@ export async function openMobileBook({
     }
     const selectedUri = result.assets[0].uri;
 
-    const summary = await useLibraryStore
+    const restoredBook = await useLibraryStore
       .getState()
-      .importBooks([{ uri: selectedUri, name: result.assets[0].name }]);
-
-    // The re-imported book might get the same ID (hash match in deleted books)
-    // OR a brand-new ID. Either way, accept it as a successful reimport
-    // as long as at least one book was actually imported or recognized.
-    const restoredBook =
-      summary.imported.find((item) => item.id === bookId) ??
-      summary.skippedDuplicates.find((item) => item.existingBook.id === bookId)?.existingBook ??
-      summary.imported[0] ??
-      summary.skippedDuplicates[0]?.existingBook ??
-      null;
+      .reimportDeletedBook(bookId, { uri: selectedUri, name: result.assets[0].name });
 
     if (!restoredBook) {
-      Alert.alert(
-        t("reader.reimport", "重新导入"),
-        t(
-          "reader.reimportDifferentBook",
-          "导入的不是同一本书，没法接上原来的笔记和统计。",
-        ),
-      );
       return false;
     }
-
-    // If the imported book got a new ID (hash didn't match the soft-deleted record),
-    // restore the ORIGINAL book record so notes/highlights stay connected.
-    if (restoredBook.id !== bookId) {
-      const { updateBook, deleteBook } = await import("@readany/core/db/database");
-      await updateBook(bookId, {
-        filePath: restoredBook.filePath,
-        deletedAt: undefined,
-        fileHash: restoredBook.fileHash,
-      });
-      await deleteBook(restoredBook.id, { preserveData: false });
-      await useLibraryStore.getState().loadBooks();
-    }
-
-    Alert.alert(
-      t("common.success", "成功！"),
-      t("reader.reimportSuccess", "书籍已重新导入，笔记和阅读记录已恢复。"),
-    );
     navigation.navigate("Reader", { bookId, cfi, highlight });
     return true;
   } catch (error) {
@@ -188,7 +147,7 @@ export async function openMobileBook({
     if (typeof message === "string" && message.includes("Different document picking")) {
       return false;
     }
-    Alert.alert(t("reader.reimport", "重新导入"), message);
+    console.error("[openMobileBook] Reimport failed:", message);
   } finally {
     reimportInFlight = false;
   }

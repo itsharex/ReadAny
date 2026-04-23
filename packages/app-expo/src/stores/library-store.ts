@@ -66,6 +66,10 @@ export interface LibraryState {
   setSortField: (field: SortField) => void;
   setSortOrder: (order: SortOrder) => void;
   importBooks: (files: Array<{ uri: string; name?: string }>) => Promise<ImportBooksResult>;
+  reimportDeletedBook: (
+    bookId: string,
+    file: { uri: string; name?: string },
+  ) => Promise<Book | null>;
   setActiveTag: (tag: string) => void;
   addTag: (tag: string) => void;
   removeTag: (tag: string) => void;
@@ -232,6 +236,144 @@ async function copyBookToAppData(
 
 async function persistBookUpdate(bookId: string, updates: Partial<Book>): Promise<void> {
   await runWithDbRetry(() => db.updateBook(bookId, updates));
+}
+
+async function restoreDeletedMobileBook(
+  bookId: string,
+  fileInfo: { uri: string; name?: string },
+): Promise<Book | null> {
+  await db.initDatabase();
+  const originalBook = await db.getBook(bookId, { includeDeleted: true });
+  if (!originalBook) return null;
+
+  const filePath = fileInfo.uri;
+  const originalName = fileInfo.name
+    ? decodeURIComponent(fileInfo.name)
+    : decodeURIComponent(filePath.split("/").pop() || "book");
+  const ext = originalName.split(".").pop()?.toLowerCase();
+  const formatMap: Record<string, Book["format"]> = {
+    epub: "epub",
+    pdf: "pdf",
+    mobi: "mobi",
+    azw: "azw",
+    azw3: "azw3",
+    cbz: "cbz",
+    cbr: "cbz",
+    fb2: "fb2",
+    fbz: "fbz",
+    txt: "txt",
+  };
+  const format: Book["format"] = formatMap[ext || ""] || "epub";
+  const fileName = originalName;
+  const platform = getPlatformService();
+  const sourceBytes = await platform.readFile(filePath);
+
+  let fileHash: string | undefined;
+  try {
+    fileHash = await hashBytes(sourceBytes);
+  } catch {
+    // Hash calculation is best effort.
+  }
+
+  if (ext === "txt") {
+    const { TxtToEpubConverter } = await import("@readany/core/utils/txt-to-epub");
+    const bytes = ensureUtf8Bytes(sourceBytes);
+    const txtFile = {
+      name: fileName,
+      size: bytes.byteLength,
+      type: "text/plain",
+      arrayBuffer: () =>
+        Promise.resolve(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)),
+      slice: (start?: number, end?: number) => {
+        const sliced = bytes.slice(start ?? 0, end ?? bytes.byteLength);
+        return {
+          arrayBuffer: () =>
+            Promise.resolve(
+              sliced.buffer.slice(sliced.byteOffset, sliced.byteOffset + sliced.byteLength),
+            ),
+          size: sliced.byteLength,
+        };
+      },
+      stream: () =>
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(bytes);
+            controller.close();
+          },
+        }),
+    } as unknown as File;
+
+    const conversion = await new TxtToEpubConverter().convertToBytes({ file: txtFile });
+    await ensureAppSubDir("books");
+    const relativePath = `books/${bookId}.epub`;
+    await platform.writeFile(await resolveAppPath(relativePath), conversion.epubBytes);
+
+    return {
+      ...originalBook,
+      filePath: relativePath,
+      format: "epub",
+      meta: {
+        ...originalBook.meta,
+        title: conversion.bookTitle || originalBook.meta.title || fileName.replace(/\.\w+$/i, ""),
+        author: originalBook.meta.author || "",
+        coverUrl: originalBook.meta.coverUrl,
+      },
+      deletedAt: undefined,
+      fileHash,
+      syncStatus: "local",
+      isVectorized: false,
+      vectorizeProgress: 0,
+      updatedAt: Date.now(),
+      lastOpenedAt: Date.now(),
+    };
+  }
+
+  const { relativePath, fileBytes } = await copyBookToAppData(
+    bookId,
+    ext || "epub",
+    filePath,
+    sourceBytes,
+  );
+
+  let title = originalBook.meta.title || fileName.replace(/\.\w+$/i, "") || "Untitled";
+  let author = originalBook.meta.author || "";
+  let coverUrl = originalBook.meta.coverUrl;
+
+  try {
+    const meta = await extractBookMetadata(fileBytes, format, fileName);
+    if (meta.title) title = meta.title;
+    if (meta.author) author = meta.author;
+
+    if (meta.coverBytes && meta.coverBytes.length > 0) {
+      const mimeType = meta.coverMimeType || "image/jpeg";
+      const coverExt = mimeType.includes("png") ? "png" : "jpg";
+      await ensureAppSubDir("covers");
+      const coverRelPath = `covers/${bookId}.${coverExt}`;
+      await platform.writeFile(await resolveAppPath(coverRelPath), meta.coverBytes);
+      coverUrl = coverRelPath;
+    }
+  } catch (metaErr) {
+    console.warn(`[restoreDeletedMobileBook] Metadata extraction failed for ${fileName}:`, metaErr);
+  }
+
+  return {
+    ...originalBook,
+    filePath: relativePath,
+    format,
+    meta: {
+      ...originalBook.meta,
+      title,
+      author,
+      coverUrl,
+    },
+    deletedAt: undefined,
+    fileHash,
+    syncStatus: "local",
+    isVectorized: false,
+    vectorizeProgress: 0,
+    updatedAt: Date.now(),
+    lastOpenedAt: Date.now(),
+  };
 }
 
 export const useLibraryStore = create<LibraryState>((set, get) => ({
@@ -653,6 +795,43 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       set({ isImporting: false });
     }
     return result;
+  },
+
+  reimportDeletedBook: async (bookId, file) => {
+    const restoredBook = await restoreDeletedMobileBook(bookId, file);
+    if (!restoredBook) return null;
+
+    set((state) => {
+      const exists = state.books.some((book) => book.id === restoredBook.id);
+      return {
+        books: exists
+          ? state.books.map((book) => (book.id === restoredBook.id ? restoredBook : book))
+          : [...state.books, restoredBook],
+      };
+    });
+
+    try {
+      await db.updateBook(restoredBook.id, {
+        filePath: restoredBook.filePath,
+        format: restoredBook.format,
+        meta: restoredBook.meta,
+        deletedAt: undefined,
+        progress: restoredBook.progress,
+        currentCfi: restoredBook.currentCfi,
+        isVectorized: false,
+        vectorizeProgress: 0,
+        tags: restoredBook.tags,
+        fileHash: restoredBook.fileHash,
+        syncStatus: "local",
+        lastOpenedAt: restoredBook.lastOpenedAt,
+      });
+      debouncedSave("library-books", get().books);
+    } catch (err) {
+      console.error("Failed to restore deleted book from database:", err);
+      return null;
+    }
+
+    return restoredBook;
   },
 
   setActiveTag: (tag) => set({ activeTag: tag }),

@@ -1,6 +1,5 @@
 import { useAppStore } from "@/stores/app-store";
 import { useLibraryStore } from "@/stores/library-store";
-import { getBook } from "@readany/core/db/database";
 import { getPlatformService } from "@readany/core/services";
 import { setBookSyncStatus } from "@readany/core/db/database";
 import { downloadBookFile } from "@readany/core/sync";
@@ -48,7 +47,7 @@ export async function openDesktopBook({
   t,
   initialCfi,
 }: OpenDesktopBookOptions): Promise<boolean> {
-  const { books, setBooks, loadBooks, importBooks } = useLibraryStore.getState();
+  const { books, setBooks, loadBooks, reimportDeletedBook } = useLibraryStore.getState();
 
   if (pendingDownloads.has(book.id) || book.syncStatus === "downloading") {
     return false;
@@ -135,47 +134,14 @@ export async function openDesktopBook({
       return false;
     }
 
-    const summary = await importBooks([selectedPath]);
-
-    // The re-imported book might get the same ID (hash match in deleted books)
-    // OR a brand-new ID. Either way, accept it as a successful reimport.
-    const restoredBook =
-      summary.imported.find((item) => item.id === book.id) ??
-      summary.skippedDuplicates.find((item) => item.existingBook.id === book.id)?.existingBook ??
-      summary.imported[0] ??
-      summary.skippedDuplicates[0]?.existingBook ??
-      null;
-
+    const restoredBook = await reimportDeletedBook(book.id, selectedPath);
     if (!restoredBook) {
-      toast.error(
-        t("reader.reimportDifferentBook", "导入的不是同一本书，没法接上原来的笔记和统计。"),
-      );
+      toast.error(t("reader.reimportFailed", "重新导入失败，请稍后再试。"));
       return false;
     }
 
-    // If the imported book got a new ID (hash didn't match the soft-deleted record),
-    // restore the ORIGINAL book record so notes/highlights stay connected.
-    if (restoredBook.id !== book.id) {
-      const { updateBook, deleteBook } = await import("@readany/core/db/database");
-      // Restore the soft-deleted original book with the new file path
-      await updateBook(book.id, {
-        filePath: restoredBook.filePath,
-        deletedAt: undefined,
-        fileHash: restoredBook.fileHash,
-      });
-      // Remove the newly created duplicate
-      await deleteBook(restoredBook.id, { preserveData: false });
-      // Reload books so the restored book appears in the store
-      await useLibraryStore.getState().loadBooks();
-    }
-
-    const latestBook =
-      useLibraryStore.getState().books.find((item) => item.id === book.id) ??
-      (await getBook(book.id, { includeDeleted: false }).catch(() => null)) ??
-      restoredBook;
-
     toast.success(t("reader.reimportSuccess", "书籍已重新导入，笔记和阅读记录已恢复。"));
-    openReaderTab(latestBook, initialCfi);
+    openReaderTab(restoredBook, initialCfi);
     return true;
   }
 

@@ -13,7 +13,6 @@ import {
   List,
   Maximize,
   MessageSquare,
-  Minimize,
   NotebookPen,
   Pin,
   Search,

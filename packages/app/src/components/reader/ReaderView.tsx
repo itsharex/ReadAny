@@ -444,7 +444,6 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
 
   const books = useLibraryStore((s) => s.books);
   const updateBook = useLibraryStore((s) => s.updateBook);
-  const importBooks = useLibraryStore((s) => s.importBooks);
   const book = books.find((b) => b.id === bookId);
 
   const highlights = useAnnotationStore((s) => s.highlights);
@@ -945,6 +944,7 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
 
     try {
       const platform = getPlatformService();
+      const { reimportDeletedBook } = useLibraryStore.getState();
       const picked = await platform.pickFile({
         multiple: false,
         filters: BOOK_IMPORT_FILTERS,
@@ -952,14 +952,9 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
       const selectedPath = Array.isArray(picked) ? picked[0] : picked;
       if (!selectedPath) return;
 
-      const result = await importBooks([selectedPath]);
-      const restoredBook =
-        result.imported.find((item) => item.id === bookId) ??
-        result.skippedDuplicates.find((item) => item.existingBook.id === bookId)?.existingBook ??
-        null;
-
+      const restoredBook = await reimportDeletedBook(bookId, selectedPath);
       if (!restoredBook) {
-        setError(t("reader.reimportDifferentBook", "导入的不是同一本书，没法接上原来的笔记和统计。"));
+        setError(t("reader.reimportFailed", "重新导入失败，请稍后再试。"));
         return;
       }
 
@@ -977,7 +972,7 @@ export function ReaderView({ bookId, tabId }: ReaderViewProps) {
     } finally {
       setIsReimporting(false);
     }
-  }, [bookId, importBooks, isReimporting, t]);
+  }, [bookId, isReimporting, t]);
 
   const handleCloseMissingBookTab = useCallback(() => {
     closeAppTab(tabId);

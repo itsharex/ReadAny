@@ -281,7 +281,6 @@ export function ReaderScreen({ route, navigation }: Props) {
   const incrementCharactersRead = useReadingSessionStore((s) => s.incrementCharactersRead);
   const { sendEvent } = useReadingSession(bookId); // Added useReadingSession hook
   const { books, updateBook } = useLibraryStore();
-  const importBooks = useLibraryStore((s) => s.importBooks);
   const setGoToCfiFn = useReaderStore((s) => s.setGoToCfiFn);
 
   // Throttled progress save (same as desktop - 5 seconds)
@@ -982,14 +981,12 @@ export function ReaderScreen({ route, navigation }: Props) {
       if (result.canceled || !result.assets || result.assets.length === 0) return;
       const selectedUri = result.assets[0].uri;
 
-      const summary = await importBooks([{ uri: selectedUri, name: result.assets[0].name }]);
-      const restoredBook =
-        summary.imported.find((item) => item.id === bookId) ??
-        summary.skippedDuplicates.find((item) => item.existingBook.id === bookId)?.existingBook ??
-        null;
+      const restoredBook = await useLibraryStore
+        .getState()
+        .reimportDeletedBook(bookId, { uri: selectedUri, name: result.assets[0].name });
 
       if (!restoredBook) {
-        setError(t("reader.reimportDifferentBook", "导入的不是同一本书，没法接上原来的笔记和统计。"));
+        setError(t("reader.reimportFailed", "重新导入失败，请稍后再试。"));
         return;
       }
 
@@ -1005,7 +1002,7 @@ export function ReaderScreen({ route, navigation }: Props) {
     } finally {
       setIsReimporting(false);
     }
-  }, [bookId, importBooks, isReimporting, t]);
+  }, [bookId, isReimporting, t]);
 
   // Apply theme colors when theme changes
   useEffect(() => {
