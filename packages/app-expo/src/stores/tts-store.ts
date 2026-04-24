@@ -1,13 +1,15 @@
 import {
   DEFAULT_TTS_CONFIG,
-  normalizeTTSConfig,
-  splitNarrationText,
   type ITTSPlayer,
   type TTSConfig,
+  normalizeTTSConfig,
+  splitNarrationText,
 } from "@readany/core/tts";
-import { ExpoAVEdgeTTSPlayer } from "../lib/platform/expo-av-edge-player";
-import { ExpoSpeechTTSPlayer } from "../lib/platform/expo-speech-player";
+import TrackPlayer from "react-native-track-player";
 import { create } from "zustand";
+import { ExpoSpeechTTSPlayer } from "../lib/platform/expo-speech-player";
+import { TrackPlayerDashScopeTTSPlayer } from "../lib/platform/track-player-dashscope-player";
+import { TrackPlayerEdgeTTSPlayer } from "../lib/platform/track-player-edge-player";
 import { withPersist } from "./persist";
 
 export type TTSPlayState = "stopped" | "playing" | "paused" | "loading";
@@ -20,9 +22,8 @@ export interface TTSPlayerFactories {
 
 const defaultFactories: TTSPlayerFactories = {
   createSystemTTS: () => new ExpoSpeechTTSPlayer(),
-  createEdgeTTS: () => new ExpoAVEdgeTTSPlayer(),
-  // DashScope streaming is not wired on RN yet; keep a predictable system fallback.
-  createDashScopeTTS: () => new ExpoSpeechTTSPlayer(),
+  createEdgeTTS: () => new TrackPlayerEdgeTTSPlayer(),
+  createDashScopeTTS: () => new TrackPlayerDashScopeTTSPlayer(),
 };
 
 let _factories: TTSPlayerFactories = defaultFactories;
@@ -77,7 +78,9 @@ function normalizeSegments(text: string | string[]): string[] {
   if (Array.isArray(text)) {
     return text.map((segment) => segment.trim()).filter(Boolean);
   }
-  return splitNarrationText(text).map((segment) => segment.trim()).filter(Boolean);
+  return splitNarrationText(text)
+    .map((segment) => segment.trim())
+    .filter(Boolean);
 }
 
 function getPlayerForConfig(config: TTSConfig): ITTSPlayer {
@@ -305,8 +308,20 @@ export const useTTSStore = create<TTSState>()(
         set({ onEnd: cb });
       },
 
-      setCurrentBook: (title, chapter, bookId) =>
-        set({ currentBookTitle: title, currentChapterTitle: chapter, currentBookId: bookId ?? "" }),
+      setCurrentBook: (title, chapter, bookId) => {
+        set({ currentBookTitle: title, currentChapterTitle: chapter, currentBookId: bookId ?? "" });
+        // Sync notification bar metadata
+        TrackPlayer.getActiveTrackIndex()
+          .then((idx) => {
+            if (idx != null) {
+              TrackPlayer.updateMetadataForTrack(idx, {
+                title: chapter || title,
+                artist: title,
+              }).catch(() => {});
+            }
+          })
+          .catch(() => {});
+      },
 
       setCurrentLocation: (cfi) => set({ currentLocationCfi: cfi ?? "" }),
 
