@@ -8,6 +8,10 @@ const CHUNK_MAX_CHARS = 500;
 const DEFAULT_ARTWORK = Image.resolveAssetSource(require("../../../assets/icon.png")).uri;
 
 export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
+  private static readonly INITIAL_BUFFER_CHUNKS = 3;
+  private static readonly MAX_RETRIES = 3;
+  private static readonly MAX_CHUNK_FETCH_RETRIES = 2;
+
   onStateChange?: (state: "playing" | "paused" | "stopped") => void;
   onChunkChange?: (index: number, total: number) => void;
   onEnd?: () => void;
@@ -21,9 +25,11 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
   private _speakGen = 0;
   private _unsubscribers: (() => void)[] = [];
   private _downloadComplete = false;
+  private _nextChunkToAdd = 0;
+  private _queueStarved = false;
+  private _playStarted = false;
   private _getArtwork: (() => string | undefined) | null = null;
   private _retryCount = 0;
-  private static readonly MAX_RETRIES = 3;
 
   setArtworkGetter(getter: () => string | undefined): void {
     this._getArtwork = getter;
@@ -44,14 +50,15 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
       : splitIntoChunks(text, CHUNK_MAX_CHARS);
     this._currentIndex = 0;
     this._tempFiles = [];
+    this._nextChunkToAdd = 0;
+    this._queueStarved = false;
+    this._playStarted = false;
 
     if (this._chunks.length === 0) {
       this.onStateChange?.("stopped");
       this.onEnd?.();
       return;
     }
-
-    this.onStateChange?.("playing");
 
     await TrackPlayer.reset();
 
@@ -80,7 +87,12 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
       if (event.state === State.Playing) {
         this.onStateChange?.("playing");
       } else if (event.state === State.Paused) {
-        this.onStateChange?.("paused");
+        // When the generated queue is temporarily empty, RNTP may report Paused.
+        // That is buffering/starvation, not a user pause. Keep UI in playing mode
+        // and resume as soon as the producer adds the next chunk.
+        if (this._paused || this._downloadComplete) {
+          this.onStateChange?.("paused");
+        }
       } else if (event.state === State.Error) {
         if (this._retryCount < TrackPlayerEdgeTTSPlayer.MAX_RETRIES) {
           this._retryCount++;
@@ -96,9 +108,20 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
       }
     });
 
-    const unsubQueueEnded = TrackPlayer.addEventListener(Event.PlaybackQueueEnded, () => {
+    const unsubQueueEnded = TrackPlayer.addEventListener(Event.PlaybackQueueEnded, (event) => {
       if (gen !== this._speakGen || this._stopped) return;
-      if (!this._downloadComplete) return;
+      if (!this._downloadComplete) {
+        this._queueStarved = true;
+        if (typeof event.track === "number") {
+          this._currentIndex = Math.max(this._currentIndex, event.track);
+        }
+        console.warn("[TrackPlayerEdgeTTSPlayer] queue starved, waiting for next generated chunk", {
+          track: event.track,
+          nextChunkToAdd: this._nextChunkToAdd,
+          total: this._chunks.length,
+        });
+        return;
+      }
       this._stopped = true;
       this.onStateChange?.("stopped");
       this.onEnd?.();
@@ -120,39 +143,113 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
   private async _downloadAndPlay(gen: number): Promise<void> {
     try {
       const artwork = this._getArtwork?.() || DEFAULT_ARTWORK;
+      const initialBufferCount = Math.min(
+        TrackPlayerEdgeTTSPlayer.INITIAL_BUFFER_CHUNKS,
+        this._chunks.length,
+      );
 
-      for (let i = 0; i < this._chunks.length; i++) {
-        if (gen !== this._speakGen || this._stopped) return;
-
-        const audioUri = await this._fetchChunkFile(i, gen);
-        if (gen !== this._speakGen || this._stopped) return;
-
-        await TrackPlayer.add({
-          id: `tts-chunk-${i}`,
-          url: audioUri,
-          title: `Segment ${i + 1}`,
-          artwork,
-        });
-
-        if (i === 0) {
-          await TrackPlayer.play();
-        }
+      while (this._nextChunkToAdd < initialBufferCount) {
+        await this._fetchAndAddChunk(this._nextChunkToAdd, gen, artwork);
       }
 
       if (gen !== this._speakGen || this._stopped) return;
-      this._downloadComplete = true;
 
       const queue = await TrackPlayer.getQueue();
       if (queue.length === 0) {
         this._stopped = true;
         this.onStateChange?.("stopped");
         this.onEnd?.();
+        return;
+      }
+
+      await TrackPlayer.play();
+      this._playStarted = true;
+      this.onStateChange?.("playing");
+
+      while (this._nextChunkToAdd < this._chunks.length) {
+        await this._fetchAndAddChunk(this._nextChunkToAdd, gen, artwork);
+      }
+
+      if (gen !== this._speakGen || this._stopped) return;
+      this._downloadComplete = true;
+      if (this._queueStarved) {
+        await this._resumeStarvedQueue(gen);
       }
     } catch (err) {
       if (!this._stopped && (err as Error)?.message !== "aborted") {
         console.error("[TrackPlayerEdgeTTSPlayer] download error:", err);
+        this._stopped = true;
+        this.onStateChange?.("stopped");
       }
     }
+  }
+
+  private async _fetchAndAddChunk(index: number, gen: number, artwork: string): Promise<void> {
+    if (gen !== this._speakGen || this._stopped) throw new Error("aborted");
+
+    const audioUri = await this._fetchChunkFileWithRetry(index, gen);
+    if (gen !== this._speakGen || this._stopped) throw new Error("aborted");
+
+    await TrackPlayer.add({
+      id: `tts-chunk-${index}`,
+      url: audioUri,
+      title: `Segment ${index + 1}`,
+      artwork,
+    });
+
+    this._nextChunkToAdd = Math.max(this._nextChunkToAdd, index + 1);
+    if (this._nextChunkToAdd >= this._chunks.length) {
+      this._downloadComplete = true;
+    }
+
+    if (this._queueStarved && this._playStarted) {
+      await this._resumeStarvedQueue(gen);
+    }
+  }
+
+  private async _resumeStarvedQueue(gen: number): Promise<void> {
+    if (gen !== this._speakGen || this._stopped || this._paused) return;
+
+    try {
+      const queue = await TrackPlayer.getQueue();
+      if (queue.length === 0) return;
+
+      const targetIndex = Math.min(Math.max(this._currentIndex + 1, 0), queue.length - 1);
+      this._queueStarved = false;
+      await TrackPlayer.skip(targetIndex).catch(() => {});
+      await TrackPlayer.play();
+      this.onStateChange?.("playing");
+      console.log("[TrackPlayerEdgeTTSPlayer] resumed after queue starvation", {
+        targetIndex,
+        queueLength: queue.length,
+      });
+    } catch (error) {
+      console.warn("[TrackPlayerEdgeTTSPlayer] failed to resume starved queue", error);
+    }
+  }
+
+  private async _fetchChunkFileWithRetry(index: number, gen: number): Promise<string> {
+    let lastError: unknown = null;
+
+    for (let attempt = 0; attempt <= TrackPlayerEdgeTTSPlayer.MAX_CHUNK_FETCH_RETRIES; attempt++) {
+      try {
+        return await this._fetchChunkFile(index, gen);
+      } catch (error) {
+        if ((error as Error)?.message === "aborted" || gen !== this._speakGen || this._stopped) {
+          throw error;
+        }
+        lastError = error;
+        console.warn("[TrackPlayerEdgeTTSPlayer] chunk fetch failed", {
+          index,
+          attempt: attempt + 1,
+          maxAttempts: TrackPlayerEdgeTTSPlayer.MAX_CHUNK_FETCH_RETRIES + 1,
+          error,
+        });
+        await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
+      }
+    }
+
+    throw lastError instanceof Error ? lastError : new Error("Edge TTS chunk fetch failed");
   }
 
   private async _fetchChunkFile(index: number, gen: number): Promise<string> {
@@ -198,6 +295,8 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
     this._stopped = true;
     this._paused = false;
     this._downloadComplete = false;
+    this._queueStarved = false;
+    this._playStarted = false;
     TrackPlayer.stop();
     TrackPlayer.reset();
     this._cleanupEvents();
@@ -208,6 +307,8 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
   private async _cleanup(): Promise<void> {
     this._stopped = true;
     this._downloadComplete = false;
+    this._queueStarved = false;
+    this._playStarted = false;
     this._cleanupEvents();
     try {
       await TrackPlayer.stop();
