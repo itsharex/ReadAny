@@ -1,4 +1,4 @@
-import { getPlatformService } from "@readany/core/services/platform";
+import { getPlatformService } from "@readany/core/services";
 import type { ITTSPlayer, TTSConfig } from "@readany/core/tts";
 import { splitIntoChunks } from "@readany/core/tts";
 import { File, Paths } from "expo-file-system";
@@ -6,7 +6,7 @@ import { Image } from "react-native";
 import TrackPlayer, { Event, State } from "react-native-track-player";
 
 const CHUNK_MAX_CHARS = 500;
-const DEFAULT_ARTWORK = Image.resolveAssetSource(require("../../assets/icon.png")).uri;
+const DEFAULT_ARTWORK = Image.resolveAssetSource(require("../../../assets/icon.png")).uri;
 
 export class TrackPlayerDashScopeTTSPlayer implements ITTSPlayer {
   onStateChange?: (state: "playing" | "paused" | "stopped") => void;

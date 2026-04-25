@@ -5,7 +5,7 @@ import { Image } from "react-native";
 import TrackPlayer, { Event, State } from "react-native-track-player";
 
 const CHUNK_MAX_CHARS = 500;
-const DEFAULT_ARTWORK = Image.resolveAssetSource(require("../../assets/icon.png")).uri;
+const DEFAULT_ARTWORK = Image.resolveAssetSource(require("../../../assets/icon.png")).uri;
 
 export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
   onStateChange?: (state: "playing" | "paused" | "stopped") => void;
