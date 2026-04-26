@@ -1,13 +1,15 @@
 import {
   DEFAULT_TTS_CONFIG,
-  normalizeTTSConfig,
-  splitNarrationText,
   type ITTSPlayer,
   type TTSConfig,
+  normalizeTTSConfig,
+  splitNarrationText,
 } from "@readany/core/tts";
-import { ExpoAVEdgeTTSPlayer } from "../lib/platform/expo-av-edge-player";
-import { ExpoSpeechTTSPlayer } from "../lib/platform/expo-speech-player";
+import TrackPlayer from "react-native-track-player";
 import { create } from "zustand";
+import { ExpoSpeechTTSPlayer } from "../lib/platform/expo-speech-player";
+import { TrackPlayerDashScopeTTSPlayer } from "../lib/platform/track-player-dashscope-player";
+import { TrackPlayerEdgeTTSPlayer } from "../lib/platform/track-player-edge-player";
 import { withPersist } from "./persist";
 
 export type TTSPlayState = "stopped" | "playing" | "paused" | "loading";
@@ -20,15 +22,15 @@ export interface TTSPlayerFactories {
 
 const defaultFactories: TTSPlayerFactories = {
   createSystemTTS: () => new ExpoSpeechTTSPlayer(),
-  createEdgeTTS: () => new ExpoAVEdgeTTSPlayer(),
-  // DashScope streaming is not wired on RN yet; keep a predictable system fallback.
-  createDashScopeTTS: () => new ExpoSpeechTTSPlayer(),
+  createEdgeTTS: () => new TrackPlayerEdgeTTSPlayer(),
+  createDashScopeTTS: () => new TrackPlayerDashScopeTTSPlayer(),
 };
 
 let _factories: TTSPlayerFactories = defaultFactories;
 let _systemTTS: ITTSPlayer | null = null;
 let _edgeTTS: ITTSPlayer | null = null;
 let _dashscopeTTS: ITTSPlayer | null = null;
+let _activeTTS: ITTSPlayer | null = null;
 
 let _sessionSegments: string[] = [];
 let _sessionCurrentIndex = 0;
@@ -68,6 +70,7 @@ function detachAndStopPlayer(player: ITTSPlayer | null): void {
 }
 
 function detachAndStopAllPlayers(): void {
+  _activeTTS = null;
   detachAndStopPlayer(_systemTTS);
   detachAndStopPlayer(_edgeTTS);
   detachAndStopPlayer(_dashscopeTTS);
@@ -77,7 +80,9 @@ function normalizeSegments(text: string | string[]): string[] {
   if (Array.isArray(text)) {
     return text.map((segment) => segment.trim()).filter(Boolean);
   }
-  return splitNarrationText(text).map((segment) => segment.trim()).filter(Boolean);
+  return splitNarrationText(text)
+    .map((segment) => segment.trim())
+    .filter(Boolean);
 }
 
 function getPlayerForConfig(config: TTSConfig): ITTSPlayer {
@@ -99,9 +104,23 @@ function startPlayback(
 ): void {
   const player = getPlayerForConfig(config);
   const gen = _sessionGeneration;
+  _activeTTS = player;
+
+  // Set artwork getter for RNTP players
+  if (
+    "setArtworkGetter" in player &&
+    typeof (player as { setArtworkGetter?: unknown }).setArtworkGetter === "function"
+  ) {
+    (player as { setArtworkGetter: (getter: () => string | undefined) => void }).setArtworkGetter(
+      () => get().currentArtwork || undefined,
+    );
+  }
 
   player.onStateChange = (playState) => {
     if (gen !== _sessionGeneration) return;
+    if (playState === "stopped") {
+      _activeTTS = null;
+    }
     set({ playState });
   };
 
@@ -118,6 +137,7 @@ function startPlayback(
 
   player.onEnd = () => {
     if (gen !== _sessionGeneration) return;
+    _activeTTS = null;
     const lastIndex = Math.max(0, _sessionSegments.length - 1);
     _sessionCurrentIndex = lastIndex;
     set({
@@ -133,6 +153,7 @@ function startPlayback(
   void Promise.resolve(playback).catch((error) => {
     if (gen !== _sessionGeneration) return;
     console.error("[TTSStore] play failed:", error);
+    _activeTTS = null;
     set({ playState: "stopped" });
   });
 }
@@ -146,6 +167,7 @@ export interface TTSState {
   currentBookTitle: string;
   currentChapterTitle: string;
   currentBookId: string;
+  currentArtwork: string;
   currentLocationCfi: string;
   currentChunkIndex: number;
   totalChunks: number;
@@ -153,6 +175,7 @@ export interface TTSState {
   sleepTimerDurationMinutes: number | null;
 
   play: (text: string | string[]) => void;
+  append: (text: string | string[]) => boolean;
   pause: () => void;
   resume: () => void;
   stop: () => void;
@@ -160,7 +183,7 @@ export interface TTSState {
   updateConfig: (updates: Partial<TTSConfig>) => void;
   setPlayState: (state: TTSPlayState) => void;
   setOnEnd: (cb: (() => void) | null) => void;
-  setCurrentBook: (title: string, chapter: string, bookId?: string) => void;
+  setCurrentBook: (title: string, chapter: string, bookId?: string, artwork?: string) => void;
   setCurrentLocation: (cfi?: string | null) => void;
   setChunkProgress: (index: number, total: number) => void;
   jumpToChunk: (index: number) => void;
@@ -180,6 +203,7 @@ export const useTTSStore = create<TTSState>()(
       currentBookTitle: "",
       currentChapterTitle: "",
       currentBookId: "",
+      currentArtwork: "",
       currentLocationCfi: "",
       currentChunkIndex: 0,
       totalChunks: 0,
@@ -218,17 +242,47 @@ export const useTTSStore = create<TTSState>()(
         startPlayback(segments, config, 0, set, get);
       },
 
+      append: (text: string | string[]) => {
+        const segments = normalizeSegments(text);
+        const joinedText = segments.join(" ").trim();
+        if (!joinedText || !_activeTTS || typeof _activeTTS.append !== "function") {
+          return false;
+        }
+
+        const previousSegments = _sessionSegments;
+        try {
+          _activeTTS.append(segments);
+          _sessionSegments = [..._sessionSegments, ...segments];
+          set((state) => ({
+            currentText: [state.currentText, joinedText].filter(Boolean).join(" ").trim(),
+            totalChunks: _sessionSegments.length,
+            currentSegmentText:
+              _sessionSegments[_sessionCurrentIndex] || state.currentSegmentText || "",
+          }));
+          return true;
+        } catch (error) {
+          _sessionSegments = previousSegments;
+          console.warn("[TTSStore] append failed:", error);
+          return false;
+        }
+      },
+
       pause: () => {
         console.log("[TTSStore] pause called");
         const { playState } = get();
         if (playState !== "playing" && playState !== "loading") return;
-        _sessionGeneration += 1;
-        detachAndStopAllPlayers();
+        _activeTTS?.pause();
         set({ playState: "paused" });
       },
 
       resume: () => {
         console.log("[TTSStore] resume called");
+        if (get().playState === "paused" && _activeTTS) {
+          _activeTTS.resume();
+          set({ playState: "playing" });
+          return;
+        }
+
         if (_sessionSegments.length === 0 || _sessionCurrentIndex >= _sessionSegments.length) {
           set({ playState: "stopped" });
           return;
@@ -305,8 +359,26 @@ export const useTTSStore = create<TTSState>()(
         set({ onEnd: cb });
       },
 
-      setCurrentBook: (title, chapter, bookId) =>
-        set({ currentBookTitle: title, currentChapterTitle: chapter, currentBookId: bookId ?? "" }),
+      setCurrentBook: (title, chapter, bookId, artwork) => {
+        set({
+          currentBookTitle: title,
+          currentChapterTitle: chapter,
+          currentBookId: bookId ?? "",
+          currentArtwork: artwork ?? "",
+        });
+        // Sync notification bar metadata
+        TrackPlayer.getActiveTrackIndex()
+          .then((idx) => {
+            if (idx != null) {
+              TrackPlayer.updateMetadataForTrack(idx, {
+                title: chapter || title,
+                artist: title,
+                ...(artwork ? { artwork } : {}),
+              }).catch(() => {});
+            }
+          })
+          .catch(() => {});
+      },
 
       setCurrentLocation: (cfi) => set({ currentLocationCfi: cfi ?? "" }),
 
