@@ -116,6 +116,7 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
       mimeType?: string;
       lastLocation?: string;
       pageMargin?: number;
+      paginatedLayout?: "single" | "double";
     }) => {
       const msg = JSON.stringify({ type: "openBook", ...params });
       inject(`handleCommand(${msg})`);
@@ -238,6 +239,7 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
       pageMargin?: number;
       fontTheme?: string;
       viewMode?: string;
+      paginatedLayout?: "single" | "double";
       customFontFaceCSS?: string;
       customFontFamily?: string;
     }) => {

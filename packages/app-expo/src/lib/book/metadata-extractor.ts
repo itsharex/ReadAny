@@ -98,6 +98,88 @@ export async function extractBookMetadata(
   }
 }
 
+export async function extractBookMetadataFromFile(
+  file: Blob,
+  format: string,
+  fileName: string,
+): Promise<ExtractedMeta> {
+  const fallback: ExtractedMeta = {
+    title: fileName.replace(/\.\w+$/i, "") || "Untitled",
+    author: "",
+    coverBytes: null,
+    coverMimeType: null,
+  };
+
+  try {
+    switch (format) {
+      case "mobi":
+      case "azw":
+      case "azw3":
+        return await extractMobiMetadata(file, fileName);
+      default:
+        return fallback;
+    }
+  } catch (err) {
+    console.warn(`[extractBookMetadataFromFile] failed for ${format}:`, err);
+    return fallback;
+  }
+}
+
+async function extractMobiMetadata(file: Blob, fileName: string): Promise<ExtractedMeta> {
+  const fallback: ExtractedMeta = {
+    title: fileName.replace(/\.\w+$/i, "") || "Untitled",
+    author: "",
+    coverBytes: null,
+    coverMimeType: null,
+  };
+
+  const [{ isMOBI, MOBI }, fflate] = await Promise.all([
+    import("../../../../foliate-js/mobi.js"),
+    import("../../../../foliate-js/vendor/fflate.js"),
+  ]);
+
+  if (!(await isMOBI(file as File))) {
+    return fallback;
+  }
+
+  const book = await new MOBI({ unzlib: fflate.unzlibSync }).open(file as File);
+  const meta = book?.metadata ?? {};
+
+  const rawTitle =
+    typeof meta.title === "string"
+      ? meta.title
+      : meta.title && typeof meta.title === "object"
+        ? Object.values(meta.title)[0]
+        : "";
+
+  const rawAuthor =
+    typeof meta.author === "string"
+      ? meta.author
+      : meta.author && typeof meta.author === "object"
+        ? (meta.author.name ?? meta.author.file_as ?? "")
+        : "";
+
+  let coverBytes: Uint8Array | null = null;
+  let coverMimeType: string | null = null;
+
+  try {
+    const coverBlob = await book?.getCover?.();
+    if (coverBlob) {
+      coverBytes = new Uint8Array(await coverBlob.arrayBuffer());
+      coverMimeType = coverBlob.type || guessMimeType(fileName) || "image/jpeg";
+    }
+  } catch (err) {
+    console.warn("[extractMobiMetadata] cover extraction error:", err);
+  }
+
+  return {
+    title: String(rawTitle || fallback.title).trim(),
+    author: String(rawAuthor || "").trim(),
+    coverBytes,
+    coverMimeType,
+  };
+}
+
 // ─── Lazy ZIP reader: parse directory first, decompress on demand ───
 
 interface ZipDirectoryEntry {

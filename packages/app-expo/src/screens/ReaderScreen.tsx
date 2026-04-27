@@ -541,8 +541,10 @@ export function ReaderScreen({ route, navigation }: Props) {
         fontSize: settings.fontSize,
         lineHeight: settings.lineHeight,
         paragraphSpacing: settings.paragraphSpacing,
+        pageMargin: settings.pageMargin,
         fontTheme: settings.fontTheme,
         viewMode: settings.viewMode,
+        paginatedLayout: settings.paginatedLayout,
         customFontFaceCSS: fontCSS,
         customFontFamily: fontFamily,
       });
@@ -1004,6 +1006,7 @@ export function ReaderScreen({ route, navigation }: Props) {
           fileName: book.filePath.split("/").pop() || "book.epub",
           lastLocation,
           pageMargin: readSettings.pageMargin,
+          paginatedLayout: readSettings.paginatedLayout,
         });
 
         bridge.setThemeColors({

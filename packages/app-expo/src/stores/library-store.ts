@@ -1,4 +1,4 @@
-import { extractBookMetadata } from "@/lib/book/metadata-extractor";
+import { extractBookMetadata, extractBookMetadataFromFile } from "@/lib/book/metadata-extractor";
 import { queueBook as queueAutoVectorize } from "@/lib/rag/auto-vectorize-service";
 import {
   createEmptyImportBooksResult,
@@ -11,7 +11,6 @@ import { runWithDbRetry } from "@readany/core/db/write-retry";
 import { getPlatformService } from "@readany/core/services";
 import type { Book, LibraryFilter, SortField, SortOrder } from "@readany/core/types";
 import { generateId } from "@readany/core/utils";
-import * as Crypto from "expo-crypto";
 import { create } from "zustand";
 import { debouncedSave, loadFromFS } from "./persist";
 import { useVectorModelStore } from "./vector-model-store";
@@ -135,22 +134,59 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
-/**
- * Hash bytes using SHA-256. Uses Crypto.digest() which accepts ArrayBuffer directly,
- * avoiding the 1.33x memory overhead of base64 encoding for large files.
- */
-async function hashBytes(bytes: Uint8Array): Promise<string> {
-  const arrayBuffer = await Crypto.digest(
-    Crypto.CryptoDigestAlgorithm.SHA256,
-    bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
-  );
-  // Convert ArrayBuffer to hex string
-  const hashArray = new Uint8Array(arrayBuffer);
-  let hex = "";
-  for (let i = 0; i < hashArray.length; i++) {
-    hex += hashArray[i].toString(16).padStart(2, "0");
+const MOBILE_IMPORT_METADATA_MAX_BYTES = 32 * 1024 * 1024;
+const MOBILE_AUTO_VECTORIZER_MAX_BYTES = 12 * 1024 * 1024;
+
+async function getMobileFileStat(path: string): Promise<{ size: number; md5?: string }> {
+  const ExpoFS = await import("expo-file-system");
+  const file = new ExpoFS.File(path);
+  return {
+    size: file.size || 0,
+    md5: file.md5 || undefined,
+  };
+}
+
+async function extractMobileImportMetadata(params: {
+  filePath: string;
+  format: Book["format"];
+  fileName: string;
+  fileSize: number;
+  sourceBytes?: Uint8Array;
+}) {
+  const { filePath, format, fileName, fileSize, sourceBytes } = params;
+
+  if (format === "epub") {
+    const bytes =
+      sourceBytes ??
+      (fileSize > 0 && fileSize <= MOBILE_IMPORT_METADATA_MAX_BYTES
+        ? await getPlatformService().readFile(filePath)
+        : null);
+    if (bytes) {
+      return extractBookMetadata(bytes, format, fileName);
+    }
+    console.warn(
+      `[extractMobileImportMetadata] Skip EPUB metadata for large file: ${fileName} (${fileSize} bytes)`,
+    );
   }
-  return hex;
+
+  if (format === "mobi" || format === "azw" || format === "azw3") {
+    const ExpoFS = await import("expo-file-system");
+    return extractBookMetadataFromFile(new ExpoFS.File(filePath) as unknown as Blob, format, fileName);
+  }
+
+  return {
+    title: fileName.replace(/\.\w+$/i, "") || "Untitled",
+    author: "",
+    coverBytes: null,
+    coverMimeType: null,
+  };
+}
+
+function shouldAutoVectorizeMobile(format: Book["format"], size: number): boolean {
+  if (size <= 0 || size > MOBILE_AUTO_VECTORIZER_MAX_BYTES) {
+    return false;
+  }
+  return format === "epub" || format === "txt";
 }
 
 /**
@@ -301,16 +337,10 @@ async function restoreDeletedMobileBook(
   const format: Book["format"] = formatMap[ext || ""] || "epub";
   const fileName = originalName;
   const platform = getPlatformService();
-  const sourceBytes = await platform.readFile(filePath);
-
-  let fileHash: string | undefined;
-  try {
-    fileHash = await hashBytes(sourceBytes);
-  } catch {
-    // Hash calculation is best effort.
-  }
+  const { size: fileSize, md5: fileHash } = await getMobileFileStat(filePath);
 
   if (ext === "txt") {
+    const sourceBytes = await platform.readFile(filePath);
     const { TxtToEpubConverter } = await import("@readany/core/utils/txt-to-epub");
     const bytes = ensureUtf8Bytes(sourceBytes);
     const txtFile = {
@@ -363,20 +393,19 @@ async function restoreDeletedMobileBook(
     };
   }
 
-  const { relativePath } = await copyBookToAppData(
-    bookId,
-    ext || "epub",
-    filePath,
-    sourceBytes,
-  );
+  const { relativePath } = await copyBookToAppData(bookId, ext || "epub", filePath);
 
   let title = originalBook.meta.title || fileName.replace(/\.\w+$/i, "") || "Untitled";
   let author = originalBook.meta.author || "";
   let coverUrl = originalBook.meta.coverUrl;
 
   try {
-    // sourceBytes already in memory from hash calculation, reuse for metadata
-    const meta = await extractBookMetadata(sourceBytes, format, fileName);
+    const meta = await extractMobileImportMetadata({
+      filePath,
+      format,
+      fileName,
+      fileSize,
+    });
     if (meta.title) title = meta.title;
     if (meta.author) author = meta.author;
 
@@ -444,19 +473,13 @@ async function inspectDeletedMobileBookCandidate(
   };
   const format: Book["format"] = formatMap[ext || ""] || "epub";
   const fileName = originalName;
-  const platform = getPlatformService();
-  const sourceBytes = await platform.readFile(filePath);
-
-  let fileHash: string | undefined;
-  try {
-    fileHash = await hashBytes(sourceBytes);
-  } catch {
-    // Best effort.
-  }
+  const { size: fileSize, md5: fileHash } = await getMobileFileStat(filePath);
 
   if (ext === "txt") {
     try {
       const { TxtToEpubConverter } = await import("@readany/core/utils/txt-to-epub");
+      const platform = getPlatformService();
+      const sourceBytes = await platform.readFile(filePath);
       const bytes = ensureUtf8Bytes(sourceBytes);
       const txtFile = {
         name: fileName,
@@ -502,7 +525,12 @@ async function inspectDeletedMobileBookCandidate(
   let title = fileName.replace(/\.\w+$/i, "") || originalBook.meta.title || "Untitled";
   let author = "";
   try {
-    const meta = await extractBookMetadata(sourceBytes, format, fileName);
+    const meta = await extractMobileImportMetadata({
+      filePath,
+      format,
+      fileName,
+      fileSize,
+    });
     if (meta.title) title = meta.title;
     if (meta.author) author = meta.author;
   } catch {
@@ -658,14 +686,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           const format: Book["format"] = formatMap[ext || ""] || "epub";
           const fileName = originalName;
           const platform = getPlatformService();
-          const sourceBytes = await platform.readFile(filePath);
-
-          let fileHash: string | undefined;
-          try {
-            fileHash = await hashBytes(sourceBytes);
-          } catch {
-            // Hash calculation is best effort.
-          }
+          const { size: fileSize, md5: fileHash } = await getMobileFileStat(filePath);
 
           const existingDuplicate = findDuplicateBookByHash(duplicateIndex, fileHash);
           if (existingDuplicate) {
@@ -689,6 +710,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           if (ext === "txt") {
             try {
               const { TxtToEpubConverter } = await import("@readany/core/utils/txt-to-epub");
+              const sourceBytes = await platform.readFile(filePath);
 
               // Hermes only supports UTF-8 in TextDecoder. Convert GBK/GB18030
               // etc. to UTF-8 using text-encoding polyfill before passing to converter.
@@ -781,9 +803,17 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
               // successful import doesn't get reported as a failed import.
               try {
                 const vmState = useVectorModelStore.getState();
-                if (vmState.vectorModelEnabled && vmState.hasVectorCapability()) {
+                if (
+                  vmState.vectorModelEnabled &&
+                  vmState.hasVectorCapability() &&
+                  shouldAutoVectorizeMobile("txt", conversion.epubBytes.byteLength)
+                ) {
                   const base64 = bytesToBase64(conversion.epubBytes);
                   queueAutoVectorize(book, base64, "application/epub+zip");
+                } else if (vmState.vectorModelEnabled && vmState.hasVectorCapability()) {
+                  console.warn(
+                    `[importBooks] Skip auto-vectorize for large TXT conversion: ${fileName} (${conversion.epubBytes.byteLength} bytes)`,
+                  );
                 }
               } catch (autoVectorizeErr) {
                 console.warn(
@@ -798,25 +828,24 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
             }
           }
 
-          const { relativePath } = await copyBookToAppData(
-            bookId,
-            ext || "epub",
-            filePath,
-            sourceBytes,
-          );
+          const { relativePath } = await copyBookToAppData(bookId, ext || "epub", filePath);
           console.log(
             `[importBooks] File copied. relativePath: ${relativePath}`,
           );
 
           // Extract metadata (title, author, cover) from book content
-          // Reuse sourceBytes already in memory from hash calculation
           let title = fileName.replace(/\.\w+$/i, "") || "Untitled";
           let author = "";
           let coverUrl: string | undefined;
 
           try {
             console.log(`[importBooks] Extracting metadata for format=${format}...`);
-            const meta = await extractBookMetadata(sourceBytes, format, fileName);
+            const meta = await extractMobileImportMetadata({
+              filePath,
+              format,
+              fileName,
+              fileSize,
+            });
             console.log(
               `[importBooks] Metadata result: title="${meta.title}", author="${meta.author}", hasCover=${!!meta.coverBytes}, coverSize=${meta.coverBytes?.length ?? 0}`,
             );
@@ -897,7 +926,12 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           // successful import doesn't get reported as a failed import.
           try {
             const vmState = useVectorModelStore.getState();
-            if (vmState.vectorModelEnabled && vmState.hasVectorCapability()) {
+            if (
+              vmState.vectorModelEnabled &&
+              vmState.hasVectorCapability() &&
+              shouldAutoVectorizeMobile(format, fileSize)
+            ) {
+              const sourceBytes = await platform.readFile(filePath);
               const base64 = bytesToBase64(sourceBytes);
               const mimeTypes: Record<string, string> = {
                 epub: "application/epub+zip",
@@ -913,6 +947,10 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
               };
               const mimeType = mimeTypes[format] || "application/epub+zip";
               queueAutoVectorize(book, base64, mimeType);
+            } else if (vmState.vectorModelEnabled && vmState.hasVectorCapability()) {
+              console.warn(
+                `[importBooks] Skip auto-vectorize for large/unsupported mobile import: ${fileName} (${fileSize} bytes, format=${format})`,
+              );
             }
           } catch (autoVectorizeErr) {
             console.warn(
