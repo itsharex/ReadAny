@@ -1,4 +1,8 @@
-import { extractBookMetadata, extractBookMetadataFromFile } from "@/lib/book/metadata-extractor";
+import {
+  createRangeReadableFile,
+  extractBookMetadata,
+  extractBookMetadataFromFile,
+} from "@/lib/book/metadata-extractor";
 import { queueBook as queueAutoVectorize } from "@/lib/rag/auto-vectorize-service";
 import {
   createEmptyImportBooksResult,
@@ -138,11 +142,11 @@ const MOBILE_IMPORT_METADATA_MAX_BYTES = 32 * 1024 * 1024;
 const MOBILE_AUTO_VECTORIZER_MAX_BYTES = 12 * 1024 * 1024;
 
 async function getMobileFileStat(path: string): Promise<{ size: number; md5?: string }> {
-  const ExpoFS = await import("expo-file-system");
-  const file = new ExpoFS.File(path);
+  const LegacyFileSystem = await import("expo-file-system/legacy");
+  const info = await LegacyFileSystem.getInfoAsync(path);
   return {
-    size: file.size || 0,
-    md5: file.md5 || undefined,
+    size: info.exists && !info.isDirectory ? info.size ?? 0 : 0,
+    md5: undefined,
   };
 }
 
@@ -170,8 +174,8 @@ async function extractMobileImportMetadata(params: {
   }
 
   if (format === "mobi" || format === "azw" || format === "azw3") {
-    const ExpoFS = await import("expo-file-system");
-    return extractBookMetadataFromFile(new ExpoFS.File(filePath) as unknown as Blob, format, fileName);
+    const rangeReadable = await createRangeReadableFile(filePath, fileSize);
+    return extractBookMetadataFromFile(rangeReadable, format, fileName);
   }
 
   return {

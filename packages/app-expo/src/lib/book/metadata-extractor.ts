@@ -18,6 +18,15 @@ export interface ExtractedMeta {
   coverMimeType: string | null;
 }
 
+interface SliceReadable {
+  arrayBuffer(): Promise<ArrayBuffer>;
+}
+
+interface BlobLikeFile {
+  size?: number;
+  slice(start?: number, end?: number, contentType?: string): SliceReadable;
+}
+
 // ─── EPUB extraction ────────────────────────────────────────────────
 
 export async function extractEpubMetadata(fileBytes: Uint8Array): Promise<ExtractedMeta> {
@@ -99,7 +108,7 @@ export async function extractBookMetadata(
 }
 
 export async function extractBookMetadataFromFile(
-  file: Blob,
+  file: BlobLikeFile,
   format: string,
   fileName: string,
 ): Promise<ExtractedMeta> {
@@ -125,7 +134,7 @@ export async function extractBookMetadataFromFile(
   }
 }
 
-async function extractMobiMetadata(file: Blob, fileName: string): Promise<ExtractedMeta> {
+async function extractMobiMetadata(file: BlobLikeFile, fileName: string): Promise<ExtractedMeta> {
   const fallback: ExtractedMeta = {
     title: fileName.replace(/\.\w+$/i, "") || "Untitled",
     author: "",
@@ -138,11 +147,11 @@ async function extractMobiMetadata(file: Blob, fileName: string): Promise<Extrac
     import("../../../../foliate-js/vendor/fflate.js"),
   ]);
 
-  if (!(await isMOBI(file as File))) {
+  if (!(await isMOBI(file))) {
     return fallback;
   }
 
-  const book = await new MOBI({ unzlib: fflate.unzlibSync }).open(file as File);
+  const book = await new MOBI({ unzlib: fflate.unzlibSync }).open(file);
   const meta = book?.metadata ?? {};
 
   const rawTitle =
@@ -177,6 +186,49 @@ async function extractMobiMetadata(file: Blob, fileName: string): Promise<Extrac
     author: String(rawAuthor || "").trim(),
     coverBytes,
     coverMimeType,
+  };
+}
+
+export async function createRangeReadableFile(
+  fileUri: string,
+  fileSize?: number,
+): Promise<BlobLikeFile> {
+  const LegacyFileSystem = await import("expo-file-system/legacy");
+  const { toByteArray } = await import("base64-js");
+  const info =
+    typeof fileSize === "number" && fileSize >= 0 ? null : await LegacyFileSystem.getInfoAsync(fileUri);
+
+  const resolvedSize =
+    typeof fileSize === "number" && fileSize >= 0
+      ? fileSize
+      : info && info.exists
+        ? ((info as { size?: number }).size ?? 0)
+        : 0;
+
+  return {
+    size: resolvedSize,
+    slice(start = 0, end = resolvedSize) {
+      const normalizedStart = Math.max(0, start);
+      const normalizedEnd = Math.max(normalizedStart, Math.min(end, resolvedSize));
+      const length = Math.max(0, normalizedEnd - normalizedStart);
+
+      return {
+        async arrayBuffer() {
+          if (length === 0) {
+            return new ArrayBuffer(0);
+          }
+
+          const base64 = await LegacyFileSystem.readAsStringAsync(fileUri, {
+            encoding: LegacyFileSystem.EncodingType.Base64,
+            position: normalizedStart,
+            length,
+          });
+          const bytes = toByteArray(base64);
+          const copy = Uint8Array.from(bytes);
+          return copy.buffer;
+        },
+      };
+    },
   };
 }
 
