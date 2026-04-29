@@ -283,12 +283,8 @@ export function ProfileScreen() {
   const s = makeStyles(colors);
   const { t, i18n } = useTranslation();
   const layout = useResponsiveLayout();
-  const statsGridGap = 12;
-  const statsGridColumns = layout.isTabletLandscape ? 4 : 2;
-  const statsGridContentWidth = Math.max(0, layout.width - 32);
-  const statCardWidth = Math.floor(
-    (statsGridContentWidth - statsGridGap * (statsGridColumns - 1)) / statsGridColumns,
-  );
+  const statsGridColumns = layout.isTablet ? 4 : 2;
+  const statCardSlotWidth = `${100 / statsGridColumns}%` as `${number}%`;
   const nav = useNavigation<Nav>();
   const [overall, setOverall] = useState<OverallStats | null>(null);
   const [dailyStats, setDailyStats] = useState<DailyStats[]>([]);
@@ -463,18 +459,26 @@ export function ProfileScreen() {
               <ActivityIndicator size="small" color={colors.mutedForeground} />
             </View>
           ) : (
-            <View style={[s.statsGrid, { gap: statsGridGap }]}>
+            <View style={s.statsGrid}>
               {overviewCards.map((card) => (
-                <StatCard
+                <View
                   key={card.key}
-                  icon={card.icon}
-                  title={card.title}
-                  value={card.value}
-                  unit={card.unit}
-                  metaLabel={card.metaLabel}
-                  metaValue={card.metaValue}
-                  style={{ width: statCardWidth }}
-                />
+                  style={{
+                    width: statCardSlotWidth,
+                    paddingHorizontal: 6,
+                    paddingBottom: 12,
+                  }}
+                >
+                  <StatCard
+                    icon={card.icon}
+                    title={card.title}
+                    value={card.value}
+                    unit={card.unit}
+                    metaLabel={card.metaLabel}
+                    metaValue={card.metaValue}
+                    style={{ width: "100%" }}
+                  />
+                </View>
               ))}
             </View>
           )}
@@ -550,7 +554,7 @@ const makeStyles = (colors: ThemeColors) =>
     // Stats
     statsSection: { paddingHorizontal: 16, paddingTop: 16 },
     statsLoading: { alignItems: "center", justifyContent: "center", paddingVertical: 32 },
-    statsGrid: { flexDirection: "row", flexWrap: "wrap" },
+    statsGrid: { flexDirection: "row", flexWrap: "wrap", marginHorizontal: -6 },
     statCard: {
       backgroundColor: colors.card,
       borderRadius: radius.xl,

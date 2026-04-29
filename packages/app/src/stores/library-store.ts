@@ -2,13 +2,14 @@ import * as db from "@/lib/db/database";
 import { triggerVectorizeBook } from "@/lib/rag/vectorize-trigger";
 import {
   getDesktopLibraryRoot,
+  isDesktopManagedRelativePath,
   resolveDesktopDataPath,
 } from "@/lib/storage/desktop-library-root";
 import {
+  type ImportBooksResult,
   createEmptyImportBooksResult,
   createImportDuplicateIndex,
   findDuplicateBookByHash,
-  type ImportBooksResult,
 } from "@readany/core";
 import { debouncedSave, loadFromFS } from "@readany/core/stores/persist";
 import { useVectorModelStore } from "@readany/core/stores/vector-model-store";
@@ -208,16 +209,6 @@ async function resolveAppPath(relativePath: string): Promise<string> {
   return resolveDesktopDataPath(relativePath);
 }
 
-/** Check if a path is relative (not absolute or a protocol URL) */
-function isRelativePath(p: string): boolean {
-  return (
-    !p.startsWith("/") &&
-    !p.startsWith("file://") &&
-    !p.startsWith("asset://") &&
-    !p.startsWith("http")
-  );
-}
-
 /**
  * Resolve a book or cover path to a displayable asset:// URL.
  * Handles both legacy absolute/asset:// paths and new relative paths.
@@ -227,11 +218,7 @@ export async function resolveFileSrc(path: string): Promise<string> {
   // Already a displayable URL
   if (path.startsWith("asset://") || path.startsWith("http")) return path;
   const { convertFileSrc } = await import("@tauri-apps/api/core");
-  if (isRelativePath(path)) {
-    const abs = await resolveAppPath(path);
-    return convertFileSrc(abs);
-  }
-  return convertFileSrc(path);
+  return convertFileSrc(await resolveDesktopDataPath(path));
 }
 
 /**
@@ -651,7 +638,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
         const { remove } = await import("@tauri-apps/plugin-fs");
 
         // Delete book file if it's a relative path (in app data dir)
-        if (book.filePath && isRelativePath(book.filePath)) {
+        if (book.filePath && isDesktopManagedRelativePath(book.filePath)) {
           try {
             const bookAbsPath = await resolveAppPath(book.filePath);
             await remove(bookAbsPath);
@@ -661,7 +648,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           }
         }
 
-        if (!preserveData && book.meta.coverUrl && isRelativePath(book.meta.coverUrl)) {
+        if (!preserveData && book.meta.coverUrl && isDesktopManagedRelativePath(book.meta.coverUrl)) {
           try {
             const coverAbsPath = await resolveAppPath(book.meta.coverUrl);
             await remove(coverAbsPath);
